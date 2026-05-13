@@ -1,0 +1,19 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+Input: '中文测试' (Language: ChineseSimplified)
+Segments:
+Text: '中文测试', Category: ChineseSimplified, Confidence: 1.000
+
+Input: 'ひらがなカタカナ' (Language: Japanese)
+Segments:
+Text: 'ひらがな', Category: Hiragana, Confidence: 1.000
+Text: 'カタカナ', Category: Katakana, Confidence: 1.000
+
+Input: '한글테스트' (Language: Korean)
+Segments:
+Text: '한글테스트', Category: HangulSyllables, Confidence: 1.000
+
+Input: 'Hello World' (Language: ChineseSimplified)
+Segments:

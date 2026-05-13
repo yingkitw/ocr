@@ -1,0 +1,144 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+Text: 'Hello 世界'
+Language scores: ChineseSimplified: 0.250, ChineseTraditional: 0.250
+Character analysis:
+'H': CJK=false, Category=None, Script="CJK"
+'e': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'o': CJK=false, Category=None, Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'世': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'界': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+
+Text: 'こんにちは World'
+Language scores: Japanese: 0.455
+Character analysis:
+'こ': CJK=true, Category=Some(Hiragana), Script="CJK"
+'ん': CJK=true, Category=Some(Hiragana), Script="CJK"
+'に': CJK=true, Category=Some(Hiragana), Script="CJK"
+'ち': CJK=true, Category=Some(Hiragana), Script="CJK"
+'は': CJK=true, Category=Some(Hiragana), Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'W': CJK=false, Category=None, Script="CJK"
+'o': CJK=false, Category=None, Script="CJK"
+'r': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'d': CJK=false, Category=None, Script="CJK"
+
+Text: '안녕하세요 World'
+Language scores: Korean: 0.455
+Character analysis:
+'안': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'녕': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'하': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'세': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'요': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'W': CJK=false, Category=None, Script="CJK"
+'o': CJK=false, Category=None, Script="CJK"
+'r': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'d': CJK=false, Category=None, Script="CJK"
+
+Text: 'Mixed 中文 and English text'
+Language scores: ChineseSimplified: 0.080, ChineseTraditional: 0.080
+Character analysis:
+'M': CJK=false, Category=None, Script="CJK"
+'i': CJK=false, Category=None, Script="CJK"
+'x': CJK=false, Category=None, Script="CJK"
+'e': CJK=false, Category=None, Script="CJK"
+'d': CJK=false, Category=None, Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'中': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'文': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'a': CJK=false, Category=None, Script="CJK"
+'n': CJK=false, Category=None, Script="CJK"
+'d': CJK=false, Category=None, Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'E': CJK=false, Category=None, Script="CJK"
+'n': CJK=false, Category=None, Script="CJK"
+'g': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'i': CJK=false, Category=None, Script="CJK"
+'s': CJK=false, Category=None, Script="CJK"
+'h': CJK=false, Category=None, Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'t': CJK=false, Category=None, Script="CJK"
+'e': CJK=false, Category=None, Script="CJK"
+'x': CJK=false, Category=None, Script="CJK"
+'t': CJK=false, Category=None, Script="CJK"
+
+Text: '日本語とEnglish混合テキスト'
+Language scores: ChineseSimplified: 0.294, ChineseTraditional: 0.294, Japanese: 0.294
+Character analysis:
+'日': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'本': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'語': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'と': CJK=true, Category=Some(Hiragana), Script="CJK"
+'E': CJK=false, Category=None, Script="CJK"
+'n': CJK=false, Category=None, Script="CJK"
+'g': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'i': CJK=false, Category=None, Script="CJK"
+'s': CJK=false, Category=None, Script="CJK"
+'h': CJK=false, Category=None, Script="CJK"
+'混': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'合': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'テ': CJK=true, Category=Some(Katakana), Script="CJK"
+'キ': CJK=true, Category=Some(Katakana), Script="CJK"
+'ス': CJK=true, Category=Some(Katakana), Script="CJK"
+'ト': CJK=true, Category=Some(Katakana), Script="CJK"
+
+Text: '한국어와English混合텍스트'
+Language scores: ChineseSimplified: 0.125, ChineseTraditional: 0.125, Korean: 0.438
+Character analysis:
+'한': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'국': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'어': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'와': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'E': CJK=false, Category=None, Script="CJK"
+'n': CJK=false, Category=None, Script="CJK"
+'g': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'i': CJK=false, Category=None, Script="CJK"
+'s': CJK=false, Category=None, Script="CJK"
+'h': CJK=false, Category=None, Script="CJK"
+'混': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'合': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'텍': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'스': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'트': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+
+Text: 'Complex 中文日本語한국어English混合'
+Language scores: ChineseSimplified: 0.280, ChineseTraditional: 0.280, Korean: 0.120
+Character analysis:
+'C': CJK=false, Category=None, Script="CJK"
+'o': CJK=false, Category=None, Script="CJK"
+'m': CJK=false, Category=None, Script="CJK"
+'p': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'e': CJK=false, Category=None, Script="CJK"
+'x': CJK=false, Category=None, Script="CJK"
+' ': CJK=false, Category=None, Script="CJK"
+'中': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'文': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'日': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'本': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'語': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'한': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'국': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'어': CJK=true, Category=Some(HangulSyllables), Script="CJK"
+'E': CJK=false, Category=None, Script="CJK"
+'n': CJK=false, Category=None, Script="CJK"
+'g': CJK=false, Category=None, Script="CJK"
+'l': CJK=false, Category=None, Script="CJK"
+'i': CJK=false, Category=None, Script="CJK"
+'s': CJK=false, Category=None, Script="CJK"
+'h': CJK=false, Category=None, Script="CJK"
+'混': CJK=true, Category=Some(ChineseCommon), Script="CJK"
+'合': CJK=true, Category=Some(ChineseCommon), Script="CJK"

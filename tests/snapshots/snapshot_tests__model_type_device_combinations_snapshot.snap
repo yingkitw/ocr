@@ -1,0 +1,563 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+Model: LSTM, Device: CPU, Quantization: FP32
+  Path: model_LSTM_CPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: CPU, Quantization: FP16
+  Path: model_LSTM_CPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: CPU, Quantization: INT8
+  Path: model_LSTM_CPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: CPU, Quantization: Dynamic
+  Path: model_LSTM_CPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: GPU, Quantization: FP32
+  Path: model_LSTM_GPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: GPU, Quantization: FP16
+  Path: model_LSTM_GPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: GPU, Quantization: INT8
+  Path: model_LSTM_GPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: GPU, Quantization: Dynamic
+  Path: model_LSTM_GPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: NPU, Quantization: FP32
+  Path: model_LSTM_NPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: NPU, Quantization: FP16
+  Path: model_LSTM_NPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: NPU, Quantization: INT8
+  Path: model_LSTM_NPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: NPU, Quantization: Dynamic
+  Path: model_LSTM_NPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: Auto, Quantization: FP32
+  Path: model_LSTM_Auto_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: Auto, Quantization: FP16
+  Path: model_LSTM_Auto_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: Auto, Quantization: INT8
+  Path: model_LSTM_Auto_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: LSTM, Device: Auto, Quantization: Dynamic
+  Path: model_LSTM_Auto_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: CPU, Quantization: FP32
+  Path: model_Transformer_CPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: CPU, Quantization: FP16
+  Path: model_Transformer_CPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: CPU, Quantization: INT8
+  Path: model_Transformer_CPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: CPU, Quantization: Dynamic
+  Path: model_Transformer_CPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: GPU, Quantization: FP32
+  Path: model_Transformer_GPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: GPU, Quantization: FP16
+  Path: model_Transformer_GPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: GPU, Quantization: INT8
+  Path: model_Transformer_GPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: GPU, Quantization: Dynamic
+  Path: model_Transformer_GPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: NPU, Quantization: FP32
+  Path: model_Transformer_NPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: NPU, Quantization: FP16
+  Path: model_Transformer_NPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: NPU, Quantization: INT8
+  Path: model_Transformer_NPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: NPU, Quantization: Dynamic
+  Path: model_Transformer_NPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: Auto, Quantization: FP32
+  Path: model_Transformer_Auto_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: Auto, Quantization: FP16
+  Path: model_Transformer_Auto_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: Auto, Quantization: INT8
+  Path: model_Transformer_Auto_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Transformer, Device: Auto, Quantization: Dynamic
+  Path: model_Transformer_Auto_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: CPU, Quantization: FP32
+  Path: model_VisionTransformer_CPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: CPU, Quantization: FP16
+  Path: model_VisionTransformer_CPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: CPU, Quantization: INT8
+  Path: model_VisionTransformer_CPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: CPU, Quantization: Dynamic
+  Path: model_VisionTransformer_CPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: GPU, Quantization: FP32
+  Path: model_VisionTransformer_GPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: GPU, Quantization: FP16
+  Path: model_VisionTransformer_GPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: GPU, Quantization: INT8
+  Path: model_VisionTransformer_GPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: GPU, Quantization: Dynamic
+  Path: model_VisionTransformer_GPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: NPU, Quantization: FP32
+  Path: model_VisionTransformer_NPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: NPU, Quantization: FP16
+  Path: model_VisionTransformer_NPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: NPU, Quantization: INT8
+  Path: model_VisionTransformer_NPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: NPU, Quantization: Dynamic
+  Path: model_VisionTransformer_NPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: Auto, Quantization: FP32
+  Path: model_VisionTransformer_Auto_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: Auto, Quantization: FP16
+  Path: model_VisionTransformer_Auto_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: Auto, Quantization: INT8
+  Path: model_VisionTransformer_Auto_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: VisionTransformer, Device: Auto, Quantization: Dynamic
+  Path: model_VisionTransformer_Auto_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: CPU, Quantization: FP32
+  Path: model_CNN_CPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: CPU, Quantization: FP16
+  Path: model_CNN_CPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: CPU, Quantization: INT8
+  Path: model_CNN_CPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: CPU, Quantization: Dynamic
+  Path: model_CNN_CPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: GPU, Quantization: FP32
+  Path: model_CNN_GPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: GPU, Quantization: FP16
+  Path: model_CNN_GPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: GPU, Quantization: INT8
+  Path: model_CNN_GPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: GPU, Quantization: Dynamic
+  Path: model_CNN_GPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: NPU, Quantization: FP32
+  Path: model_CNN_NPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: NPU, Quantization: FP16
+  Path: model_CNN_NPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: NPU, Quantization: INT8
+  Path: model_CNN_NPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: NPU, Quantization: Dynamic
+  Path: model_CNN_NPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: Auto, Quantization: FP32
+  Path: model_CNN_Auto_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: Auto, Quantization: FP16
+  Path: model_CNN_Auto_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: Auto, Quantization: INT8
+  Path: model_CNN_Auto_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: CNN, Device: Auto, Quantization: Dynamic
+  Path: model_CNN_Auto_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: CPU, Quantization: FP32
+  Path: model_Hybrid_CPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: CPU, Quantization: FP16
+  Path: model_Hybrid_CPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: CPU, Quantization: INT8
+  Path: model_Hybrid_CPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: CPU, Quantization: Dynamic
+  Path: model_Hybrid_CPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: GPU, Quantization: FP32
+  Path: model_Hybrid_GPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: GPU, Quantization: FP16
+  Path: model_Hybrid_GPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: GPU, Quantization: INT8
+  Path: model_Hybrid_GPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: GPU, Quantization: Dynamic
+  Path: model_Hybrid_GPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: NPU, Quantization: FP32
+  Path: model_Hybrid_NPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: NPU, Quantization: FP16
+  Path: model_Hybrid_NPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: NPU, Quantization: INT8
+  Path: model_Hybrid_NPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: NPU, Quantization: Dynamic
+  Path: model_Hybrid_NPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: Auto, Quantization: FP32
+  Path: model_Hybrid_Auto_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: Auto, Quantization: FP16
+  Path: model_Hybrid_Auto_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: Auto, Quantization: INT8
+  Path: model_Hybrid_Auto_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Hybrid, Device: Auto, Quantization: Dynamic
+  Path: model_Hybrid_Auto_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: CPU, Quantization: FP32
+  Path: model_EndToEnd_CPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: CPU, Quantization: FP16
+  Path: model_EndToEnd_CPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: CPU, Quantization: INT8
+  Path: model_EndToEnd_CPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: CPU, Quantization: Dynamic
+  Path: model_EndToEnd_CPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: GPU, Quantization: FP32
+  Path: model_EndToEnd_GPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: GPU, Quantization: FP16
+  Path: model_EndToEnd_GPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: GPU, Quantization: INT8
+  Path: model_EndToEnd_GPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: GPU, Quantization: Dynamic
+  Path: model_EndToEnd_GPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: NPU, Quantization: FP32
+  Path: model_EndToEnd_NPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: NPU, Quantization: FP16
+  Path: model_EndToEnd_NPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: NPU, Quantization: INT8
+  Path: model_EndToEnd_NPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: NPU, Quantization: Dynamic
+  Path: model_EndToEnd_NPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: Auto, Quantization: FP32
+  Path: model_EndToEnd_Auto_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: Auto, Quantization: FP16
+  Path: model_EndToEnd_Auto_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: Auto, Quantization: INT8
+  Path: model_EndToEnd_Auto_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: EndToEnd, Device: Auto, Quantization: Dynamic
+  Path: model_EndToEnd_Auto_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: CPU, Quantization: FP32
+  Path: model_Custom("CustomModel")_CPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: CPU, Quantization: FP16
+  Path: model_Custom("CustomModel")_CPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: CPU, Quantization: INT8
+  Path: model_Custom("CustomModel")_CPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: CPU, Quantization: Dynamic
+  Path: model_Custom("CustomModel")_CPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: GPU, Quantization: FP32
+  Path: model_Custom("CustomModel")_GPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: GPU, Quantization: FP16
+  Path: model_Custom("CustomModel")_GPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: GPU, Quantization: INT8
+  Path: model_Custom("CustomModel")_GPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: GPU, Quantization: Dynamic
+  Path: model_Custom("CustomModel")_GPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: NPU, Quantization: FP32
+  Path: model_Custom("CustomModel")_NPU_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: NPU, Quantization: FP16
+  Path: model_Custom("CustomModel")_NPU_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: NPU, Quantization: INT8
+  Path: model_Custom("CustomModel")_NPU_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: NPU, Quantization: Dynamic
+  Path: model_Custom("CustomModel")_NPU_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: Auto, Quantization: FP32
+  Path: model_Custom("CustomModel")_Auto_FP32.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: Auto, Quantization: FP16
+  Path: model_Custom("CustomModel")_Auto_FP16.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: Auto, Quantization: INT8
+  Path: model_Custom("CustomModel")_Auto_INT8.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8
+
+Model: Custom("CustomModel"), Device: Auto, Quantization: Dynamic
+  Path: model_Custom("CustomModel")_Auto_Dynamic.onnx
+  Input Shape: (224, 224, 3)
+  Confidence: 0.8

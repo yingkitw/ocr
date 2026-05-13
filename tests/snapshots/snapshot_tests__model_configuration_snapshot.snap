@@ -1,0 +1,33 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+Model Config 1:
+  Type: LSTM
+  Path: tesseract_lstm.lstm
+  Languages: [English, ChineseSimplified, ChineseTraditional]
+  Input Shape: (32, 128, 1)
+  Max Text Length: Some(100)
+  Confidence Threshold: 0.5
+  Device: CPU
+  Quantization: Some(FP32)
+
+Model Config 2:
+  Type: Transformer
+  Path: trocr_model.onnx
+  Languages: [English, ChineseSimplified, Japanese, Korean]
+  Input Shape: (224, 224, 3)
+  Max Text Length: Some(200)
+  Confidence Threshold: 0.8
+  Device: GPU
+  Quantization: Some(FP16)
+
+Model Config 3:
+  Type: VisionTransformer
+  Path: vit_ocr_model.onnx
+  Languages: [English]
+  Input Shape: (384, 384, 3)
+  Max Text Length: Some(150)
+  Confidence Threshold: 0.9
+  Device: NPU
+  Quantization: Some(INT8)

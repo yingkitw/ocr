@@ -1,0 +1,28 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+BlobChoice:
+  Character: 'A' (ID: 65)
+  Rating: 0.100
+  Certainty: 0.900
+  Script: 0
+  X-height: 10.0-20.0
+  Classifier: StaticClassifier
+
+WordChoice:
+  Text: 'A'
+  Rating: 0.800
+  Certainty: 0.850
+  Blanks: 1
+  Script: 0
+  Choices: 0
+
+Word:
+  Text: 'Hello'
+  Blanks: 2
+  Script: 0
+  Bold: true
+  Italic: false
+  Start of Line: true
+  Flags: {Bold, StartOfLine}

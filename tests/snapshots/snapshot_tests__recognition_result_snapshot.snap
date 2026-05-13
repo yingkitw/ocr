@@ -1,0 +1,158 @@
+---
+source: tests/snapshot_tests.rs
+expression: json
+---
+{
+  "text": "Hello World",
+  "confidence": 0.95,
+  "characters": [],
+  "words": [],
+  "lines": [],
+  "metadata": {
+    "engine": "LSTM",
+    "language": null,
+    "processing_time_ms": 0,
+    "model_version": null,
+    "additional": {}
+  },
+  "model_type": "LSTM",
+  "processing_time_ms": 150,
+  "language": "en",
+  "character_results": [
+    {
+      "character": "H",
+      "confidence": 0.98,
+      "code_point": 72,
+      "properties": {
+        "is_digit": false,
+        "is_letter": false,
+        "is_whitespace": false,
+        "is_punctuation": false,
+        "width": 0.0,
+        "height": 0.0,
+        "baseline": 0.0,
+        "x_height": 0.0
+      },
+      "alternatives": [],
+      "bounding_box": null,
+      "features": null
+    },
+    {
+      "character": "e",
+      "confidence": 0.96,
+      "code_point": 101,
+      "properties": {
+        "is_digit": false,
+        "is_letter": false,
+        "is_whitespace": false,
+        "is_punctuation": false,
+        "width": 0.0,
+        "height": 0.0,
+        "baseline": 0.0,
+        "x_height": 0.0
+      },
+      "alternatives": [],
+      "bounding_box": null,
+      "features": null
+    },
+    {
+      "character": "l",
+      "confidence": 0.94,
+      "code_point": 108,
+      "properties": {
+        "is_digit": false,
+        "is_letter": false,
+        "is_whitespace": false,
+        "is_punctuation": false,
+        "width": 0.0,
+        "height": 0.0,
+        "baseline": 0.0,
+        "x_height": 0.0
+      },
+      "alternatives": [],
+      "bounding_box": null,
+      "features": null
+    },
+    {
+      "character": "l",
+      "confidence": 0.92,
+      "code_point": 108,
+      "properties": {
+        "is_digit": false,
+        "is_letter": false,
+        "is_whitespace": false,
+        "is_punctuation": false,
+        "width": 0.0,
+        "height": 0.0,
+        "baseline": 0.0,
+        "x_height": 0.0
+      },
+      "alternatives": [],
+      "bounding_box": null,
+      "features": null
+    },
+    {
+      "character": "o",
+      "confidence": 0.9,
+      "code_point": 111,
+      "properties": {
+        "is_digit": false,
+        "is_letter": false,
+        "is_whitespace": false,
+        "is_punctuation": false,
+        "width": 0.0,
+        "height": 0.0,
+        "baseline": 0.0,
+        "x_height": 0.0
+      },
+      "alternatives": [],
+      "bounding_box": null,
+      "features": null
+    }
+  ],
+  "word_results": [
+    {
+      "word": "Hello",
+      "confidence": 0.94,
+      "characters": [],
+      "properties": {
+        "is_dictionary_word": false,
+        "length": 0,
+        "average_character_width": 0.0,
+        "average_character_height": 0.0,
+        "language": null
+      },
+      "alternatives": [],
+      "bounding_box": null
+    },
+    {
+      "word": "World",
+      "confidence": 0.92,
+      "characters": [],
+      "properties": {
+        "is_dictionary_word": false,
+        "length": 0,
+        "average_character_width": 0.0,
+        "average_character_height": 0.0,
+        "language": null
+      },
+      "alternatives": [],
+      "bounding_box": null
+    }
+  ],
+  "line_results": [
+    {
+      "line": "Hello World",
+      "confidence": 0.93,
+      "words": [],
+      "properties": {
+        "height": 0.0,
+        "baseline": 0.0,
+        "line_spacing": 0.0,
+        "alignment": "Left",
+        "reading_order": "LeftToRight"
+      },
+      "bounding_box": null
+    }
+  ]
+}

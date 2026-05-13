@@ -1,0 +1,55 @@
+[package]
+name = "ocr"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ying Kit WONG"]
+description = "A pure Rust CLI OCR tool for printed text extraction"
+license = "Apache-2.0"
+repository = "https://github.com/yingkitw/ocr"
+
+[[bin]]
+name = "ocr"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
+image = "0.24"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+num_cpus = "1.0"
+futures = "0.3"
+imageproc = "0.23"
+nalgebra = "0.32"
+ndarray = "0.15"
+fastrand = "2.0"
+rand = "0.8"
+blake3 = "1.5"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3.8"
+assert_cmd = "2.0"
+predicates = "3.0"
+insta = "1.0"
+
+[features]
+default = ["simd"]
+simd = []
+cuda = []
+opencl = []
+web-api = []
+opencv = []
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,0 +1,25 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+ICoord Tests:
+  coord1: ICoord { x: 10, y: 20 }
+  coord2: ICoord { x: -5, y: 15 }
+  coord1 + coord2: ICoord { x: 5, y: 35 }
+  coord1 - coord2: ICoord { x: 15, y: 5 }
+  coord1 length: 22.361
+
+FCoord Tests:
+  fcoord1: FCoord { x: 10.5, y: 20.7 }
+  fcoord2: FCoord { x: -5.2, y: 15.3 }
+  fcoord1 + fcoord2: FCoord { x: 5.3, y: 36.0 }
+  fcoord1 - fcoord2: FCoord { x: 15.7, y: 5.4000006 }
+  fcoord1 length: 23.211
+
+TBox Tests:
+  bbox1: TBox { bot_left: ICoord { x: 0, y: 0 }, top_right: ICoord { x: 100, y: 200 } } (area: 20000)
+  bbox2: TBox { bot_left: ICoord { x: 50, y: 50 }, top_right: ICoord { x: 150, y: 250 } } (area: 20000)
+  intersection: TBox { bot_left: ICoord { x: 50, y: 50 }, top_right: ICoord { x: 100, y: 200 } }
+  union: TBox { bot_left: ICoord { x: 0, y: 0 }, top_right: ICoord { x: 150, y: 250 } }
+  bbox1 contains (25, 25): true
+  bbox1 overlaps bbox2: true

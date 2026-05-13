@@ -1,0 +1,33 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+Text: Hello World
+Language scores: 
+
+Text: 中文测试
+Language scores: ChineseSimplified: 1.000, ChineseTraditional: 1.000
+
+Text: ひらがなカタカナ
+Language scores: Japanese: 1.000
+
+Text: 한글테스트
+Language scores: Korean: 1.000
+
+Text: Hello 世界
+Language scores: ChineseSimplified: 0.250, ChineseTraditional: 0.250
+
+Text: こんにちは World
+Language scores: Japanese: 0.455
+
+Text: 안녕하세요 World
+Language scores: Korean: 0.455
+
+Text: Mixed 中文 and English
+Language scores: ChineseSimplified: 0.100, ChineseTraditional: 0.100
+
+Text: 日本語とEnglish混合
+Language scores: ChineseSimplified: 0.385, ChineseTraditional: 0.385, Japanese: 0.077
+
+Text: 한국어와English混合
+Language scores: ChineseSimplified: 0.154, ChineseTraditional: 0.154, Korean: 0.308

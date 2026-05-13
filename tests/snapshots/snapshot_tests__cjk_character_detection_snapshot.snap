@@ -1,0 +1,59 @@
+---
+source: tests/snapshot_tests.rs
+expression: output
+---
+Character: 中 (Chinese character)
+  CJK: true
+  Chinese: true
+  Japanese: false
+  Korean: false
+  Unicode Category: Some(ChineseCommon)
+  Script Type: "CJK"
+
+Character: ひ (Japanese Hiragana)
+  CJK: true
+  Chinese: false
+  Japanese: true
+  Korean: false
+  Unicode Category: Some(Hiragana)
+  Script Type: "CJK"
+
+Character: カ (Japanese Katakana)
+  CJK: true
+  Chinese: false
+  Japanese: true
+  Korean: false
+  Unicode Category: Some(Katakana)
+  Script Type: "CJK"
+
+Character: 한 (Korean Hangul)
+  CJK: true
+  Chinese: false
+  Japanese: false
+  Korean: true
+  Unicode Category: Some(HangulSyllables)
+  Script Type: "CJK"
+
+Character: A (Latin character)
+  CJK: false
+  Chinese: false
+  Japanese: false
+  Korean: false
+  Unicode Category: None
+  Script Type: "CJK"
+
+Character: 1 (Digit)
+  CJK: false
+  Chinese: false
+  Japanese: false
+  Korean: false
+  Unicode Category: None
+  Script Type: "CJK"
+
+Character: ! (Punctuation)
+  CJK: false
+  Chinese: false
+  Japanese: false
+  Korean: false
+  Unicode Category: None
+  Script Type: "CJK"
