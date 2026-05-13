@@ -1,13 +1,13 @@
-//! Error types for MiniOCR API
+//! Error types for OCR API
 
-use crate::utils::MiniOcrError;
+use crate::utils::OcrError;
 use thiserror::Error;
 
 /// API-specific error types
 #[derive(Error, Debug)]
 pub enum ApiError {
     #[error("OCR processing error: {0}")]
-    OcrProcessing(MiniOcrError),
+    OcrProcessing(OcrError),
 
     #[error("Configuration error: {0}")]
     Configuration(String),
@@ -43,21 +43,21 @@ pub enum ApiError {
 /// Result type alias for API operations
 pub type ApiResult<T> = std::result::Result<T, ApiError>;
 
-/// Convert ApiError to MiniOcrError
-impl From<ApiError> for MiniOcrError {
+/// Convert ApiError to OcrError
+impl From<ApiError> for OcrError {
     fn from(err: ApiError) -> Self {
         match err {
             ApiError::OcrProcessing(e) => e,
-            ApiError::Configuration(msg) => MiniOcrError::Configuration(msg),
-            ApiError::ImageProcessing(msg) => MiniOcrError::ImageProcessing(msg),
-            ApiError::TextProcessing(msg) => MiniOcrError::Internal(msg),
-            ApiError::Validation(msg) => MiniOcrError::InvalidInput(msg),
-            ApiError::Serialization(e) => MiniOcrError::Serialization(e),
-            ApiError::Io(e) => MiniOcrError::Io(e),
-            ApiError::Timeout(msg) => MiniOcrError::Internal(msg),
-            ApiError::RateLimitExceeded(msg) => MiniOcrError::Internal(msg),
-            ApiError::Authentication(msg) => MiniOcrError::Internal(msg),
-            ApiError::Internal(msg) => MiniOcrError::Internal(msg),
+            ApiError::Configuration(msg) => OcrError::Configuration(msg),
+            ApiError::ImageProcessing(msg) => OcrError::ImageProcessing(msg),
+            ApiError::TextProcessing(msg) => OcrError::Internal(msg),
+            ApiError::Validation(msg) => OcrError::InvalidInput(msg),
+            ApiError::Serialization(e) => OcrError::Serialization(e),
+            ApiError::Io(e) => OcrError::Io(e),
+            ApiError::Timeout(msg) => OcrError::Internal(msg),
+            ApiError::RateLimitExceeded(msg) => OcrError::Internal(msg),
+            ApiError::Authentication(msg) => OcrError::Internal(msg),
+            ApiError::Internal(msg) => OcrError::Internal(msg),
         }
     }
 }
@@ -76,29 +76,29 @@ impl From<tokio::sync::AcquireError> for ApiError {
     }
 }
 
-/// Convert MiniOcrError to ApiError
-impl From<MiniOcrError> for ApiError {
-    fn from(err: MiniOcrError) -> Self {
+/// Convert OcrError to ApiError
+impl From<OcrError> for ApiError {
+    fn from(err: OcrError) -> Self {
         match err {
-            MiniOcrError::ImageProcessing(msg) => ApiError::ImageProcessing(msg),
-            MiniOcrError::Recognition(msg) => {
-                ApiError::OcrProcessing(MiniOcrError::Recognition(msg))
+            OcrError::ImageProcessing(msg) => ApiError::ImageProcessing(msg),
+            OcrError::Recognition(msg) => {
+                ApiError::OcrProcessing(OcrError::Recognition(msg))
             }
-            MiniOcrError::LayoutAnalysis(msg) => {
-                ApiError::OcrProcessing(MiniOcrError::LayoutAnalysis(msg))
+            OcrError::LayoutAnalysis(msg) => {
+                ApiError::OcrProcessing(OcrError::LayoutAnalysis(msg))
             }
-            MiniOcrError::LanguageSupport(msg) => {
-                ApiError::OcrProcessing(MiniOcrError::LanguageSupport(msg))
+            OcrError::LanguageSupport(msg) => {
+                ApiError::OcrProcessing(OcrError::LanguageSupport(msg))
             }
-            MiniOcrError::Io(e) => ApiError::Io(e),
-            MiniOcrError::Serialization(e) => ApiError::Serialization(e),
-            MiniOcrError::InvalidInput(msg) => ApiError::Validation(msg),
-            MiniOcrError::Configuration(msg) => ApiError::Configuration(msg),
-            MiniOcrError::Internal(msg) => ApiError::Internal(msg),
-            MiniOcrError::SemaphoreAcquire(msg) => {
+            OcrError::Io(e) => ApiError::Io(e),
+            OcrError::Serialization(e) => ApiError::Serialization(e),
+            OcrError::InvalidInput(msg) => ApiError::Validation(msg),
+            OcrError::Configuration(msg) => ApiError::Configuration(msg),
+            OcrError::Internal(msg) => ApiError::Internal(msg),
+            OcrError::SemaphoreAcquire(msg) => {
                 ApiError::Internal(format!("Semaphore acquire failed: {}", msg))
             }
-            MiniOcrError::ModelNotFound(msg) => {
+            OcrError::ModelNotFound(msg) => {
                 ApiError::Internal(format!("Model not found: {}", msg))
             }
         }

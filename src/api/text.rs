@@ -1,4 +1,4 @@
-//! Text processing utilities for MiniOCR API
+//! Text processing utilities for OCR API
 
 use crate::api::error::{ApiError, ApiResult};
 use crate::core::text::{BoundingBox, TextResult};

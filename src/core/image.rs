@@ -1,4 +1,4 @@
-//! Image data structures and operations for MiniOCR
+//! Image data structures and operations for OCR
 
 use crate::utils::Point2D;
 use anyhow::Result;

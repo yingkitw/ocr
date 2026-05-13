@@ -1,7 +1,7 @@
 //! Image enhancement operations
 
 use crate::core::image::OcrImage;
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use image::{imageops, DynamicImage, GrayImage, Luma};
 
 /// Image enhancement operations
@@ -53,7 +53,7 @@ impl ImageEnhancer {
         }
 
         if best_angle.abs() > 0.001 {
-            img.rotate(best_angle).map_err(MiniOcrError::from)
+            img.rotate(best_angle).map_err(OcrError::from)
         } else {
             Ok(img.clone())
         }
@@ -143,11 +143,11 @@ impl ImageEnhancer {
             0 => Ok(img.clone()),
             90 => img
                 .rotate(std::f32::consts::FRAC_PI_2)
-                .map_err(MiniOcrError::from),
-            180 => img.rotate(std::f32::consts::PI).map_err(MiniOcrError::from),
+                .map_err(OcrError::from),
+            180 => img.rotate(std::f32::consts::PI).map_err(OcrError::from),
             270 => img
                 .rotate(-std::f32::consts::FRAC_PI_2)
-                .map_err(MiniOcrError::from),
+                .map_err(OcrError::from),
             _ => Ok(img.clone()),
         }
     }
@@ -236,7 +236,7 @@ impl ImageEnhancer {
         }
 
         img.crop(left, top, crop_width, crop_height)
-            .map_err(MiniOcrError::from)
+            .map_err(OcrError::from)
     }
 
     /// Remove speckle noise (small connected components of dark pixels)

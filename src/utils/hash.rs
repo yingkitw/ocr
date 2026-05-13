@@ -1,4 +1,4 @@
-//! Hashing utilities for MiniOCR
+//! Hashing utilities for OCR
 
 use blake3::Hasher as Blake3Hasher;
 use sha2::{Digest, Sha256};

@@ -1,4 +1,4 @@
-//! Image processing utilities for MiniOCR API
+//! Image processing utilities for OCR API
 
 use crate::api::error::{ApiError, ApiResult};
 use crate::core::image::{ImageFormat, ImageStatistics, OcrImage};

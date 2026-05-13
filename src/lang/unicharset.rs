@@ -3,7 +3,7 @@
 //! Ported from Tesseract's unicharset.h/cpp
 //! Manages character sets, properties, and character mappings for OCR
 
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use std::collections::HashMap;
 
 /// Special unichar codes (keep in sync with SpecialUnicharCodes enum)
@@ -209,7 +209,7 @@ impl Unicharset {
             props.enabled = enabled;
             Ok(())
         } else {
-            Err(MiniOcrError::InvalidInput(format!(
+            Err(OcrError::InvalidInput(format!(
                 "Invalid character ID: {}",
                 id
             )))
@@ -222,7 +222,7 @@ impl Unicharset {
             props.is_ngram = is_ngram;
             Ok(())
         } else {
-            Err(MiniOcrError::InvalidInput(format!(
+            Err(OcrError::InvalidInput(format!(
                 "Invalid character ID: {}",
                 id
             )))

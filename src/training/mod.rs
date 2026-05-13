@@ -1,6 +1,6 @@
-//! MiniOCR Training Pipeline
+//! OCR Training Pipeline
 //!
-//! This crate provides neural network training capabilities for MiniOCR,
+//! This crate provides neural network training capabilities for OCR,
 //! including data loading, training loops, loss functions, and model serialization.
 
 pub mod augmentation;

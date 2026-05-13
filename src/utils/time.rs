@@ -1,4 +1,4 @@
-//! Time utilities for MiniOCR
+//! Time utilities for OCR
 
 use chrono::{DateTime, Utc};
 use std::time::{Duration, Instant, SystemTime};

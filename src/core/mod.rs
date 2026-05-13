@@ -1,4 +1,4 @@
-//! Core OCR engine and data structures for MiniOCR
+//! Core OCR engine and data structures for OCR
 
 pub mod config;
 pub mod engine;
@@ -19,4 +19,4 @@ pub use recognition::*;
 pub use text::*;
 
 /// Re-export commonly used types
-pub use crate::utils::{MiniOcrError, Result};
+pub use crate::utils::{OcrError, Result};

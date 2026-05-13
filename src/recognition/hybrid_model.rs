@@ -5,7 +5,7 @@
 
 use super::engine::*;
 use crate::core::ModelType;
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -274,7 +274,7 @@ impl HybridModel {
         let path = path.as_ref();
 
         if !path.exists() {
-            return Err(MiniOcrError::ModelNotFound(format!(
+            return Err(OcrError::ModelNotFound(format!(
                 "Model file not found: {}",
                 path.display()
             ))
@@ -356,7 +356,7 @@ impl OcrModel for HybridModel {
 
     fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
         if !self.model_loaded {
-            return Err(MiniOcrError::ModelNotFound("Model not loaded".to_string()).into());
+            return Err(OcrError::ModelNotFound("Model not loaded".to_string()).into());
         }
 
         // Forward pass through all components
@@ -413,7 +413,7 @@ impl FusionLayer {
 
     fn concatenate_outputs(&self, outputs: &[RecognitionResult]) -> Result<RecognitionResult> {
         if outputs.is_empty() {
-            return Err(MiniOcrError::ModelNotFound("No outputs to fuse".to_string()).into());
+            return Err(OcrError::ModelNotFound("No outputs to fuse".to_string()).into());
         }
 
         // Simple concatenation of text outputs
@@ -447,7 +447,7 @@ impl FusionLayer {
 
     fn weighted_average_outputs(&self, outputs: &[RecognitionResult]) -> Result<RecognitionResult> {
         if outputs.is_empty() {
-            return Err(MiniOcrError::ModelNotFound("No outputs to fuse".to_string()).into());
+            return Err(OcrError::ModelNotFound("No outputs to fuse".to_string()).into());
         }
 
         // Weighted average based on confidence
@@ -650,7 +650,7 @@ impl HybridModelBuilder {
     pub fn build(self) -> Result<HybridModel> {
         let config = self
             .config
-            .ok_or_else(|| MiniOcrError::ModelNotFound("Configuration not provided".to_string()))?;
+            .ok_or_else(|| OcrError::ModelNotFound("Configuration not provided".to_string()))?;
 
         Ok(HybridModel::new(config))
     }

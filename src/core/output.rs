@@ -154,7 +154,7 @@ pub fn to_json_output(result: &TextResult) -> OcrJsonOutput {
         image_size,
         lines,
         engine_info: EngineInfo {
-            name: "MiniOCR".to_string(),
+            name: "OCR".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             model_type: None,
         },
@@ -166,7 +166,7 @@ pub fn to_json_output(result: &TextResult) -> OcrJsonOutput {
 pub fn format_json(result: &TextResult) -> Result<String> {
     let json_output = to_json_output(result);
     serde_json::to_string_pretty(&json_output)
-        .map_err(|e| crate::MiniOcrError::Internal(format!("JSON serialization error: {}", e)))
+        .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)))
         .into()
 }
 
@@ -184,7 +184,7 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
     html.push_str("<head>\n");
     html.push_str("  <title>OCR Output</title>\n");
     html.push_str("  <meta http-equiv=\"Content-Type\" content=\"text/html;charset=utf-8\" />\n");
-    html.push_str("  <meta name='ocr-system' content='MiniOCR ");
+    html.push_str("  <meta name='ocr-system' content='OCR ");
     html.push_str(env!("CARGO_PKG_VERSION"));
     html.push_str("' />\n");
     html.push_str("</head>\n");
@@ -323,7 +323,7 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
         "json" => Ok(OutputFormat::Json),
         "hocr" | "html" => Ok(OutputFormat::HOcr),
         "tsv" => Ok(OutputFormat::Tsv),
-        _ => Err(crate::MiniOcrError::InvalidInput(format!(
+        _ => Err(crate::OcrError::InvalidInput(format!(
             "Unknown output format: {}. Supported: text, json, hocr, tsv",
             s
         ))

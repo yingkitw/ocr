@@ -1,4 +1,4 @@
-//! Async utilities for MiniOCR
+//! Async utilities for OCR
 
 use futures::future::BoxFuture;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ impl ConcurrencyLimiter {
         self.semaphore
             .acquire()
             .await
-            .map_err(|_| MiniOcrError::Internal("Failed to acquire semaphore permit".to_string()))
+            .map_err(|_| OcrError::Internal("Failed to acquire semaphore permit".to_string()))
     }
 }
 
@@ -69,7 +69,7 @@ where
         for handle in handles {
             match handle.await {
                 Ok(result) => results.push(result?),
-                Err(e) => return Err(MiniOcrError::Internal(format!("Task failed: {}", e))),
+                Err(e) => return Err(OcrError::Internal(format!("Task failed: {}", e))),
             }
         }
 

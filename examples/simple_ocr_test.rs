@@ -6,7 +6,7 @@ use image::GenericImageView;
 use std::path::Path;
 
 fn main() {
-    println!("MiniOCR Simple Test");
+    println!("OCR Simple Test");
     println!("===================");
 
     let test_image_path = Path::new("test_images/sample.png");

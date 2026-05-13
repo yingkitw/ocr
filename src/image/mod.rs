@@ -1,4 +1,4 @@
-//! Image processing and preprocessing for MiniOCR
+//! Image processing and preprocessing for OCR
 
 pub mod enhancement;
 pub mod pipeline;
@@ -13,4 +13,4 @@ pub use quality::*;
 pub use thresholder::*;
 
 /// Re-export commonly used types
-pub use crate::utils::{MiniOcrError, Result};
+pub use crate::utils::{OcrError, Result};

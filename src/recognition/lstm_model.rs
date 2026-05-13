@@ -7,7 +7,7 @@ use super::engine::*;
 use crate::core::geometry::TBox;
 use crate::core::recognition::TrainableModel;
 use crate::core::ModelType;
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use ndarray::{s, Array1, Array2};
 use std::path::Path;
 
@@ -308,7 +308,7 @@ impl LstmModel {
 impl OcrModel for LstmModel {
     fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
         if !self.is_loaded {
-            return Err(MiniOcrError::ModelNotFound("LSTM model not loaded".to_string()).into());
+            return Err(OcrError::ModelNotFound("LSTM model not loaded".to_string()).into());
         }
 
         // TODO: Implement actual LSTM inference
@@ -410,7 +410,7 @@ impl TrainableModel for LstmModel {
         if let Some(network) = &self.network {
             Ok(network.forward(input))
         } else {
-            Err(MiniOcrError::ModelNotFound("Network not initialized".to_string()).into())
+            Err(OcrError::ModelNotFound("Network not initialized".to_string()).into())
         }
     }
 

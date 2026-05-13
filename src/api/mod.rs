@@ -1,4 +1,4 @@
-//! High-level API for MiniOCR
+//! High-level API for OCR
 
 pub mod config;
 pub mod error;
@@ -13,4 +13,4 @@ pub use ocr::*;
 pub use text::*;
 
 /// Re-export commonly used types
-pub use crate::utils::{MiniOcrError, Result};
+pub use crate::utils::{OcrError, Result};

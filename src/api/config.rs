@@ -1,4 +1,4 @@
-//! Configuration utilities for MiniOCR API
+//! Configuration utilities for OCR API
 
 use crate::api::error::{ApiError, ApiResult};
 use crate::core::config::OcrConfig;

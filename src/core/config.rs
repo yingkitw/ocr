@@ -1,4 +1,4 @@
-//! Configuration structures for MiniOCR
+//! Configuration structures for OCR
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

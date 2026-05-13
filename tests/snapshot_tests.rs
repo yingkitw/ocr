@@ -1,4 +1,4 @@
-//! Snapshot tests for MiniOCR using insta
+//! Snapshot tests for OCR using insta
 //!
 //! These tests capture the output of various OCR operations and ensure
 //! they remain consistent over time.

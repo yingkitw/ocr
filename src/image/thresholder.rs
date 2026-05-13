@@ -4,7 +4,7 @@
 //! Provides various thresholding methods to convert grayscale images to binary
 
 use crate::core::image::{ImageFormat, OcrImage};
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use image::{DynamicImage, GrayImage, Luma};
 
 /// Thresholding method enumeration
@@ -125,7 +125,7 @@ impl ImageThresholder {
         let image = self
             .image
             .as_ref()
-            .ok_or_else(|| MiniOcrError::ImageProcessing("No image set".to_string()))?;
+            .ok_or_else(|| OcrError::ImageProcessing("No image set".to_string()))?;
 
         // Convert to grayscale if needed
         let gray_image = match image.format {

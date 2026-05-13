@@ -1,4 +1,4 @@
-//! Text data structures and operations for MiniOCR
+//! Text data structures and operations for OCR
 
 use crate::utils::Point2D;
 use serde::{Deserialize, Serialize};

@@ -6,7 +6,7 @@
 use super::engine::*;
 use crate::core::ModelType;
 use crate::core::geometry::TBox;
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use image::{GrayImage, ImageBuffer, Luma};
 
 /// Template for pattern matching
@@ -42,7 +42,7 @@ impl PatternModel {
 
         // Check dimensions
         if width as usize != req_w || height as usize != req_h {
-            return Err(MiniOcrError::ImageProcessing(format!(
+            return Err(OcrError::ImageProcessing(format!(
                 "Template size mismatch. Expected {}x{}, got {}x{}",
                 req_w, req_h, width, height
             ))
@@ -51,7 +51,7 @@ impl PatternModel {
 
         let img = ImageBuffer::<Luma<u8>, Vec<u8>>::from_raw(width, height, image_data)
             .ok_or_else(|| {
-                MiniOcrError::ImageProcessing("Invalid image data for template".to_string())
+                OcrError::ImageProcessing("Invalid image data for template".to_string())
             })?;
 
         self.templates.push(Template {
@@ -99,7 +99,7 @@ impl OcrModel for PatternModel {
         // Parse input image
         // Assuming input is raw bytes matching input_shape
         if input.len() != req_h * req_w {
-            return Err(MiniOcrError::ImageProcessing(format!(
+            return Err(OcrError::ImageProcessing(format!(
                 "Input size mismatch. Expected {} bytes, got {}",
                 req_h * req_w,
                 input.len()
@@ -110,7 +110,7 @@ impl OcrModel for PatternModel {
         let input_img =
             ImageBuffer::<Luma<u8>, Vec<u8>>::from_raw(req_w as u32, req_h as u32, input.to_vec())
                 .ok_or_else(|| {
-                    MiniOcrError::ImageProcessing("Failed to create input image".to_string())
+                    OcrError::ImageProcessing("Failed to create input image".to_string())
                 })?;
 
         // Find best match

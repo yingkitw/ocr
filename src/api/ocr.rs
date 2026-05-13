@@ -1,17 +1,17 @@
-//! Main OCR API for MiniOCR
+//! Main OCR API for OCR
 
 use crate::api::error::{ApiError, ApiResult};
 use crate::core::{
     LayoutResult, OcrConfig, OcrEngine, OcrImage, TextResult, image::ImageFormat,
 };
-use crate::utils::{MiniOcrError, Result, Timer};
+use crate::utils::{OcrError, Result, Timer};
 use chrono::{DateTime, Utc};
 use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-/// Main MiniOCR API
-pub struct MiniOcr {
+/// Main OCR API
+pub struct Ocr {
     /// OCR engine
     engine: RwLock<OcrEngine>,
     /// Configuration
@@ -35,13 +35,13 @@ pub struct ApiMetadata {
     pub supported_image_formats: Vec<String>,
 }
 
-impl MiniOcr {
-    /// Create a new MiniOCR instance with default configuration
+impl Ocr {
+    /// Create a new OCR instance with default configuration
     pub fn new() -> Result<Self> {
         Self::with_config(OcrConfig::default())
     }
 
-    /// Create a new MiniOCR instance with custom configuration
+    /// Create a new OCR instance with custom configuration
     pub fn with_config(config: OcrConfig) -> Result<Self> {
         let engine = OcrEngine::with_config(config.clone())?;
 
@@ -49,7 +49,7 @@ impl MiniOcr {
             engine: RwLock::new(engine),
             config,
             metadata: ApiMetadata {
-                name: "MiniOCR API".to_string(),
+                name: "OCR API".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 description: "A modern OCR API written in Rust".to_string(),
                 supported_languages: vec![
@@ -145,7 +145,7 @@ impl MiniOcr {
         temp_engine
             .initialize()
             .await
-            .map_err(|e| ApiError::OcrProcessing(MiniOcrError::Recognition(e.to_string())))?;
+            .map_err(|e| ApiError::OcrProcessing(OcrError::Recognition(e.to_string())))?;
 
         // Convert image data to OcrImage
         let image = OcrImage::from_raw_pixels(
@@ -166,7 +166,7 @@ impl MiniOcr {
         temp_engine
             .process_image(image)
             .await
-            .map_err(|e| ApiError::OcrProcessing(MiniOcrError::Recognition(e.to_string())))
+            .map_err(|e| ApiError::OcrProcessing(OcrError::Recognition(e.to_string())))
     }
 
     /// Analyze page layout
@@ -252,16 +252,16 @@ impl MiniOcr {
     }
 }
 
-impl Default for MiniOcr {
+impl Default for Ocr {
     fn default() -> Self {
-        Self::new().expect("Failed to create MiniOCR instance")
+        Self::new().expect("Failed to create OCR instance")
     }
 }
 
 /// Batch processing for multiple images
 pub struct BatchProcessor {
     /// OCR engine
-    ocr: MiniOcr,
+    ocr: Ocr,
     /// Batch configuration
     config: BatchConfig,
 }
@@ -289,7 +289,7 @@ impl Default for BatchConfig {
 
 impl BatchProcessor {
     /// Create a new batch processor
-    pub fn new(ocr: MiniOcr, config: BatchConfig) -> Self {
+    pub fn new(ocr: Ocr, config: BatchConfig) -> Self {
         Self { ocr, config }
     }
 

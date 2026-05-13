@@ -1,4 +1,4 @@
-//! Layout analysis data structures for MiniOCR
+//! Layout analysis data structures for OCR
 
 use crate::core::text::BoundingBox;
 use crate::utils::Point2D;

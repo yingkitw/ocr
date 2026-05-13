@@ -3,7 +3,7 @@
 //! These tests measure OCR performance and can be used to track
 //! improvements over time.
 
-use ocr::api::MiniOcr;
+use ocr::api::Ocr;
 use ocr::utils::Result;
 use std::path::Path;
 use std::time::Instant;
@@ -17,7 +17,7 @@ async fn benchmark_simple_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let start = Instant::now();
@@ -47,7 +47,7 @@ async fn benchmark_dense_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let start = Instant::now();
@@ -72,7 +72,7 @@ async fn benchmark_complex_document() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let start = Instant::now();
@@ -98,7 +98,7 @@ async fn benchmark_all_images() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let mut total_time = std::time::Duration::new(0, 0);

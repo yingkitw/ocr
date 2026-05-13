@@ -135,7 +135,7 @@ impl OcrEngine {
             state: RwLock::new(EngineState::default()),
             profiler: Profiler::new(),
             metadata: EngineMetadata {
-                name: "MiniOCR Engine".to_string(),
+                name: "OCR Engine".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 description: "A modern OCR engine written in Rust".to_string(),
                 capabilities: EngineCapabilities {

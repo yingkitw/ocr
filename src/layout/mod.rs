@@ -1,4 +1,4 @@
-//! Page layout analysis and text ordering for MiniOCR
+//! Page layout analysis and text ordering for OCR
 
 pub mod analyzer;
 pub mod classifier;
@@ -22,4 +22,4 @@ pub use union_find_ccl::*;
 mod tests_advanced;
 
 /// Re-export commonly used types
-pub use crate::utils::{MiniOcrError, Result};
+pub use crate::utils::{OcrError, Result};

@@ -1,4 +1,4 @@
-//! Text recognition engines for MiniOCR
+//! Text recognition engines for OCR
 
 pub mod basic_ocr;
 pub mod cnn_model;
@@ -31,4 +31,4 @@ pub use vit_model::*;
 mod tests_recognition;
 
 /// Re-export commonly used types
-pub use crate::utils::{MiniOcrError, Result};
+pub use crate::utils::{OcrError, Result};

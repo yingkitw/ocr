@@ -1,4 +1,4 @@
-//! SIMD utilities for MiniOCR
+//! SIMD utilities for OCR
 //!
 //! This module provides optimized vector operations for performance-critical code.
 //! Currently implements scalar fallbacks, but can be extended with actual SIMD

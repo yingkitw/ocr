@@ -8,4 +8,4 @@ pub mod training;
 pub mod utils;
 
 pub use api::*;
-pub use utils::{MiniOcrError, Result};
+pub use utils::{OcrError, Result};

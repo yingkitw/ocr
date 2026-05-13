@@ -1,4 +1,4 @@
-//! Integration tests for MiniOCR
+//! Integration tests for OCR
 //!
 //! These tests verify the complete OCR pipeline and use insta for snapshot testing.
 

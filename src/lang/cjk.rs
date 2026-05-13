@@ -1,4 +1,4 @@
-//! CJK (Chinese, Japanese, Korean) language support for MiniOCR
+//! CJK (Chinese, Japanese, Korean) language support for OCR
 //!
 //! This module provides comprehensive support for CJK languages including
 //! character detection, text segmentation, and language-specific processing.

@@ -1142,7 +1142,7 @@ async fn test_engine_reset_statistics() {
 async fn test_engine_metadata() {
     let engine = make_engine();
     let metadata = engine.get_metadata();
-    assert_eq!(metadata.name, "MiniOCR Engine");
+    assert_eq!(metadata.name, "OCR Engine");
     assert!(!metadata.supported_languages.is_empty());
     assert!(metadata.capabilities.supports_text_recognition);
 }

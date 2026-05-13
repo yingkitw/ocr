@@ -1,4 +1,4 @@
-//! Shared utilities and common functionality for MiniOCR
+//! Shared utilities and common functionality for OCR
 
 pub mod async_utils;
 pub mod error;

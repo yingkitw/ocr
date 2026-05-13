@@ -2,7 +2,7 @@
 //!
 //! This test can be run with: cargo test --test ocr_test
 
-use ocr::api::MiniOcr;
+use ocr::api::Ocr;
 use ocr::utils::Result;
 use std::path::Path;
 
@@ -19,7 +19,7 @@ async fn test_ocr_with_sample_image() -> Result<()> {
     println!("Testing OCR with image: {:?}", test_image);
 
     // Create OCR instance
-    let mut ocr = MiniOcr::new()?;
+    let mut ocr = Ocr::new()?;
 
     // Initialize
     ocr.initialize().await?;

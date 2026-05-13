@@ -1,4 +1,4 @@
-//! Language support and character sets for MiniOCR
+//! Language support and character sets for OCR
 
 pub mod cjk;
 pub mod detector;
@@ -15,4 +15,4 @@ pub use unicharset::*;
 pub use unicode::*;
 
 /// Re-export commonly used types
-pub use crate::utils::{MiniOcrError, Result};
+pub use crate::utils::{OcrError, Result};

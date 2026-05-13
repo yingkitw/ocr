@@ -1,4 +1,4 @@
-//! Mathematical utilities for MiniOCR
+//! Mathematical utilities for OCR
 
 use nalgebra::{DMatrix, Point2, Point3, Vector2, Vector3};
 use ndarray::{Array2, Array3, ArrayView2, ArrayView3};

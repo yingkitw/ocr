@@ -1,7 +1,7 @@
 //! Image processing operations
 
 use crate::core::image::OcrImage;
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use image::GenericImageView;
 
 /// Image processor for basic operations
@@ -11,7 +11,7 @@ impl ImageProcessor {
     /// Load image from memory
     pub fn load_from_memory(data: &[u8]) -> Result<image::DynamicImage> {
         let img = image::load_from_memory(data)
-            .map_err(|e| MiniOcrError::ImageProcessing(format!("Failed to load image: {}", e)))?;
+            .map_err(|e| OcrError::ImageProcessing(format!("Failed to load image: {}", e)))?;
         Ok(img)
     }
 

@@ -3,7 +3,7 @@
 //! Run with: cargo run --example test_ocr -- test_images/sample.png
 
 use clap::Parser;
-use ocr::api::MiniOcr;
+use ocr::api::Ocr;
 use ocr::utils::Result;
 use std::path::PathBuf;
 
@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
             .init();
     }
 
-    println!("MiniOCR Test");
+    println!("OCR Test");
     println!("============");
     println!("Input image: {}", args.input.display());
 
@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
     println!("\nInitializing OCR engine...");
 
     // Create OCR instance
-    let mut ocr = match MiniOcr::new() {
+    let mut ocr = match Ocr::new() {
         Ok(ocr) => ocr,
         Err(e) => {
             eprintln!("Error creating OCR engine: {}", e);

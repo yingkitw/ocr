@@ -6,7 +6,7 @@
 use super::engine::*;
 use crate::core::ModelType;
 use crate::core::image::OcrImage;
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -197,7 +197,7 @@ impl TransformerModel {
         let path = path.as_ref();
 
         if !path.exists() {
-            return Err(MiniOcrError::ModelNotFound(format!(
+            return Err(OcrError::ModelNotFound(format!(
                 "Model file not found: {}",
                 path.display()
             ))
@@ -270,7 +270,7 @@ impl TransformerModel {
         if let Some(tokenizer) = &self.tokenizer {
             tokenizer.decode(logits)
         } else {
-            Err(MiniOcrError::ModelNotFound("Tokenizer not loaded".to_string()).into())
+            Err(OcrError::ModelNotFound("Tokenizer not loaded".to_string()).into())
         }
     }
 }
@@ -302,7 +302,7 @@ impl OcrModel for TransformerModel {
 
     fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
         if !self.model_loaded {
-            return Err(MiniOcrError::ModelNotFound("Model not loaded".to_string()).into());
+            return Err(OcrError::ModelNotFound("Model not loaded".to_string()).into());
         }
 
         // For now, return a placeholder result
@@ -815,7 +815,7 @@ impl TransformerModelBuilder {
     pub fn build(self) -> Result<TransformerModel> {
         let config = self
             .config
-            .ok_or_else(|| MiniOcrError::ModelNotFound("Configuration not provided".to_string()))?;
+            .ok_or_else(|| OcrError::ModelNotFound("Configuration not provided".to_string()))?;
 
         Ok(TransformerModel::new(config))
     }

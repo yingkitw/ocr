@@ -3,7 +3,7 @@
 //! These tests verify OCR functionality against various test images
 //! with different complexity levels and use cases.
 
-use ocr::api::MiniOcr;
+use ocr::api::Ocr;
 use ocr::utils::Result;
 use std::path::Path;
 
@@ -16,7 +16,7 @@ async fn test_simple_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -42,7 +42,7 @@ async fn test_multiline_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -61,7 +61,7 @@ async fn test_mixed_case() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -80,7 +80,7 @@ async fn test_numbers_special() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -99,7 +99,7 @@ async fn test_small_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -121,7 +121,7 @@ async fn test_large_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -140,7 +140,7 @@ async fn test_dark_background() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -159,7 +159,7 @@ async fn test_noisy_background() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -181,7 +181,7 @@ async fn test_column_layout() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -200,7 +200,7 @@ async fn test_table_layout() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -219,7 +219,7 @@ async fn test_dense_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -238,7 +238,7 @@ async fn test_low_contrast() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -260,7 +260,7 @@ async fn test_rotated_text() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -282,7 +282,7 @@ async fn test_mixed_languages() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -301,7 +301,7 @@ async fn test_complex_document() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -320,7 +320,7 @@ async fn test_batch_all_images() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let mut success_count = 0;
@@ -365,7 +365,7 @@ async fn test_confidence_scores() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -396,7 +396,7 @@ async fn test_word_level_results() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -417,7 +417,7 @@ async fn test_character_level_results() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;
@@ -438,7 +438,7 @@ async fn test_bounding_boxes() -> Result<()> {
         return Ok(());
     }
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
     let result = ocr.recognize_text_from_file(test_image).await?;

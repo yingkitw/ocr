@@ -1,4 +1,4 @@
-//! Text recognition data structures for MiniOCR
+//! Text recognition data structures for OCR
 
 // Recognition engine traits and structures
 use serde::{Deserialize, Serialize};

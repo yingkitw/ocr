@@ -1,4 +1,4 @@
-//! Modern recognition engine interface for MiniOCR
+//! Modern recognition engine interface for OCR
 //!
 //! This module provides a flexible abstraction for different OCR model types,
 //! including LSTM, Transformer, Vision Transformer, and other modern architectures.
@@ -6,7 +6,7 @@
 use crate::core::geometry::TBox;
 use crate::core::image::OcrImage;
 use crate::core::recognition::TrainableModel;
-use crate::utils::{MiniOcrError, Result};
+use crate::utils::{OcrError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -282,7 +282,7 @@ impl ModelManager {
             self.active_model = Some(model_type);
             Ok(())
         } else {
-            Err(MiniOcrError::ModelNotFound(format!("Model {:?} not found", model_type)).into())
+            Err(OcrError::ModelNotFound(format!("Model {:?} not found", model_type)).into())
         }
     }
 

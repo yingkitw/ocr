@@ -1,10 +1,10 @@
-//! Error types and utilities for MiniOCR
+//! Error types and utilities for OCR
 
 use thiserror::Error;
 
-/// Main error type for MiniOCR operations
+/// Main error type for OCR operations
 #[derive(Error, Debug)]
-pub enum MiniOcrError {
+pub enum OcrError {
     #[error("Image processing error: {0}")]
     ImageProcessing(String),
 
@@ -39,26 +39,26 @@ pub enum MiniOcrError {
     ModelNotFound(String),
 }
 
-/// Result type alias for MiniOCR operations
-pub type Result<T> = std::result::Result<T, MiniOcrError>;
+/// Result type alias for OCR operations
+pub type Result<T> = std::result::Result<T, OcrError>;
 
-/// Convert anyhow::Error to MiniOcrError
-impl From<anyhow::Error> for MiniOcrError {
+/// Convert anyhow::Error to OcrError
+impl From<anyhow::Error> for OcrError {
     fn from(err: anyhow::Error) -> Self {
-        MiniOcrError::Internal(err.to_string())
+        OcrError::Internal(err.to_string())
     }
 }
 
-/// Convert tokio::sync::AcquireError to MiniOcrError
-impl From<tokio::sync::AcquireError> for MiniOcrError {
+/// Convert tokio::sync::AcquireError to OcrError
+impl From<tokio::sync::AcquireError> for OcrError {
     fn from(err: tokio::sync::AcquireError) -> Self {
-        MiniOcrError::SemaphoreAcquire(err.to_string())
+        OcrError::SemaphoreAcquire(err.to_string())
     }
 }
 
-/// Convert image::ImageError to MiniOcrError
-impl From<image::ImageError> for MiniOcrError {
+/// Convert image::ImageError to OcrError
+impl From<image::ImageError> for OcrError {
     fn from(err: image::ImageError) -> Self {
-        MiniOcrError::ImageProcessing(err.to_string())
+        OcrError::ImageProcessing(err.to_string())
     }
 }

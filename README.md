@@ -1,17 +1,17 @@
 # ocr
 
-A minimalist OCR library for Rust with CLI and MCP server interfaces. Recognition is **implemented in Rust** (bitmap font templates, segmentation, and matching)—**no Tesseract** or other external OCR engine.
-
-The MCP server is built on [rmcp](https://github.com/modelcontextprotocol/rust-sdk).
+A pure Rust CLI OCR tool for printed text extraction with multiple recognition engines (pattern matching, LSTM, CNN, transformer) and full layout analysis.
 
 ## Features
 
-- **No native OCR dependencies** - Pure Rust pipeline (binarization, line/character segmentation, template matching)
-- **Library** - `OcrEngine` API with structured results (text, words, confidence, bounding boxes)
-- **CLI** - Text and JSON output; optional preprocessing
-- **MCP server** - Model Context Protocol server for assistant integration (stdio transport)
-- **Preprocessing** - Optional grayscale + threshold preprocessing
-- **English-focused** - Bitmap glyph set suited to Latin letters, digits, and common punctuation
+- **Pure Rust** — No Tesseract or external OCR dependencies
+- **Multiple engines** — Pattern matching, LSTM, CNN, transformer, hybrid, ViT
+- **Layout analysis** — Column detection, text ordering, line segmentation via Union-Find CCL
+- **Image preprocessing** — Binarization (Otsu, Sauvola), noise reduction, deskew, contrast enhancement
+- **Language support** — English, CJK (Chinese/Japanese/Korean), N-gram language detection
+- **CLI** — Extract, batch, layout analysis, config validation
+- **Output formats** — Plain text, JSON, hOCR, TSV
+- **SIMD acceleration** — Optional SIMD-optimized routines
 
 ## Installation
 
@@ -19,70 +19,56 @@ The MCP server is built on [rmcp](https://github.com/modelcontextprotocol/rust-s
 cargo build --release
 ```
 
-Binaries (from this crate):
-
-| Binary   | Purpose                          |
-|----------|----------------------------------|
-| `ocr`    | CLI tool                         |
-| `ocr-mcp`| MCP server (stdio transport)     |
-
 ## Usage
+
+```bash
+# Recognize text from an image
+ocr extract document.png
+
+# JSON output with word-level detail
+ocr extract document.png -f json
+
+# Enable preprocessing
+ocr extract document.png --preprocess
+
+# Batch process a directory
+ocr batch -i ./images -o ./results
+
+# List supported languages
+ocr list-languages
+
+# Analyze image layout
+ocr layout document.png
+```
 
 ### Library
 
-Crate name: **`ocr`** (import as `ocr`, not `ocr_rs`).
-
 ```rust
-use ocr::OcrEngine;
-use std::path::Path;
+use ocr::api::Ocr;
+use ocr::core::config::OcrConfig;
 
-let engine = OcrEngine::new()
-    .language("eng")
-    .preprocessing(true);
+let config = OcrConfig::default();
+let ocr = Ocr::with_config(config)?;
+ocr.initialize().await?;
 
-let result = engine.recognize_file(Path::new("document.png"))?;
+let result = ocr.recognize_text_from_file("document.png").await?;
 println!("{}", result.text);
-println!("Confidence: {:.1}%", result.confidence);
 ```
 
-### CLI
+## Project Structure
 
-```bash
-# Plain text to stdout
-ocr document.png
-
-# JSON with word-level detail
-ocr document.png -f json
-
-# Enable preprocessing
-ocr document.png --preprocess
 ```
-
-### MCP server
-
-Add to your MCP client configuration (e.g. Claude Desktop):
-
-```json
-{
-  "mcpServers": {
-    "ocr": {
-      "command": "ocr-mcp",
-      "args": []
-    }
-  }
-}
+src/
+├── api/          High-level OCR API (Ocr, TextProcessor)
+├── cli/          CLI argument parsing with clap
+├── core/         Core OCR engine (config, engine, geometry, layout, output, text)
+├── image/        Image preprocessing pipeline (binarization, enhancement, quality)
+├── lang/         Language support (CJK, detection, dictionary, N-gram, unicode)
+├── layout/       Layout analysis (column/line detection, text ordering, CCL)
+├── recognition/  Recognition models (LSTM, CNN, transformer, ViT, pattern, hybrid)
+├── training/     Model training pipeline (data, losses, metrics, optimizers)
+└── utils/        Shared utilities (async, error, hash, math, SIMD, time)
 ```
-
-Exposed tools:
-
-| Tool         | Description                                |
-|--------------|--------------------------------------------|
-| `ocr_image`  | OCR on an image file (path)                |
-| `ocr_base64` | OCR on base64-encoded image data           |
-
-## Architecture
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for design details and [SPEC.md](SPEC.md) for the API specification.
 
 ## License
 

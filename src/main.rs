@@ -7,7 +7,7 @@ use cli::{parse, Commands};
 use ::image::GenericImageView;
 use tracing::{error, info, warn};
 
-use ocr::api::{MiniOcr, TextProcessor};
+use ocr::api::{Ocr, TextProcessor};
 use ocr::core::config::{OcrConfig, PageSegMode, RecognitionEngine};
 use ocr::core::output::{format_hocr, format_tsv, to_json_output};
 use ocr::core::text::TextResult;
@@ -137,7 +137,7 @@ async fn extract_text(
     );
 
     let config = build_config(lang, preprocess, psm, confidence);
-    let ocr = MiniOcr::with_config(config)?;
+    let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
     let result = ocr
@@ -165,7 +165,7 @@ async fn batch_process(
 
     tokio::fs::create_dir_all(&output_dir).await?;
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
     let mut entries = tokio::fs::read_dir(&input_dir).await?;
@@ -215,7 +215,7 @@ async fn batch_process(
 async fn analyze_layout(image_path: PathBuf, output: Option<PathBuf>) -> Result<()> {
     info!("Analyzing layout for: {:?}", image_path);
 
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
     let image_data = tokio::fs::read(&image_path).await?;
@@ -232,7 +232,7 @@ async fn analyze_layout(image_path: PathBuf, output: Option<PathBuf>) -> Result<
 }
 
 async fn list_languages() -> Result<()> {
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     let languages = ocr.get_supported_languages();
 
     println!("Supported languages:");
@@ -249,7 +249,7 @@ async fn list_languages() -> Result<()> {
 async fn check_system() -> Result<()> {
     println!("Checking system requirements...");
 
-    match MiniOcr::new() {
+    match Ocr::new() {
         Ok(ocr) => match ocr.initialize().await {
             Ok(_) => println!("✓ OCR engine initialized successfully"),
             Err(e) => eprintln!("✗ Failed to initialize OCR engine: {}", e),
@@ -273,7 +273,7 @@ async fn check_system() -> Result<()> {
 }
 
 async fn show_info() -> Result<()> {
-    let ocr = MiniOcr::new()?;
+    let ocr = Ocr::new()?;
     let metadata = ocr.get_metadata();
 
     println!("OCR Engine Information:");

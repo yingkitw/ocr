@@ -75,7 +75,7 @@ src/
 ├── main.rs          # CLI entry point and command handling
 ├── lib.rs           # Library entry point re-exporting modules
 ├── cli/mod.rs       # CLI argument parsing with clap
-├── api/             # High-level OCR API (MiniOcr, TextProcessor, config)
+├── api/             # High-level OCR API (Ocr, TextProcessor, config)
 │   ├── mod.rs
 │   ├── config.rs
 │   ├── error.rs

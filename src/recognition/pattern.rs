@@ -61,7 +61,7 @@ impl RecognitionEngineTrait for PatternRecognitionEngine {
             name: "Pattern Recognition Engine".to_string(),
             version: "1.0.0".to_string(),
             description: "A pattern matching text recognition engine".to_string(),
-            author: "MiniOCR Team".to_string(),
+            author: "OCR Team".to_string(),
             license: "Apache-2.0".to_string(),
         }
     }
