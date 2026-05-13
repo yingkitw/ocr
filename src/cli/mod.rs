@@ -22,8 +22,8 @@ pub enum Commands {
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
 
-        /// Language code (default: eng)
-        #[arg(short, long, default_value = "eng")]
+        /// Language code: en, zh, ja, ko, fr, de, es (default: en)
+        #[arg(short, long, default_value = "en")]
         lang: String,
 
         /// Preprocess image for better OCR results
@@ -41,6 +41,14 @@ pub enum Commands {
         /// Confidence threshold (0.0 to 1.0)
         #[arg(long, default_value = "0.5")]
         confidence: f32,
+
+        /// Recognition engine: pattern, lstm, hybrid
+        #[arg(long, default_value = "pattern")]
+        engine: String,
+
+        /// Enable dictionary-based post-correction
+        #[arg(long)]
+        dict_correct: bool,
     },
 
     /// Batch process multiple images from a directory
@@ -53,8 +61,8 @@ pub enum Commands {
         #[arg(short, long, value_name = "DIR")]
         output_dir: PathBuf,
 
-        /// Language code
-        #[arg(short, long, default_value = "eng")]
+        /// Language code: en, zh, ja, ko, fr, de, es
+        #[arg(short, long, default_value = "en")]
         lang: String,
 
         /// Confidence threshold (0.0 to 1.0)
@@ -64,6 +72,14 @@ pub enum Commands {
         /// Maximum concurrent images
         #[arg(long, default_value = "4")]
         max_concurrent: usize,
+
+        /// Recognition engine: pattern, lstm, hybrid
+        #[arg(long, default_value = "pattern")]
+        engine: String,
+
+        /// Enable dictionary-based post-correction
+        #[arg(long)]
+        dict_correct: bool,
     },
 
     /// Analyze image layout

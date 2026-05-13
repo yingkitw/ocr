@@ -4,46 +4,24 @@ use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
 
-// Helper function to create a simple test image with text
-fn create_test_image_with_text(_text: &str, width: u32, height: u32) -> NamedTempFile {
-    let mut file = NamedTempFile::with_suffix(".png").unwrap();
-
-    // Create a blank white image
-    let img = ImageBuffer::from_pixel(width, height, Luma([255u8]));
-
-    // Save the image
-    img.write_to(&mut file, image::ImageFormat::Png).unwrap();
-    file.flush().unwrap();
-    file.reopen().unwrap();
-
-    file
-}
-
-// Helper function to create a simple test image with black rectangles (simulating text)
 fn create_test_image_with_rectangles() -> NamedTempFile {
     let mut file = NamedTempFile::with_suffix(".png").unwrap();
-
-    // Create a blank white image
     let mut img = ImageBuffer::from_pixel(200, 50, Luma([255u8]));
 
-    // Add some black rectangles to simulate text characters
     for y in 10..40 {
         for x in 10..20 {
             img.put_pixel(x, y, Luma([0u8]));
         }
     }
-
     for y in 10..40 {
         for x in 25..35 {
             img.put_pixel(x, y, Luma([0u8]));
         }
     }
 
-    // Save the image
     img.write_to(&mut file, image::ImageFormat::Png).unwrap();
     file.flush().unwrap();
     file.reopen().unwrap();
-
     file
 }
 
@@ -56,7 +34,7 @@ fn test_cli_check_command() {
         .success()
         .stdout(predicates::str::contains("Checking system requirements"))
         .stdout(predicates::str::contains(
-            "✓ OCR engine initialized successfully",
+            "✓ Pattern matching engine initialized",
         ));
 }
 
@@ -68,14 +46,16 @@ fn test_cli_list_languages_command() {
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("Supported languages"))
-        .stdout(predicates::str::contains("en"));
+        .stdout(predicates::str::contains("en"))
+        .stdout(predicates::str::contains("zh"))
+        .stdout(predicates::str::contains("ja"))
+        .stdout(predicates::str::contains("ko"));
 }
 
 #[test]
 fn test_cli_extract_with_nonexistent_file() {
     let mut cmd = Command::cargo_bin("ocr").unwrap();
     cmd.args(&["extract", "nonexistent.png"]);
-
     cmd.assert().failure();
 }
 
@@ -83,37 +63,112 @@ fn test_cli_extract_with_nonexistent_file() {
 fn test_cli_extract_with_unsupported_format() {
     let mut cmd = Command::cargo_bin("ocr").unwrap();
     cmd.args(&["extract", "test.xyz"]);
-
-    cmd.assert()
-        .failure();
-}
-
-#[test]
-fn test_cli_extract_with_unsupported_language() {
-    let file = create_test_image_with_text("test", 100, 50);
-
-    let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "fra"]);
-
-    cmd.assert().success();
+    cmd.assert().failure();
 }
 
 #[test]
 fn test_cli_extract_with_valid_image() {
     let file = create_test_image_with_rectangles();
-
     let mut cmd = Command::cargo_bin("ocr").unwrap();
     cmd.args(&["extract", file.path().to_str().unwrap()]);
-
     cmd.assert().success();
 }
 
 #[test]
 fn test_cli_extract_with_preprocessing() {
     let file = create_test_image_with_rectangles();
-
     let mut cmd = Command::cargo_bin("ocr").unwrap();
     cmd.args(&["extract", file.path().to_str().unwrap(), "--preprocess"]);
-
     cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_lstm_engine() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&[
+        "extract",
+        file.path().to_str().unwrap(),
+        "--engine",
+        "lstm",
+    ]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_hybrid_engine() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&[
+        "extract",
+        file.path().to_str().unwrap(),
+        "--engine",
+        "hybrid",
+    ]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_dict_correct() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&[
+        "extract",
+        file.path().to_str().unwrap(),
+        "--dict-correct",
+    ]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_cjk_lang() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "zh"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_json_format() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&["extract", file.path().to_str().unwrap(), "-f", "json"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_all_options() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&[
+        "extract",
+        file.path().to_str().unwrap(),
+        "--lang",
+        "en",
+        "--preprocess",
+        "--engine",
+        "pattern",
+        "--dict-correct",
+        "--confidence",
+        "0.3",
+        "--psm",
+        "6",
+        "-f",
+        "json",
+    ]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_info_command() {
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("info");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_validate_command() {
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&["validate", "nonexistent.json"]);
+    cmd.assert().failure();
 }

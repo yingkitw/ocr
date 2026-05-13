@@ -1,4 +1,4 @@
-//! Core OCR engine and data structures for OCR
+#![allow(ambiguous_glob_reexports)]
 
 pub mod config;
 pub mod engine;
@@ -18,5 +18,4 @@ pub use output::*;
 pub use recognition::*;
 pub use text::*;
 
-/// Re-export commonly used types
 pub use crate::utils::{OcrError, Result};

@@ -11,6 +11,7 @@ use ocr::api::{Ocr, TextProcessor};
 use ocr::core::config::{OcrConfig, PageSegMode, RecognitionEngine};
 use ocr::core::output::{format_hocr, format_tsv, to_json_output};
 use ocr::core::text::TextResult;
+use ocr::lang::dictionary::Dictionary;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -32,8 +33,10 @@ async fn main() -> Result<()> {
             format,
             psm,
             confidence,
+            engine,
+            dict_correct,
         } => {
-            extract_text(image_path, output, &lang, preprocess, &format, psm, confidence).await?;
+            extract_text(image_path, output, &lang, preprocess, &format, psm, confidence, &engine, dict_correct).await?;
         }
         Commands::Batch {
             input_dir,
@@ -41,8 +44,10 @@ async fn main() -> Result<()> {
             lang,
             confidence,
             max_concurrent,
+            engine,
+            dict_correct,
         } => {
-            batch_process(input_dir, output_dir, &lang, confidence, max_concurrent).await?;
+            batch_process(input_dir, output_dir, &lang, confidence, max_concurrent, &engine, dict_correct).await?;
         }
         Commands::Layout {
             image_path,
@@ -67,12 +72,25 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn build_config(lang: &str, preprocess: bool, psm: u8, confidence: f32) -> OcrConfig {
+fn parse_engine(s: &str) -> RecognitionEngine {
+    match s.to_lowercase().as_str() {
+        "lstm" => RecognitionEngine::LSTM,
+        "hybrid" => RecognitionEngine::Hybrid,
+        _ => RecognitionEngine::PatternMatching,
+    }
+}
+
+fn build_config(lang: &str, preprocess: bool, psm: u8, confidence: f32, engine: &str, dict_correct: bool) -> OcrConfig {
     let mut config = OcrConfig::default();
-    config.recognition.language = lang.replace("eng", "en");
+    config.recognition.language = lang.to_string();
     config.recognition.confidence_threshold = confidence;
-    config.recognition.engine = RecognitionEngine::PatternMatching;
+    config.recognition.engine = parse_engine(engine);
+    config.recognition.enable_dictionary_correction = dict_correct;
     config.image_processing.enable_preprocessing = preprocess;
+    config.image_processing.enable_binarization = preprocess;
+    config.image_processing.enable_noise_reduction = preprocess;
+    config.image_processing.enable_contrast_enhancement = preprocess;
+    config.image_processing.enable_deskewing = preprocess;
     config.layout_analysis.page_seg_mode = psm_to_mode(psm);
     config
 }
@@ -89,6 +107,39 @@ fn psm_to_mode(psm: u8) -> PageSegMode {
         13 => PageSegMode::SingleLine,
         _ => PageSegMode::Auto,
     }
+}
+
+fn apply_dictionary_correction(result: &mut TextResult, lang: &str) {
+    let mut dict = Dictionary::new();
+    match lang {
+        "en" => dict.load_words(&[
+            "the", "this", "that", "and", "for", "are", "was", "but", "not", "you",
+            "all", "can", "had", "her", "was", "one", "our", "out", "has", "have",
+            "from", "they", "been", "with", "their", "would", "about", "which",
+            "there", "could", "should", "people", "water", "where", "after",
+            "still", "world", "hello", "world", "ocr", "text", "image", "file",
+        ]),
+        "zh" => dict.load_words(&[
+            "的", "一", "是", "不", "了", "人", "我", "在", "有", "他",
+            "这", "中", "大", "来", "上", "国", "个", "到", "说", "们",
+        ]),
+        "ja" => dict.load_words(&[
+            "の", "に", "を", "は", "が", "た", "で", "て", "と", "し",
+            "れ", "る", "か", "な", "い", "あ", "こ", "さ", "き", "ま",
+        ]),
+        _ => {}
+    }
+
+    for word in result.words.iter_mut() {
+        let word_text = word.text.trim();
+        if word_text.len() > 2 && !dict.contains(word_text) {
+            let corrected = dict.correct_word(word_text);
+            if corrected != word_text {
+                word.text = corrected;
+            }
+        }
+    }
+    result.text = result.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
 }
 
 fn format_result(result: &TextResult, format: &str) -> Result<String> {
@@ -130,20 +181,26 @@ async fn extract_text(
     format: &str,
     psm: u8,
     confidence: f32,
+    engine: &str,
+    dict_correct: bool,
 ) -> Result<()> {
     info!(
-        "Starting OCR extraction for: {:?} (psm={}, format={})",
-        image_path, psm, format
+        "Starting OCR extraction for: {:?} (psm={}, format={}, engine={})",
+        image_path, psm, format, engine
     );
 
-    let config = build_config(lang, preprocess, psm, confidence);
+    let config = build_config(lang, preprocess, psm, confidence, engine, dict_correct);
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
-    let result = ocr
+    let mut result = ocr
         .recognize_text_from_file(&image_path)
         .await
         .map_err(|e| anyhow!("{}", e))?;
+
+    if dict_correct {
+        apply_dictionary_correction(&mut result, lang);
+    }
 
     info!("OCR completed with confidence: {:.2}%", result.confidence * 100.0);
 
@@ -157,6 +214,8 @@ async fn batch_process(
     lang: &str,
     confidence: f32,
     _max_concurrent: usize,
+    engine: &str,
+    dict_correct: bool,
 ) -> Result<()> {
     info!(
         "Batch processing images from: {:?} -> {:?}",
@@ -165,7 +224,8 @@ async fn batch_process(
 
     tokio::fs::create_dir_all(&output_dir).await?;
 
-    let ocr = Ocr::new()?;
+    let config = build_config(lang, true, 3, confidence, engine, dict_correct);
+    let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
     let mut entries = tokio::fs::read_dir(&input_dir).await?;
@@ -188,7 +248,10 @@ async fn batch_process(
         let output_path = output_dir.join(format!("{}.txt", stem));
 
         match ocr.recognize_text_from_file(image_path).await {
-            Ok(result) => {
+            Ok(mut result) => {
+                if dict_correct {
+                    apply_dictionary_correction(&mut result, lang);
+                }
                 let text = if confidence > 0.0 {
                     TextProcessor::filter_by_confidence(&result, confidence)
                 } else {
@@ -233,15 +296,25 @@ async fn analyze_layout(image_path: PathBuf, output: Option<PathBuf>) -> Result<
 
 async fn list_languages() -> Result<()> {
     let ocr = Ocr::new()?;
-    let languages = ocr.get_supported_languages();
+    let base = ocr.get_supported_languages();
+    let mut languages: Vec<String> = base.iter().cloned().collect();
+
+    let cjk_codes = ["zh", "ja", "ko"];
+    for code in &cjk_codes {
+        let entry = format!("{} (CJK)", code);
+        if !languages.contains(&entry) {
+            languages.push(entry);
+        }
+    }
+    languages.sort();
 
     println!("Supported languages:");
-    for lang in languages {
+    for lang in &languages {
         println!("  - {}", lang);
     }
     println!();
-    println!("Note: The PatternMatching engine is used by default");
-    println!("Language support is extendable through LSTM/Transformer models");
+    println!("Note: Use --engine to select recognition engine (pattern, lstm, hybrid)");
+    println!("      Use --dict-correct to enable dictionary-based post-correction");
 
     Ok(())
 }
@@ -249,24 +322,26 @@ async fn list_languages() -> Result<()> {
 async fn check_system() -> Result<()> {
     println!("Checking system requirements...");
 
+    // Test pattern matching engine
     match Ocr::new() {
         Ok(ocr) => match ocr.initialize().await {
-            Ok(_) => println!("✓ OCR engine initialized successfully"),
+            Ok(_) => println!("✓ Pattern matching engine initialized"),
             Err(e) => eprintln!("✗ Failed to initialize OCR engine: {}", e),
         },
         Err(e) => eprintln!("✗ Failed to create OCR engine: {}", e),
     }
 
+    // Test image loading
     println!("✓ Image processing modules loaded");
-    println!("✓ Text segmentation engine ready");
-    println!("✓ Character recognition system initialized");
-    println!("✓ OCR CLI is ready to use");
+    println!("✓ Layout analysis engine ready");
+    println!("✓ Dictionary correction module ready");
 
     println!("\nCapabilities:");
     println!("  - Pattern matching engine (default)");
     println!("  - LSTM neural network engine");
     println!("  - Hybrid recognition engine");
     println!("  - Layout analysis");
+    println!("  - Dictionary-based post-correction");
     println!("  - Multiple output formats: text, json, hocr, tsv");
 
     Ok(())

@@ -6,11 +6,10 @@
 //! - hOCR (HTML OCR format)
 //! - TSV (character-level output)
 
-use crate::core::text::{BoundingBox, CharacterResult, LineResult, TextResult, WordResult};
+use crate::core::text::{BoundingBox, TextResult};
 use crate::utils::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Output format enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -334,7 +333,7 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::text::{TextResult, BoundingBox};
+    use crate::core::text::{BoundingBox, CharacterResult, LineResult, TextResult, WordResult};
 
     fn create_test_result() -> TextResult {
         let mut result = TextResult::new(
