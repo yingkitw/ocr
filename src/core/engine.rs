@@ -293,14 +293,20 @@ impl OcrEngine {
 
     /// Internal method to process image
     async fn process_image_internal(&self, image: OcrImage) -> Result<TextResult> {
+        let mut profiler = self.profiler.clone();
+        profiler.start_operation("total");
+
         // Step 1: Image preprocessing
+        profiler.start_operation("preprocessing");
         let preprocessed_image = if self.config.image_processing.enable_preprocessing {
             self.preprocess_image(&image).await?
         } else {
             image
         };
+        profiler.stop_operation();
 
         // Step 2: Layout analysis
+        profiler.start_operation("layout_analysis");
         let layout_result = if self.config.layout_analysis.enable_layout_analysis {
             self.analyze_layout(&preprocessed_image).await?
         } else {
@@ -310,14 +316,37 @@ impl OcrEngine {
                 preprocessed_image.dpi,
             ))
         };
+        profiler.stop_operation();
 
         // Step 3: Text recognition
+        profiler.start_operation("recognition");
         let recognition_result = self
             .recognize_text(&preprocessed_image, &layout_result)
             .await?;
+        profiler.stop_operation();
 
         // Step 4: Post-processing
+        profiler.start_operation("post_processing");
         let text_result = self.post_process_result(recognition_result).await?;
+        profiler.stop_operation();
+
+        profiler.stop_operation(); // total
+
+        // Log profiling info
+        if self.config.debug.enable_profiling {
+            for name in profiler.operation_names() {
+                if let Some(stats) = profiler.get_stats(&name) {
+                    tracing::info!(
+                        "Stage '{}': avg={:.2}ms min={:.2}ms max={:.2}ms count={}",
+                        name,
+                        stats.average_ms(),
+                        stats.min_ms(),
+                        stats.max_ms(),
+                        stats.count
+                    );
+                }
+            }
+        }
 
         Ok(text_result)
     }

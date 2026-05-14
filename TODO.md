@@ -2,12 +2,6 @@
 
 ## Near-term
 
-- [ ] Enable and test SIMD acceleration (`simd` feature flag)
-- [ ] Benchmark and profile recognition performance
-
-## Medium-term
-
-- [ ] Implement training pipeline CLI commands
 - [ ] Add CUDA/OpenCL backend support for neural network models
 - [ ] Add web API mode for HTTP-based OCR
 - [ ] Improve layout analysis for complex multi-column documents
@@ -15,6 +9,8 @@
 
 ## Completed
 
+- [x] Enable and test SIMD acceleration (`simd` feature flag) — NEON on aarch64, SSE4.1/AVX2 on x86_64
+- [x] Benchmark and profile recognition performance — Profiler wired into engine stages, synthetic benchmarks
 - [x] Wire up LSTM/CNN/transformer recognition engines as alternatives via `--engine` flag
 - [x] Add CJK language codes (zh, ja, ko) to CLI `--lang` and `list-languages`
 - [x] Complete image preprocessing pipeline (deskew, binarization, contrast, noise reduction)

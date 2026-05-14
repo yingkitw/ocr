@@ -38,14 +38,33 @@ tempfile = "3.8"
 assert_cmd = "2.0"
 predicates = "3.0"
 insta = "1.0"
+reqwest = { version = "0.12", features = ["multipart", "json"] }
 
 [features]
 default = ["simd"]
 simd = []
 cuda = []
 opencl = []
-web-api = []
+web-api = ["axum", "tower", "tower-http", "multer"]
 opencv = []
+
+[dependencies.axum]
+version = "0.7"
+features = ["multipart"]
+optional = true
+
+[dependencies.tower]
+version = "0.4"
+optional = true
+
+[dependencies.tower-http]
+version = "0.5"
+features = ["cors", "limit"]
+optional = true
+
+[dependencies.multer]
+version = "3"
+optional = true
 
 [profile.release]
 opt-level = 3

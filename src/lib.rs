@@ -6,6 +6,8 @@ pub mod image;
 pub mod lang;
 pub mod layout;
 pub mod recognition;
+#[cfg(feature = "web-api")]
+pub mod server;
 pub mod training;
 pub mod utils;
 

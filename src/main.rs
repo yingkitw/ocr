@@ -67,6 +67,20 @@ async fn main() -> Result<()> {
         Commands::Validate { config_file } => {
             validate_config(config_file).await?;
         }
+        #[cfg(feature = "web-api")]
+        Commands::Serve {
+            host,
+            port,
+            max_upload_size,
+        } => {
+            use ocr::server::{run_server, ServerConfig};
+            let config = ServerConfig {
+                host,
+                port,
+                max_upload_size_mb: max_upload_size,
+            };
+            run_server(config).await?;
+        }
     }
 
     Ok(())

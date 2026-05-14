@@ -1,7 +1,7 @@
 //! Image enhancement operations
 
 use crate::core::image::OcrImage;
-use crate::utils::{OcrError, Result};
+use crate::utils::{OcrError, Result, SimdImageOps};
 use image::{imageops, DynamicImage, GrayImage, Luma};
 
 /// Image enhancement operations
@@ -10,9 +10,16 @@ pub struct ImageEnhancer;
 impl ImageEnhancer {
     /// Enhance image contrast
     pub fn enhance_contrast(img: &OcrImage, factor: f32) -> Result<OcrImage> {
-        let mut enhanced = img.data.clone();
-        imageops::contrast(&mut enhanced, factor);
-        Ok(OcrImage::new(enhanced, img.dpi))
+        let gray = img.data.to_luma8();
+        let pixels: Vec<u8> = gray.pixels().map(|p| p[0]).collect();
+        let adjusted = SimdImageOps::contrast_adjust(&pixels, factor);
+        let mut result = GrayImage::new(gray.width(), gray.height());
+        for (i, pixel) in adjusted.iter().enumerate() {
+            let x = (i as u32) % gray.width();
+            let y = (i as u32) / gray.width();
+            result.put_pixel(x, y, Luma([*pixel]));
+        }
+        Ok(OcrImage::new(DynamicImage::ImageLuma8(result), img.dpi))
     }
 
     /// Reduce image noise (using Gaussian blur)

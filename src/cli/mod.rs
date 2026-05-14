@@ -108,6 +108,22 @@ pub enum Commands {
         #[arg(value_name = "FILE")]
         config_file: PathBuf,
     },
+
+    /// Start HTTP API server for OCR
+    #[cfg(feature = "web-api")]
+    Serve {
+        /// Host to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Port to listen on
+        #[arg(long, default_value_t = 8080)]
+        port: u16,
+
+        /// Maximum upload size in MB
+        #[arg(long, default_value_t = 20)]
+        max_upload_size: usize,
+    },
 }
 
 pub fn parse() -> Cli {

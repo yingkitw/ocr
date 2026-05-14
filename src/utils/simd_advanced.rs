@@ -1,8 +1,9 @@
 //! Advanced SIMD operations for high-performance computing
+//!
+//! Provides SIMD-accelerated vector, matrix, image processing, and neural network operations.
+//! Uses architecture-specific intrinsics when the `simd` feature is enabled.
 
 use anyhow::Result;
-#[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::*;
 
 /// SIMD vector types for different architectures
 #[derive(Debug, Clone)]
@@ -14,6 +15,29 @@ pub enum SIMDVector {
     I32x8([i32; 8]),
     U8x16([u8; 16]),
     U8x32([u8; 32]),
+}
+
+impl SIMDVector {
+    pub fn splat_f32(value: f32, size: usize) -> Self {
+        match size {
+            4 => SIMDVector::F32x4([value; 4]),
+            8 => SIMDVector::F32x8([value; 8]),
+            16 => SIMDVector::F32x16([value; 16]),
+            _ => SIMDVector::F32x4([value; 4]),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            SIMDVector::F32x4(_) => 4,
+            SIMDVector::F32x8(_) => 8,
+            SIMDVector::F32x16(_) => 16,
+            SIMDVector::I32x4(_) => 4,
+            SIMDVector::I32x8(_) => 8,
+            SIMDVector::U8x16(_) => 16,
+            SIMDVector::U8x32(_) => 32,
+        }
+    }
 }
 
 /// SIMD operations trait
@@ -28,6 +52,325 @@ pub trait SIMDOperations {
     fn abs(&self) -> Self;
     fn sum(&self) -> f32;
     fn dot_product(&self, other: &Self) -> f32;
+}
+
+impl SIMDOperations for SIMDVector {
+    fn add(&self, other: &Self) -> Self {
+        match (self, other) {
+            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
+                SIMDVector::F32x4(simd_add_f32x4(*a, *b))
+            }
+            (SIMDVector::F32x8(a), SIMDVector::F32x8(b)) => {
+                let lo = simd_add_f32x4([a[0], a[1], a[2], a[3]], [b[0], b[1], b[2], b[3]]);
+                let hi = simd_add_f32x4([a[4], a[5], a[6], a[7]], [b[4], b[5], b[6], b[7]]);
+                SIMDVector::F32x8([lo[0], lo[1], lo[2], lo[3], hi[0], hi[1], hi[2], hi[3]])
+            }
+            (SIMDVector::I32x4(a), SIMDVector::I32x4(b)) => {
+                SIMDVector::I32x4([a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]])
+            }
+            (SIMDVector::I32x8(a), SIMDVector::I32x8(b)) => {
+                SIMDVector::I32x8([
+                    a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3],
+                    a[4] + b[4], a[5] + b[5], a[6] + b[6], a[7] + b[7],
+                ])
+            }
+            (SIMDVector::U8x16(a), SIMDVector::U8x16(b)) => {
+                let mut r = [0u8; 16];
+                for i in 0..16 { r[i] = a[i].wrapping_add(b[i]); }
+                SIMDVector::U8x16(r)
+            }
+            (SIMDVector::U8x32(a), SIMDVector::U8x32(b)) => {
+                let mut r = [0u8; 32];
+                for i in 0..32 { r[i] = a[i].wrapping_add(b[i]); }
+                SIMDVector::U8x32(r)
+            }
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn sub(&self, other: &Self) -> Self {
+        match (self, other) {
+            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
+                SIMDVector::F32x4(simd_sub_f32x4(*a, *b))
+            }
+            (SIMDVector::I32x4(a), SIMDVector::I32x4(b)) => {
+                SIMDVector::I32x4([a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]])
+            }
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn mul(&self, other: &Self) -> Self {
+        match (self, other) {
+            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
+                SIMDVector::F32x4(simd_mul_f32x4(*a, *b))
+            }
+            (SIMDVector::F32x8(a), SIMDVector::F32x8(b)) => {
+                let lo = simd_mul_f32x4([a[0], a[1], a[2], a[3]], [b[0], b[1], b[2], b[3]]);
+                let hi = simd_mul_f32x4([a[4], a[5], a[6], a[7]], [b[4], b[5], b[6], b[7]]);
+                SIMDVector::F32x8([lo[0], lo[1], lo[2], lo[3], hi[0], hi[1], hi[2], hi[3]])
+            }
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn div(&self, other: &Self) -> Self {
+        match (self, other) {
+            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
+                SIMDVector::F32x4([a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3]])
+            }
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn max(&self, other: &Self) -> Self {
+        match (self, other) {
+            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
+                SIMDVector::F32x4(simd_max_f32x4(*a, *b))
+            }
+            (SIMDVector::I32x4(a), SIMDVector::I32x4(b)) => {
+                SIMDVector::I32x4([
+                    a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2]), a[3].max(b[3]),
+                ])
+            }
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn min(&self, other: &Self) -> Self {
+        match (self, other) {
+            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
+                SIMDVector::F32x4(simd_min_f32x4(*a, *b))
+            }
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn sqrt(&self) -> Self {
+        match self {
+            SIMDVector::F32x4(a) => SIMDVector::F32x4(simd_sqrt_f32x4(*a)),
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn abs(&self) -> Self {
+        match self {
+            SIMDVector::F32x4(a) => SIMDVector::F32x4([a[0].abs(), a[1].abs(), a[2].abs(), a[3].abs()]),
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn sum(&self) -> f32 {
+        match self {
+            SIMDVector::F32x4(a) => a[0] + a[1] + a[2] + a[3],
+            SIMDVector::F32x8(a) => a[0] + a[1] + a[2] + a[3] + a[4] + a[5] + a[6] + a[7],
+            _ => unreachable!("type mismatch"),
+        }
+    }
+
+    fn dot_product(&self, other: &Self) -> f32 {
+        match (self, other) {
+            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
+                let m = simd_mul_f32x4(*a, *b);
+                m[0] + m[1] + m[2] + m[3]
+            }
+            (SIMDVector::F32x8(a), SIMDVector::F32x8(b)) => {
+                let lo = simd_mul_f32x4([a[0], a[1], a[2], a[3]], [b[0], b[1], b[2], b[3]]);
+                let hi = simd_mul_f32x4([a[4], a[5], a[6], a[7]], [b[4], b[5], b[6], b[7]]);
+                lo[0] + lo[1] + lo[2] + lo[3] + hi[0] + hi[1] + hi[2] + hi[3]
+            }
+            _ => unreachable!("type mismatch"),
+        }
+    }
+}
+
+fn simd_add_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("sse4.1") {
+            unsafe {
+                use std::arch::x86_64::_mm_add_ps;
+                use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_storeu_ps;
+                let va = _mm_loadu_ps(a.as_ptr());
+                let vb = _mm_loadu_ps(b.as_ptr());
+                let vr = _mm_add_ps(va, vb);
+                let mut r = [0.0; 4];
+                _mm_storeu_ps(r.as_mut_ptr(), vr);
+                return r;
+            }
+        }
+    }
+    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+    {
+        unsafe {
+            use std::arch::aarch64::vaddq_f32;
+            use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vst1q_f32;
+            let va = vld1q_f32(a.as_ptr());
+            let vb = vld1q_f32(b.as_ptr());
+            let vr = vaddq_f32(va, vb);
+            let mut r = [0.0; 4];
+            vst1q_f32(r.as_mut_ptr(), vr);
+            return r;
+        }
+    }
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]]
+}
+
+fn simd_sub_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("sse4.1") {
+            unsafe {
+                use std::arch::x86_64::_mm_sub_ps;
+                use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_storeu_ps;
+                let va = _mm_loadu_ps(a.as_ptr());
+                let vb = _mm_loadu_ps(b.as_ptr());
+                let vr = _mm_sub_ps(va, vb);
+                let mut r = [0.0; 4];
+                _mm_storeu_ps(r.as_mut_ptr(), vr);
+                return r;
+            }
+        }
+    }
+    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+    {
+        unsafe {
+            use std::arch::aarch64::vsubq_f32;
+            use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vst1q_f32;
+            let va = vld1q_f32(a.as_ptr());
+            let vb = vld1q_f32(b.as_ptr());
+            let vr = vsubq_f32(va, vb);
+            let mut r = [0.0; 4];
+            vst1q_f32(r.as_mut_ptr(), vr);
+            return r;
+        }
+    }
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]]
+}
+
+fn simd_mul_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("sse4.1") {
+            unsafe {
+                use std::arch::x86_64::_mm_mul_ps;
+                use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_storeu_ps;
+                let va = _mm_loadu_ps(a.as_ptr());
+                let vb = _mm_loadu_ps(b.as_ptr());
+                let vr = _mm_mul_ps(va, vb);
+                let mut r = [0.0; 4];
+                _mm_storeu_ps(r.as_mut_ptr(), vr);
+                return r;
+            }
+        }
+    }
+    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+    {
+        unsafe {
+            use std::arch::aarch64::vmulq_f32;
+            use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vst1q_f32;
+            let va = vld1q_f32(a.as_ptr());
+            let vb = vld1q_f32(b.as_ptr());
+            let vr = vmulq_f32(va, vb);
+            let mut r = [0.0; 4];
+            vst1q_f32(r.as_mut_ptr(), vr);
+            return r;
+        }
+    }
+    [a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3]]
+}
+
+fn simd_max_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("sse4.1") {
+            unsafe {
+                use std::arch::x86_64::_mm_max_ps;
+                use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_storeu_ps;
+                let va = _mm_loadu_ps(a.as_ptr());
+                let vb = _mm_loadu_ps(b.as_ptr());
+                let vr = _mm_max_ps(va, vb);
+                let mut r = [0.0; 4];
+                _mm_storeu_ps(r.as_mut_ptr(), vr);
+                return r;
+            }
+        }
+    }
+    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+    {
+        unsafe {
+            use std::arch::aarch64::vmaxq_f32;
+            use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vst1q_f32;
+            let va = vld1q_f32(a.as_ptr());
+            let vb = vld1q_f32(b.as_ptr());
+            let vr = vmaxq_f32(va, vb);
+            let mut r = [0.0; 4];
+            vst1q_f32(r.as_mut_ptr(), vr);
+            return r;
+        }
+    }
+    [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2]), a[3].max(b[3])]
+}
+
+fn simd_min_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("sse4.1") {
+            unsafe {
+                use std::arch::x86_64::_mm_min_ps;
+                use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_storeu_ps;
+                let va = _mm_loadu_ps(a.as_ptr());
+                let vb = _mm_loadu_ps(b.as_ptr());
+                let vr = _mm_min_ps(va, vb);
+                let mut r = [0.0; 4];
+                _mm_storeu_ps(r.as_mut_ptr(), vr);
+                return r;
+            }
+        }
+    }
+    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+    {
+        unsafe {
+            use std::arch::aarch64::vminq_f32;
+            use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vst1q_f32;
+            let va = vld1q_f32(a.as_ptr());
+            let vb = vld1q_f32(b.as_ptr());
+            let vr = vminq_f32(va, vb);
+            let mut r = [0.0; 4];
+            vst1q_f32(r.as_mut_ptr(), vr);
+            return r;
+        }
+    }
+    [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2]), a[3].min(b[3])]
+}
+
+fn simd_sqrt_f32x4(a: [f32; 4]) -> [f32; 4] {
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("sse4.1") {
+            unsafe {
+                use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_sqrt_ps;
+                use std::arch::x86_64::_mm_storeu_ps;
+                let va = _mm_loadu_ps(a.as_ptr());
+                let vr = _mm_sqrt_ps(va);
+                let mut r = [0.0; 4];
+                _mm_storeu_ps(r.as_mut_ptr(), vr);
+                return r;
+            }
+        }
+    }
+    [a[0].sqrt(), a[1].sqrt(), a[2].sqrt(), a[3].sqrt()]
 }
 
 /// SIMD matrix operations
@@ -51,6 +394,9 @@ impl SIMDMatrix {
         Self { data, rows, cols }
     }
 
+    pub fn rows(&self) -> usize { self.rows }
+    pub fn cols(&self) -> usize { self.cols }
+
     /// Matrix multiplication using SIMD
     pub fn matmul_simd(&self, other: &SIMDMatrix) -> Result<SIMDMatrix> {
         if self.cols != other.rows {
@@ -61,12 +407,10 @@ impl SIMDMatrix {
 
         let mut result = SIMDMatrix::new(self.rows, other.cols);
 
-        // Use SIMD for matrix multiplication
         for i in 0..self.rows {
             for j in 0..other.cols {
                 let mut sum = 0.0;
 
-                // Process 4 elements at a time using SIMD
                 let mut k = 0;
                 while k + 4 <= self.cols {
                     let a_simd = self.get_row_simd(i, k, 4);
@@ -75,13 +419,45 @@ impl SIMDMatrix {
                     k += 4;
                 }
 
-                // Handle remaining elements
                 while k < self.cols {
                     sum += self.get(i, k) * other.get(k, j);
                     k += 1;
                 }
 
                 result.set(i, j, sum);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Optimized matmul using blocking for cache efficiency
+    pub fn matmul_blocked(&self, other: &SIMDMatrix, block_size: usize) -> Result<SIMDMatrix> {
+        if self.cols != other.rows {
+            return Err(anyhow::anyhow!(
+                "Matrix dimensions don't match for multiplication"
+            ));
+        }
+
+        let mut result = SIMDMatrix::new(self.rows, other.cols);
+
+        for i in (0..self.rows).step_by(block_size) {
+            let i_end = (i + block_size).min(self.rows);
+            for k in (0..self.cols).step_by(block_size) {
+                let k_end = (k + block_size).min(self.cols);
+                for j in (0..other.cols).step_by(block_size) {
+                    let j_end = (j + block_size).min(other.cols);
+
+                    for ii in i..i_end {
+                        for kk in k..k_end {
+                            let aik = self.get(ii, kk);
+                            for jj in j..j_end {
+                                let old = result.get(ii, jj);
+                                result.set(ii, jj, old + aik * other.get(kk, jj));
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -161,13 +537,11 @@ impl SIMDMatrix {
     /// Softmax using SIMD
     pub fn softmax_simd(&mut self) -> Result<()> {
         for i in 0..self.rows {
-            // Find maximum value in row
             let mut max_val = f32::NEG_INFINITY;
             for j in 0..self.cols {
                 max_val = max_val.max(self.get(i, j));
             }
 
-            // Compute exponentials and sum
             let mut sum = 0.0;
             for j in 0..self.cols {
                 let exp_val = (self.get(i, j) - max_val).exp();
@@ -175,7 +549,6 @@ impl SIMDMatrix {
                 sum += exp_val;
             }
 
-            // Normalize
             for j in 0..self.cols {
                 self.set(i, j, self.get(i, j) / sum);
             }
@@ -208,102 +581,6 @@ impl SIMDMatrix {
     }
 }
 
-impl SIMDOperations for SIMDVector {
-    fn add(&self, other: &Self) -> Self {
-        match (self, other) {
-            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
-                SIMDVector::F32x4([a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]])
-            }
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn sub(&self, other: &Self) -> Self {
-        match (self, other) {
-            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
-                SIMDVector::F32x4([a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]])
-            }
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn mul(&self, other: &Self) -> Self {
-        match (self, other) {
-            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
-                SIMDVector::F32x4([a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3]])
-            }
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn div(&self, other: &Self) -> Self {
-        match (self, other) {
-            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
-                SIMDVector::F32x4([a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3]])
-            }
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn max(&self, other: &Self) -> Self {
-        match (self, other) {
-            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => SIMDVector::F32x4([
-                a[0].max(b[0]),
-                a[1].max(b[1]),
-                a[2].max(b[2]),
-                a[3].max(b[3]),
-            ]),
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn min(&self, other: &Self) -> Self {
-        match (self, other) {
-            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => SIMDVector::F32x4([
-                a[0].min(b[0]),
-                a[1].min(b[1]),
-                a[2].min(b[2]),
-                a[3].min(b[3]),
-            ]),
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn sqrt(&self) -> Self {
-        match self {
-            SIMDVector::F32x4(a) => {
-                SIMDVector::F32x4([a[0].sqrt(), a[1].sqrt(), a[2].sqrt(), a[3].sqrt()])
-            }
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn abs(&self) -> Self {
-        match self {
-            SIMDVector::F32x4(a) => {
-                SIMDVector::F32x4([a[0].abs(), a[1].abs(), a[2].abs(), a[3].abs()])
-            }
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn sum(&self) -> f32 {
-        match self {
-            SIMDVector::F32x4(a) => a[0] + a[1] + a[2] + a[3],
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-
-    fn dot_product(&self, other: &Self) -> f32 {
-        match (self, other) {
-            (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
-                a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]
-            }
-            _ => unimplemented!("SIMD operations not implemented for this vector type"),
-        }
-    }
-}
-
 /// SIMD image processing operations
 pub struct SIMDImageProcessor;
 
@@ -332,8 +609,7 @@ impl SIMDImageProcessor {
                         let img_y = y as i32 + ky as i32 - padding as i32;
                         let img_x = x as i32 + kx as i32 - padding as i32;
 
-                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32
-                        {
+                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32 {
                             let pixel_idx = (img_y as usize * width + img_x as usize) as usize;
                             let kernel_val = kernel[ky * kernel_size + kx];
                             sum += image[pixel_idx] * kernel_val;
@@ -374,7 +650,6 @@ impl SIMDImageProcessor {
         Ok(result)
     }
 
-    /// Apply kernel convolution using SIMD
     fn apply_kernel_simd(
         &self,
         image: &[f32],
@@ -395,8 +670,7 @@ impl SIMDImageProcessor {
                         let img_y = y as i32 + ky as i32 - padding as i32;
                         let img_x = x as i32 + kx as i32 - padding as i32;
 
-                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32
-                        {
+                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32 {
                             let pixel_idx = img_y as usize * width + img_x as usize;
                             let kernel_idx = ky * kernel_size + kx;
                             sum += image[pixel_idx] * kernel[kernel_idx];
@@ -411,7 +685,6 @@ impl SIMDImageProcessor {
         Ok(result)
     }
 
-    /// Generate Gaussian kernel
     fn generate_gaussian_kernel(&self, size: usize, sigma: f32) -> Result<Vec<f32>> {
         let mut kernel = vec![0.0; size * size];
         let center = size as f32 / 2.0;
@@ -428,7 +701,6 @@ impl SIMDImageProcessor {
             }
         }
 
-        // Normalize kernel
         for val in &mut kernel {
             *val /= sum;
         }
@@ -577,8 +849,6 @@ impl SIMDUtils {
         }
         #[cfg(target_arch = "aarch64")]
         {
-            // Note: is_aarch64_feature_detected is not available in stable Rust
-            // This is a placeholder - in practice you'd use a crate like `aarch64-features`
             true
         }
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
@@ -601,7 +871,6 @@ impl SIMDUtils {
         }
         #[cfg(target_arch = "aarch64")]
         {
-            // Assume NEON is available on aarch64
             4
         }
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
@@ -617,5 +886,55 @@ impl SIMDUtils {
             aligned.push(0.0);
         }
         aligned
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simd_vector_add() {
+        let a = SIMDVector::F32x4([1.0, 2.0, 3.0, 4.0]);
+        let b = SIMDVector::F32x4([4.0, 3.0, 2.0, 1.0]);
+        let r = a.add(&b);
+        if let SIMDVector::F32x4(data) = r {
+            assert_eq!(data, [5.0, 5.0, 5.0, 5.0]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn test_simd_vector_mul() {
+        let a = SIMDVector::F32x4([2.0, 3.0, 4.0, 5.0]);
+        let b = SIMDVector::F32x4([3.0, 2.0, 1.0, 0.0]);
+        let r = a.mul(&b);
+        if let SIMDVector::F32x4(data) = r {
+            assert_eq!(data, [6.0, 6.0, 4.0, 0.0]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn test_simd_matrix_matmul() {
+        let a = SIMDMatrix::from_vec(vec![1.0, 2.0, 3.0, 4.0], 2, 2);
+        let b = SIMDMatrix::from_vec(vec![5.0, 6.0, 7.0, 8.0], 2, 2);
+        let r = a.matmul_simd(&b).unwrap();
+        assert_eq!(r.rows, 2);
+        assert_eq!(r.cols, 2);
+        // [1*5+2*7, 1*6+2*8; 3*5+4*7, 3*6+4*8] = [19, 22; 43, 50]
+        assert!((r.get(0, 0) - 19.0).abs() < 1e-6);
+        assert!((r.get(0, 1) - 22.0).abs() < 1e-6);
+        assert!((r.get(1, 0) - 43.0).abs() < 1e-6);
+        assert!((r.get(1, 1) - 50.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_simd_utils() {
+        let avail = SIMDUtils::is_simd_available();
+        // This should return true on any modern x86_64 or aarch64 machine
+        assert!(avail || cfg!(not(any(target_arch = "x86_64", target_arch = "aarch64"))));
     }
 }

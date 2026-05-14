@@ -49,6 +49,7 @@ impl Default for Timer {
 }
 
 /// A performance profiler for measuring multiple operations
+#[derive(Debug, Clone)]
 pub struct Profiler {
     operations: std::collections::HashMap<String, Vec<Duration>>,
     current_operation: Option<(String, Instant)>,
