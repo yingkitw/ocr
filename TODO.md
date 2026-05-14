@@ -2,11 +2,11 @@
 
 ## Near-term
 
-- [ ] Improve layout analysis for complex multi-column documents
 - [ ] Add CUDA/OpenCL backend support for neural network models
 
 ## Completed
 
+- [x] Improve layout analysis for complex multi-column documents — recursive XY-cut, region classifier (heading/body/caption/footer/page-number)
 - [x] Add PDF input support — `ocr extract file.pdf` extracts embedded images via `pdf` crate
 - [x] Add web API mode for HTTP-based OCR — `ocr serve` with axum, multipart upload, /health, /languages, /recognize
 - [x] Enable and test SIMD acceleration (`simd` feature flag) — NEON on aarch64, SSE4.1/AVX2 on x86_64

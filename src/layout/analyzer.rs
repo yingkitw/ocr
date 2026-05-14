@@ -1,6 +1,7 @@
 //! Layout analysis operations
 
 use crate::core::layout::*;
+use crate::layout::classifier::RegionClassifier;
 use crate::layout::column_detector::ColumnDetector;
 use crate::layout::detector::{ImageRegionDetector, TableDetector, TextRegionDetector};
 use crate::utils::Result;
@@ -25,33 +26,27 @@ impl LayoutAnalyzer {
         let tables = TableDetector::detect_tables(img)?;
         result.tables = tables;
 
-        // Resolve conflicts (Mixed content processing)
-        // 1. Remove text regions that are inside tables
-        let mut text_regions_in_tables = Vec::new();
+        // Resolve conflicts: remove text regions inside tables
         text_regions.retain(|region| {
             let center = region.bounding_box.center();
-            let mut inside_table = false;
-            for table in &result.tables {
-                if table
+            !result.tables.iter().any(|table| {
+                table
                     .bounding_box
                     .contains(center.x as u32, center.y as u32)
-                {
-                    inside_table = true;
-                    break;
-                }
-            }
-            if inside_table {
-                text_regions_in_tables.push(region.clone());
-            }
-            !inside_table
+            })
         });
 
-        // 2. Remove text regions that are inside images (optional, depends on requirement)
-        // For now we keep them but maybe mark them? Or if they are very small compared to image?
+        // Classify text regions (heading, body, caption, etc.)
+        let mut classifier = RegionClassifier::new(img.width, img.height);
+        let classifications = classifier.classify(&text_regions);
 
-        // Detect columns and reorder text regions
+        // Detect columns using recursive XY-cut for complex layouts
         let column_detector = ColumnDetector::default();
-        let column_partitions = column_detector.find_columns(img, &text_regions)?;
+        let column_partitions = column_detector.find_columns_xycut(
+            &text_regions,
+            img.width,
+            img.height,
+        );
 
         // Use column reading order
         let reading_order = column_detector.determine_reading_order(&column_partitions);
@@ -60,14 +55,13 @@ impl LayoutAnalyzer {
         let mut sorted_text_regions = Vec::new();
         for &idx in &reading_order {
             if let Some(partition) = column_partitions.get(idx) {
-                // Sort regions within the partition (Top-to-Bottom)
                 let mut regions = partition.text_regions.clone();
                 regions.sort_by(|a, b| a.bounding_box.top.cmp(&b.bounding_box.top));
                 sorted_text_regions.extend(regions);
             }
         }
 
-        // If column detection failed or returned empty (single column), fallback to simple sort
+        // Fallback to simple sort if column detection produced nothing
         if sorted_text_regions.is_empty() && !text_regions.is_empty() {
             sorted_text_regions = text_regions;
             sorted_text_regions.sort_by(|a, b| {
@@ -80,14 +74,25 @@ impl LayoutAnalyzer {
 
         result.text_regions = sorted_text_regions;
 
-        // Convert all regions to blocks
-        for region in &mut result.text_regions {
-            // Check if handwritten
-            let is_handwritten = TextRegionDetector::is_handwritten(img, region);
+        // Set reading order based on column count
+        if column_partitions.len() > 1 {
+            result.reading_order = ReadingOrder::MultiColumn;
+        } else {
+            result.reading_order = ReadingOrder::TopToBottom;
+        }
 
+        // Convert regions to blocks with classification info
+        for (i, region) in result.text_regions.iter_mut().enumerate() {
+            let is_handwritten = TextRegionDetector::is_handwritten(img, region);
             if is_handwritten {
                 region.properties.font_family = Some("handwritten".to_string());
             }
+
+            let region_type = if i < classifications.len() {
+                classifications[i].region_type
+            } else {
+                crate::layout::classifier::RegionType::Body
+            };
 
             let mut block = Block::new(
                 format!("block_{}", region.id),
@@ -97,8 +102,20 @@ impl LayoutAnalyzer {
 
             if is_handwritten {
                 block.properties.background_color =
-                    Some(crate::core::layout::Color::rgb(255, 255, 200)); // Mark with light yellow
+                    Some(crate::core::layout::Color::rgb(255, 255, 200));
             }
+
+            // Store classification in block metadata
+            block.properties.priority = match region_type {
+                crate::layout::classifier::RegionType::Heading => 1,
+                crate::layout::classifier::RegionType::SubHeading => 2,
+                crate::layout::classifier::RegionType::Body => 10,
+                crate::layout::classifier::RegionType::Caption => 20,
+                crate::layout::classifier::RegionType::Footer => 90,
+                crate::layout::classifier::RegionType::PageNumber => 91,
+                crate::layout::classifier::RegionType::Header => 5,
+                crate::layout::classifier::RegionType::Unknown => 50,
+            };
 
             result.blocks.push(block);
         }
@@ -118,30 +135,15 @@ impl LayoutAnalyzer {
                 BlockType::Table,
                 table.bounding_box,
             );
-            // We could populate block content with table structure here if we had it
             result.blocks.push(block);
         }
 
-        // Final sort of all blocks (interleaving text, images, tables)
-        // This is tricky with columns.
-        // A simple approach is to sort by top, but that breaks columns.
-        // Better: Keep text in its column order, and insert images/tables where they fit vertically?
-        // For now, let's trust the text ordering we just did, and append others?
-        // No, that puts images at the end.
-        // Let's use a "reading order" sort that respects columns if possible.
-        // But since Block structure is flat, we usually sort Top-Left.
-        // If we want to preserve column order, we should assign "priority" or "index" to blocks.
-
-        for (i, block) in result.blocks.iter_mut().enumerate() {
-            block.properties.priority = i as u32;
-        }
-
-        // Actually, let's sort by Top-Left for the final block list,
-        // but the `text_regions` list in `result` preserves the reading order.
+        // Sort blocks by priority then position
         result.blocks.sort_by(|a, b| {
-            a.bounding_box
-                .top
-                .cmp(&b.bounding_box.top)
+            a.properties
+                .priority
+                .cmp(&b.properties.priority)
+                .then_with(|| a.bounding_box.top.cmp(&b.bounding_box.top))
                 .then_with(|| a.bounding_box.left.cmp(&b.bounding_box.left))
         });
 

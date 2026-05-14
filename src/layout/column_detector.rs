@@ -342,6 +342,256 @@ impl ColumnDetector {
     pub fn set_cjk_script(&mut self, cjk_script: bool) {
         self.cjk_script = cjk_script;
     }
+
+    /// Recursive XY-cut algorithm for complex multi-column layouts
+    ///
+    /// Recursively partitions the page by alternating horizontal and vertical cuts
+    /// at significant gaps. This handles nested column layouts better than
+    /// simple gap analysis.
+    pub fn find_columns_xycut(
+        &self,
+        text_regions: &[TextRegion],
+        page_width: u32,
+        page_height: u32,
+    ) -> Vec<ColumnPartition> {
+        if text_regions.is_empty() {
+            return Vec::new();
+        }
+
+        let mut partitions = Vec::new();
+        self.xycut_recursive(
+            text_regions,
+            0,
+            0,
+            page_width,
+            page_height,
+            0, // start with vertical cut (columns)
+            &mut partitions,
+        );
+
+        if partitions.is_empty() {
+            let bbox = self.compute_bounding_box(text_regions);
+            partitions.push(ColumnPartition {
+                bounding_box: bbox,
+                text_regions: text_regions.to_vec(),
+                column_type: ColumnType::Text,
+                confidence: 1.0,
+            });
+        }
+
+        partitions
+    }
+
+    fn xycut_recursive(
+        &self,
+        regions: &[TextRegion],
+        x: u32,
+        y: u32,
+        w: u32,
+        h: u32,
+        depth: u32,
+        out: &mut Vec<ColumnPartition>,
+    ) {
+        if regions.is_empty() || depth > 10 {
+            return;
+        }
+
+        let min_gap = self.grid_size * 3; // Minimum gap to consider a cut
+        let max_depth = 4;
+
+        if depth >= max_depth {
+            // Leaf node: create partition
+            let bbox = self.compute_bounding_box(regions);
+            out.push(ColumnPartition {
+                bounding_box: bbox,
+                text_regions: regions.to_vec(),
+                column_type: ColumnType::Text,
+                confidence: 0.9,
+            });
+            return;
+        }
+
+        // Alternate between vertical (columns) and horizontal (rows/sections) cuts
+        if depth % 2 == 0 {
+            // Vertical cut: look for column gaps
+            if let Some(cut_x) = self.find_best_vertical_cut(regions, x, w, min_gap) {
+                let (left_regions, right_regions): (Vec<_>, Vec<_>) = regions
+                    .iter()
+                    .cloned()
+                    .partition(|r| {
+                        let cx = (r.bounding_box.left + r.bounding_box.right) / 2;
+                        cx < cut_x
+                    });
+
+                if !left_regions.is_empty() && !right_regions.is_empty() {
+                    self.xycut_recursive(&left_regions, x, y, cut_x - x, h, depth + 1, out);
+                    self.xycut_recursive(
+                        &right_regions,
+                        cut_x,
+                        y,
+                        (x + w) - cut_x,
+                        h,
+                        depth + 1,
+                        out,
+                    );
+                    return;
+                }
+            }
+        } else {
+            // Horizontal cut: look for section gaps
+            if let Some(cut_y) = self.find_best_horizontal_cut(regions, y, h, min_gap) {
+                let (top_regions, bottom_regions): (Vec<_>, Vec<_>) = regions
+                    .iter()
+                    .cloned()
+                    .partition(|r| {
+                        let cy = (r.bounding_box.top + r.bounding_box.bottom) / 2;
+                        cy < cut_y
+                    });
+
+                if !top_regions.is_empty() && !bottom_regions.is_empty() {
+                    self.xycut_recursive(&top_regions, x, y, w, cut_y - y, depth + 1, out);
+                    self.xycut_recursive(
+                        &bottom_regions,
+                        x,
+                        cut_y,
+                        w,
+                        (y + h) - cut_y,
+                        depth + 1,
+                        out,
+                    );
+                    return;
+                }
+            }
+        }
+
+        // No cut found: leaf node
+        let bbox = self.compute_bounding_box(regions);
+        out.push(ColumnPartition {
+            bounding_box: bbox,
+            text_regions: regions.to_vec(),
+            column_type: ColumnType::Text,
+            confidence: 0.9,
+        });
+    }
+
+    fn find_best_vertical_cut(
+        &self,
+        regions: &[TextRegion],
+        x_offset: u32,
+        width: u32,
+        min_gap: u32,
+    ) -> Option<u32> {
+        // Build projection profile
+        let mut projection = vec![0u32; width as usize];
+
+        for region in regions {
+            let left = region.bounding_box.left.saturating_sub(x_offset);
+            let right = region
+                .bounding_box
+                .right
+                .saturating_sub(x_offset)
+                .min(width - 1);
+            for px in left..=right {
+                if (px as usize) < projection.len() {
+                    projection[px as usize] += 1;
+                }
+            }
+        }
+
+        // Find widest gap with zero projection
+        let mut best_gap_start = 0u32;
+        let mut best_gap_width = 0u32;
+        let mut gap_start = None;
+
+        for (x, &count) in projection.iter().enumerate() {
+            let x = x as u32;
+            if count == 0 {
+                if gap_start.is_none() {
+                    gap_start = Some(x);
+                }
+            } else if let Some(start) = gap_start {
+                let gap_width = x - start;
+                if gap_width > best_gap_width {
+                    best_gap_width = gap_width;
+                    best_gap_start = start;
+                }
+                gap_start = None;
+            }
+        }
+
+        if best_gap_width >= min_gap {
+            let cut = x_offset + best_gap_start + best_gap_width / 2;
+            // Verify cut splits regions meaningfully
+            let left_count = regions
+                .iter()
+                .filter(|r| (r.bounding_box.left + r.bounding_box.right) / 2 < cut)
+                .count();
+            let right_count = regions.len() - left_count;
+            if left_count > 0 && right_count > 0 {
+                return Some(cut);
+            }
+        }
+
+        None
+    }
+
+    fn find_best_horizontal_cut(
+        &self,
+        regions: &[TextRegion],
+        y_offset: u32,
+        height: u32,
+        min_gap: u32,
+    ) -> Option<u32> {
+        let mut projection = vec![0u32; height as usize];
+
+        for region in regions {
+            let top = region.bounding_box.top.saturating_sub(y_offset);
+            let bottom = region
+                .bounding_box
+                .bottom
+                .saturating_sub(y_offset)
+                .min(height - 1);
+            for py in top..=bottom {
+                if (py as usize) < projection.len() {
+                    projection[py as usize] += 1;
+                }
+            }
+        }
+
+        let mut best_gap_start = 0u32;
+        let mut best_gap_width = 0u32;
+        let mut gap_start = None;
+
+        for (y, &count) in projection.iter().enumerate() {
+            let y = y as u32;
+            if count == 0 {
+                if gap_start.is_none() {
+                    gap_start = Some(y);
+                }
+            } else if let Some(start) = gap_start {
+                let gap_width = y - start;
+                if gap_width > best_gap_width {
+                    best_gap_width = gap_width;
+                    best_gap_start = start;
+                }
+                gap_start = None;
+            }
+        }
+
+        if best_gap_width >= min_gap {
+            let cut = y_offset + best_gap_start + best_gap_width / 2;
+            let top_count = regions
+                .iter()
+                .filter(|r| (r.bounding_box.top + r.bounding_box.bottom) / 2 < cut)
+                .count();
+            let bottom_count = regions.len() - top_count;
+            if top_count > 0 && bottom_count > 0 {
+                return Some(cut);
+            }
+        }
+
+        None
+    }
 }
 
 impl Default for ColumnDetector {
