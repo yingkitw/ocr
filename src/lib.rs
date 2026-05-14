@@ -5,6 +5,8 @@ pub mod core;
 pub mod image;
 pub mod lang;
 pub mod layout;
+#[cfg(feature = "pdf")]
+pub mod pdf;
 pub mod recognition;
 #[cfg(feature = "web-api")]
 pub mod server;

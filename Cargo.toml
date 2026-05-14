@@ -45,7 +45,8 @@ default = ["simd"]
 simd = []
 cuda = []
 opencl = []
-web-api = ["axum", "tower", "tower-http", "multer"]
+web-api = ["dep:axum", "dep:tower", "dep:tower-http", "dep:multer"]
+pdf = ["dep:pdf"]
 opencv = []
 
 [dependencies.axum]
@@ -65,6 +66,11 @@ optional = true
 [dependencies.multer]
 version = "3"
 optional = true
+
+[dependencies.pdf]
+version = "0.9"
+optional = true
+default-features = false
 
 [profile.release]
 opt-level = 3

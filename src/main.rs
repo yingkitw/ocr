@@ -207,6 +207,25 @@ async fn extract_text(
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
+    let ext = image_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if ext == "pdf" {
+        #[cfg(feature = "pdf")]
+        {
+            return extract_pdf_text(&ocr, &image_path, output, format, lang, dict_correct).await;
+        }
+        #[cfg(not(feature = "pdf"))]
+        {
+            return Err(anyhow!(
+                "PDF support is not enabled. Rebuild with: cargo build --features pdf"
+            ));
+        }
+    }
+
     let mut result = ocr
         .recognize_text_from_file(&image_path)
         .await
@@ -219,6 +238,69 @@ async fn extract_text(
     info!("OCR completed with confidence: {:.2}%", result.confidence * 100.0);
 
     let output_content = format_result(&result, format)?;
+    write_output(&output_content, output)
+}
+
+#[cfg(feature = "pdf")]
+async fn extract_pdf_text(
+    ocr: &Ocr,
+    pdf_path: &std::path::Path,
+    output: Option<PathBuf>,
+    format: &str,
+    lang: &str,
+    dict_correct: bool,
+) -> Result<()> {
+    use ocr::pdf::extract_images;
+
+    info!("Extracting images from PDF: {:?}", pdf_path);
+    let images = extract_images(pdf_path)?;
+
+    if images.is_empty() {
+        warn!("No embedded images found in PDF. For vector-based PDFs, convert to images first.");
+        return Ok(());
+    }
+
+    info!("Found {} images across {} pages", images.len(), images.iter().map(|i| i.page_number).max().unwrap_or(0));
+
+    let mut all_text = Vec::new();
+    for img in &images {
+        let img_format = match img.format {
+            ocr::pdf::PdfImageFormat::Jpeg => "jpeg",
+            ocr::pdf::PdfImageFormat::Png => "png",
+            ocr::pdf::PdfImageFormat::Raw => "raw",
+        };
+        info!(
+            "Processing page {}: {}x{} ({})",
+            img.page_number, img.width, img.height, img_format
+        );
+
+        match ocr.recognize_text(&img.data, img.width, img.height).await {
+            Ok(mut result) => {
+                if dict_correct {
+                    apply_dictionary_correction(&mut result, lang);
+                }
+                all_text.push(format!("--- Page {} ---\n{}", img.page_number, result.text));
+            }
+            Err(e) => {
+                warn!("Failed to OCR page {}: {}", img.page_number, e);
+            }
+        }
+    }
+
+    let combined = all_text.join("\n\n");
+    let output_content = if format == "json" {
+        serde_json::to_string_pretty(&serde_json::json!({
+            "pages": images.iter().map(|i| serde_json::json!({
+                "page": i.page_number,
+                "width": i.width,
+                "height": i.height,
+            })).collect::<Vec<_>>(),
+            "text": combined,
+        }))?
+    } else {
+        combined
+    };
+
     write_output(&output_content, output)
 }
 
