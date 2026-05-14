@@ -49,6 +49,10 @@ pub enum Commands {
         /// Enable dictionary-based post-correction
         #[arg(long)]
         dict_correct: bool,
+
+        /// Compute device: cpu, gpu, auto (default: auto)
+        #[arg(long, default_value = "auto")]
+        device: String,
     },
 
     /// Batch process multiple images from a directory
@@ -80,6 +84,10 @@ pub enum Commands {
         /// Enable dictionary-based post-correction
         #[arg(long)]
         dict_correct: bool,
+
+        /// Compute device: cpu, gpu, auto (default: auto)
+        #[arg(long, default_value = "auto")]
+        device: String,
     },
 
     /// Analyze image layout

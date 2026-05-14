@@ -32,6 +32,7 @@ fastrand = "2.0"
 rand = "0.8"
 blake3 = "1.5"
 sha2 = "0.10"
+rayon = "1.8"
 
 [dev-dependencies]
 tempfile = "3.8"
@@ -43,8 +44,8 @@ reqwest = { version = "0.12", features = ["multipart", "json"] }
 [features]
 default = ["simd"]
 simd = []
-cuda = []
-opencl = []
+cuda = ["dep:cudarc"]
+opencl = ["dep:ocl"]
 web-api = ["dep:axum", "dep:tower", "dep:tower-http", "dep:multer"]
 pdf = ["dep:pdf"]
 opencv = []
@@ -71,6 +72,15 @@ optional = true
 version = "0.9"
 optional = true
 default-features = false
+
+[dependencies.cudarc]
+version = "0.12"
+optional = true
+features = ["cuda-12040"]
+
+[dependencies.ocl]
+version = "0.19"
+optional = true
 
 [profile.release]
 opt-level = 3

@@ -1,6 +1,7 @@
 #![allow(ambiguous_glob_reexports)]
 
 pub mod api;
+pub mod compute;
 pub mod core;
 pub mod image;
 pub mod lang;

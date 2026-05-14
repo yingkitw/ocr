@@ -277,6 +277,8 @@ pub struct PerformanceConfig {
     pub cache_size_mb: usize,
     /// Enable parallel processing
     pub enable_parallel_processing: bool,
+    /// Compute device: cpu, gpu, auto
+    pub device: String,
     /// Additional parameters
     pub parameters: HashMap<String, String>,
 }
@@ -290,6 +292,7 @@ impl Default for PerformanceConfig {
             memory_limit_mb: 1024,
             cache_size_mb: 256,
             enable_parallel_processing: true,
+            device: "auto".to_string(),
             parameters: HashMap::new(),
         }
     }

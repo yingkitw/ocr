@@ -252,15 +252,57 @@ pub struct ModelManager {
     models: HashMap<ModelType, Box<dyn OcrModel>>,
     active_model: Option<ModelType>,
     device: DeviceType,
+    backend: Option<Box<dyn crate::compute::ComputeBackend>>,
 }
 
 impl ModelManager {
     /// Create a new model manager
     pub fn new(device: DeviceType) -> Self {
+        let backend = match device {
+            DeviceType::CPU => Some(crate::compute::create_backend(
+                crate::compute::BackendType::Cpu,
+            ).ok()).flatten(),
+            DeviceType::GPU => Some(crate::compute::create_auto_backend().ok()).flatten(),
+            DeviceType::NPU => Some(crate::compute::create_backend(
+                crate::compute::BackendType::Cpu,
+            ).ok()).flatten(),
+            DeviceType::Auto => Some(crate::compute::create_auto_backend().ok()).flatten(),
+        };
+
+        let actual_device = backend
+            .as_ref()
+            .map(|b| match b.backend_type() {
+                crate::compute::BackendType::Cpu => DeviceType::CPU,
+                #[cfg(feature = "cuda")]
+                crate::compute::BackendType::Cuda => DeviceType::GPU,
+                #[cfg(feature = "opencl")]
+                crate::compute::BackendType::OpenCl => DeviceType::GPU,
+            })
+            .unwrap_or(DeviceType::CPU);
+
         Self {
             models: HashMap::new(),
             active_model: None,
-            device,
+            device: actual_device,
+            backend,
+        }
+    }
+
+    /// Get the compute backend
+    pub fn backend(&self) -> Option<&dyn crate::compute::ComputeBackend> {
+        self.backend.as_ref().map(|b| b.as_ref())
+    }
+
+    /// Get the active device type
+    pub fn device(&self) -> DeviceType {
+        self.device
+    }
+
+    /// Get backend information string
+    pub fn backend_info(&self) -> String {
+        match &self.backend {
+            Some(b) => format!("{} ({})", b.backend_type().name(), b.device_name()),
+            None => "CPU (fallback)".to_string(),
         }
     }
 

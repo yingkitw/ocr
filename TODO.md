@@ -2,7 +2,7 @@
 
 ## Near-term
 
-- [ ] Add CUDA/OpenCL backend support for neural network models
+- [x] Add CUDA/OpenCL backend support for neural network models
 
 ## Completed
 

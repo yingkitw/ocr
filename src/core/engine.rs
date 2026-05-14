@@ -21,6 +21,8 @@ pub struct OcrEngine {
     profiler: Profiler,
     /// Engine metadata
     metadata: EngineMetadata,
+    /// Compute backend for neural network operations
+    compute_backend: Option<Box<dyn crate::compute::ComputeBackend>>,
 }
 
 /// Engine state
@@ -130,6 +132,9 @@ impl OcrEngine {
         // Validate configuration
         config.validate()?;
 
+        // Initialize compute backend based on device setting
+        let compute_backend = Self::create_compute_backend(&config);
+
         let engine = Self {
             config,
             state: RwLock::new(EngineState::default()),
@@ -161,6 +166,7 @@ impl OcrEngine {
                     "ko".to_string(),
                 ],
             },
+            compute_backend,
         };
 
         Ok(engine)
@@ -383,8 +389,48 @@ impl OcrEngine {
 
     /// Initialize recognition engine
     async fn initialize_recognition_engine(&self) -> Result<()> {
-        // TODO: Initialize LSTM or pattern matching engine
+        // Log compute backend information
+        if let Some(ref backend) = self.compute_backend {
+            tracing::info!(
+                "Compute backend: {} ({})",
+                backend.backend_type().name(),
+                backend.device_name()
+            );
+        } else {
+            tracing::info!("Compute backend: CPU (fallback)");
+        }
         Ok(())
+    }
+
+    /// Create compute backend based on configuration
+    fn create_compute_backend(config: &OcrConfig) -> Option<Box<dyn crate::compute::ComputeBackend>> {
+        use crate::compute::{BackendType, create_backend};
+
+        let device_str = config.performance.device.to_lowercase();
+        let backend_type = match device_str.as_str() {
+            "cpu" => BackendType::Cpu,
+            "gpu" => BackendType::detect(), // Auto-detect best GPU backend
+            "auto" => BackendType::detect(), // Auto-detect best available backend
+            #[cfg(feature = "cuda")]
+            "cuda" => BackendType::Cuda,
+            #[cfg(feature = "opencl")]
+            "opencl" => BackendType::OpenCl,
+            _ => {
+                tracing::warn!(
+                    "Unknown device '{}', falling back to auto-detection",
+                    device_str
+                );
+                BackendType::detect()
+            }
+        };
+
+        match create_backend(backend_type) {
+            Ok(backend) => Some(backend),
+            Err(e) => {
+                tracing::warn!("Failed to create compute backend: {}, using CPU fallback", e);
+                None
+            }
+        }
     }
 
     /// Initialize image processing

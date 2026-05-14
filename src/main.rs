@@ -35,8 +35,9 @@ async fn main() -> Result<()> {
             confidence,
             engine,
             dict_correct,
+            device,
         } => {
-            extract_text(image_path, output, &lang, preprocess, &format, psm, confidence, &engine, dict_correct).await?;
+            extract_text(image_path, output, &lang, preprocess, &format, psm, confidence, &engine, dict_correct, &device).await?;
         }
         Commands::Batch {
             input_dir,
@@ -46,8 +47,9 @@ async fn main() -> Result<()> {
             max_concurrent,
             engine,
             dict_correct,
+            device,
         } => {
-            batch_process(input_dir, output_dir, &lang, confidence, max_concurrent, &engine, dict_correct).await?;
+            batch_process(input_dir, output_dir, &lang, confidence, max_concurrent, &engine, dict_correct, device.as_str()).await?;
         }
         Commands::Layout {
             image_path,
@@ -94,7 +96,15 @@ fn parse_engine(s: &str) -> RecognitionEngine {
     }
 }
 
-fn build_config(lang: &str, preprocess: bool, psm: u8, confidence: f32, engine: &str, dict_correct: bool) -> OcrConfig {
+fn build_config(
+    lang: &str,
+    preprocess: bool,
+    psm: u8,
+    confidence: f32,
+    engine: &str,
+    dict_correct: bool,
+    device: &str,
+) -> OcrConfig {
     let mut config = OcrConfig::default();
     config.recognition.language = lang.to_string();
     config.recognition.confidence_threshold = confidence;
@@ -197,13 +207,14 @@ async fn extract_text(
     confidence: f32,
     engine: &str,
     dict_correct: bool,
+    device: &str,
 ) -> Result<()> {
     info!(
         "Starting OCR extraction for: {:?} (psm={}, format={}, engine={})",
         image_path, psm, format, engine
     );
 
-    let config = build_config(lang, preprocess, psm, confidence, engine, dict_correct);
+    let config = build_config(lang, preprocess, psm, confidence, engine, dict_correct, device);
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
@@ -312,6 +323,7 @@ async fn batch_process(
     _max_concurrent: usize,
     engine: &str,
     dict_correct: bool,
+    device: &str,
 ) -> Result<()> {
     info!(
         "Batch processing images from: {:?} -> {:?}",
@@ -320,7 +332,7 @@ async fn batch_process(
 
     tokio::fs::create_dir_all(&output_dir).await?;
 
-    let config = build_config(lang, true, 3, confidence, engine, dict_correct);
+    let config = build_config(lang, true, 3, confidence, engine, dict_correct, device);
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
