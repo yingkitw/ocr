@@ -49,7 +49,12 @@ fn test_cli_list_languages_command() {
         .stdout(predicates::str::contains("en"))
         .stdout(predicates::str::contains("zh"))
         .stdout(predicates::str::contains("ja"))
-        .stdout(predicates::str::contains("ko"));
+        .stdout(predicates::str::contains("ko"))
+        .stdout(predicates::str::contains("fr"))
+        .stdout(predicates::str::contains("de"))
+        .stdout(predicates::str::contains("es"))
+        .stdout(predicates::str::contains("nl"))
+        .stdout(predicates::str::contains("ru"));
 }
 
 #[test]
@@ -125,6 +130,44 @@ fn test_cli_extract_with_cjk_lang() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
     cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "zh"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_french_lang() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "fr"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_german_lang() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "de"]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_spanish_lang_and_dict_correct() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&[
+        "extract",
+        file.path().to_str().unwrap(),
+        "--lang",
+        "es",
+        "--dict-correct",
+    ]);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_with_device_cpu() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&["extract", file.path().to_str().unwrap(), "--device", "cpu"]);
     cmd.assert().success();
 }
 

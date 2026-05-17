@@ -195,8 +195,13 @@ impl Ocr {
     }
 
     /// Get supported languages
-    pub fn get_supported_languages(&self) -> &[String] {
-        &self.metadata.supported_languages
+    pub fn get_supported_languages(&self) -> Vec<String> {
+        let engine = self.engine.try_read().ok();
+        if let Some(e) = engine {
+            e.get_metadata().supported_languages.clone()
+        } else {
+            self.metadata.supported_languages.clone()
+        }
     }
 
     /// Get supported image formats

@@ -6,6 +6,12 @@
 
 ## Completed
 
+- [x] Add A-Z, 0-9, and common symbols to test font renderer (`core/engine.rs` glyph_rows) — 37 glyphs in 5x7 bitmap
+- [x] Expand supported languages from 10 to 30 codes (added nl, pl, sv, da, fi, no, tr, el, hi, th, vi, ar, he, id, ms, uk, cs, hu, ro, bg)
+- [x] Update CLI `--lang` help text in `cli/mod.rs` (Extract + Batch)
+- [x] Add per-language dictionaries: French, Spanish, German, Italian, Portuguese, Russian (`lang/dictionary.rs`)
+- [x] Wire language-aware dictionary selection into engine post-processing (`DictionaryHandler::new_for_language`)
+
 - [x] Improve layout analysis for complex multi-column documents — recursive XY-cut, region classifier (heading/body/caption/footer/page-number)
 - [x] Add PDF input support — `ocr extract file.pdf` extracts embedded images via `pdf` crate
 - [x] Add web API mode for HTTP-based OCR — `ocr serve` with axum, multipart upload, /health, /languages, /recognize
