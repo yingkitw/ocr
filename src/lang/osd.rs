@@ -125,9 +125,10 @@ impl OsdDetector {
         let mut result = OsdResult::new();
 
         // Get image dimensions and pixel data
-        let width = image.width();
-        let height = image.height();
-        let pixels = image.pixels();
+        let width = image.width;
+        let height = image.height;
+        let gray = image.data.to_luma8();
+        let pixels = gray.as_raw();
 
         if width == 0 || height == 0 || pixels.is_empty() {
             return Ok(result);
@@ -378,24 +379,19 @@ impl Default for OsdDetector {
 
 /// Apply rotation to an image based on OSD result
 pub fn apply_rotation(image: &OcrImage, osd: &OsdResult) -> Result<OcrImage> {
-    use image::{DynamicImage, GenericImageView, Rgba};
-
     match osd.orientation {
         TextOrientation::Normal => Ok(image.clone()),
         TextOrientation::Rotated90 => {
-            let img = image.to_dynamic_image()?;
-            let rotated = img.rotate90();
-            OcrImage::from_dynamic_image(&rotated)
+            let rotated = image.data.rotate90();
+            Ok(OcrImage::new(rotated, image.dpi))
         }
         TextOrientation::Rotated180 => {
-            let img = image.to_dynamic_image()?;
-            let rotated = img.rotate180();
-            OcrImage::from_dynamic_image(&rotated)
+            let rotated = image.data.rotate180();
+            Ok(OcrImage::new(rotated, image.dpi))
         }
         TextOrientation::Rotated270 => {
-            let img = image.to_dynamic_image()?;
-            let rotated = img.rotate270();
-            OcrImage::from_dynamic_image(&rotated)
+            let rotated = image.data.rotate270();
+            Ok(OcrImage::new(rotated, image.dpi))
         }
     }
 }
