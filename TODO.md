@@ -4,6 +4,19 @@
 
 - [x] Add CUDA/OpenCL backend support for neural network models
 
+### Tesseract-like Capabilities
+
+Implement features comparable to Tesseract OCR:
+
+- [ ] **ALTO XML output format** — Standard XML for digital library interchange (Library of Congress standard)
+- [ ] **OSD (Orientation & Script Detection)** — Auto-detect text rotation angle (0/90/180/270°) and dominant script before recognition
+- [ ] **Font attribute detection** — Detect bold, italic, monospace from character stroke width/slant analysis; populate WordFlag::Bold/Italic
+- [ ] **Searchable PDF output** — Generate PDF with invisible text layer overlaid on original image (`ocr extract input.png --format pdf`)
+- [ ] **Vertical text support** — CJK vertical text layout detection and proper top-to-bottom reading order
+- [ ] **Fix hOCR output** — Remove duplicate title attributes; ensure valid hOCR 4.1 spec compliance
+- [ ] **Box file generation** — Generate `.box` files for model training from ground-truth + image pairs
+- [ ] **Word-level and char-level confidence in TSV** — Match Tesseract's `level`, `page_num`, `block_num`, `par_num`, `line_num`, `word_num`, `left`, `top`, `width`, `height`, `conf`, `text` columns
+
 ## Completed
 
 - [x] Add A-Z, 0-9, and common symbols to test font renderer (`core/engine.rs` glyph_rows) — 37 glyphs in 5x7 bitmap

@@ -30,7 +30,7 @@ pub enum Commands {
         #[arg(long)]
         preprocess: bool,
 
-        /// Output format: text, json, hocr, tsv
+        /// Output format: text, json, hocr, tsv, alto, xml
         #[arg(short, long, default_value = "text")]
         format: String,
 

@@ -22,6 +22,8 @@ pub enum OutputFormat {
     HOcr,
     /// TSV (tab-separated values)
     Tsv,
+    /// ALTO XML (standard library format)
+    Alto,
 }
 
 /// JSON output structure
@@ -222,20 +224,21 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
         for (word_idx, word) in line.words.iter().enumerate() {
             let word_bbox = &word.bounding_box;
             html.push_str(&format!(
-                "      <span class='ocr_carea' id='word_1_{}_{}' title=\"bbox {} {} {} {}\">",
+                "      <span class='ocrx_word' id='word_1_{}_{}' title=\"bbox {} {} {} {}; x_wconf {:.0}\">",
                 line_idx + 1,
                 word_idx + 1,
                 word_bbox.left,
                 word_bbox.top,
                 word_bbox.right,
-                word_bbox.bottom
+                word_bbox.bottom,
+                word.confidence * 100.0
             ));
 
             // Characters with x_word
             for (char_idx, ch) in word.characters.iter().enumerate() {
                 let ch_bbox = &ch.bounding_box;
                 html.push_str(&format!(
-                    "<span class='ocrx_word' id='xword_1_{}_{}_{}' title='bbox {} {} {} {}; x_wconf {:.0}' title=\"bbox {} {} {} {}\">{}</span>",
+                    "<span class='ocrx_cinfo' id='xword_1_{}_{}_{}' title='bbox {} {} {} {}; x_wconf {:.0}'>{}</span>",
                     line_idx + 1,
                     word_idx + 1,
                     char_idx + 1,
@@ -244,19 +247,13 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
                     ch_bbox.right,
                     ch_bbox.bottom,
                     ch.confidence * 100.0,
-                    ch_bbox.left,
-                    ch_bbox.top,
-                    ch_bbox.right,
-                    ch_bbox.bottom,
                     ch.character
                 ));
             }
 
-            html.push_str(&format!("{}</span>\n", word.text));
+            html.push_str("</span>\n");
         }
 
-        // Emit the full line text so it appears in the output
-        html.push_str(&format!("      <span class='ocr_line_text'>{}</span>\n", line.text));
         html.push_str("    </div>\n");
     }
 
@@ -305,6 +302,83 @@ pub fn format_tsv(result: &TextResult) -> Result<String> {
     Ok(output)
 }
 
+/// Generate ALTO XML output
+///
+/// ALTO (Analyzed Layout and Text Object) is a standard XML format
+/// for representing OCR output, used by digital libraries.
+pub fn format_alto(result: &TextResult) -> Result<String> {
+    let mut xml = String::new();
+    let bbox = &result.bounding_box;
+
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str("<alto xmlns=\"http://www.loc.gov/standards/alto/ns-v4#\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.loc.gov/standards/alto/ns-v4# http://www.loc.gov/standards/alto/v4/alto-4-4.xsd\" VERSION=\"4.4\">\n");
+    xml.push_str("  <Description>\n");
+    xml.push_str("    <MeasurementUnit>pixel</MeasurementUnit>\n");
+    xml.push_str("    <OCRProcessing>\n");
+    xml.push_str("      <ocrProcessingStep>\n");
+    xml.push_str("        <processingSoftware>\n");
+    xml.push_str(&format!("          <softwareName>OCR</softwareName>\n"));
+    xml.push_str(&format!("          <softwareVersion>{}</softwareVersion>\n", env!("CARGO_PKG_VERSION")));
+    xml.push_str("        </processingSoftware>\n");
+    xml.push_str("      </ocrProcessingStep>\n");
+    xml.push_str("    </OCRProcessing>\n");
+    xml.push_str("  </Description>\n");
+
+    xml.push_str(&format!(
+        "  <Layout>\n    <Page WIDTH=\"{}\" HEIGHT=\"{}\" PHYSICAL_IMG_NR=\"1\" ID=\"page_1\">\n",
+        bbox.right, bbox.bottom
+    ));
+    xml.push_str(&format!(
+        "      <PrintSpace HPOS=\"0\" VPOS=\"0\" WIDTH=\"{}\" HEIGHT=\"{}\">\n",
+        bbox.right, bbox.bottom
+    ));
+
+    for (line_idx, line) in result.lines.iter().enumerate() {
+        let lb = &line.bounding_box;
+        xml.push_str(&format!(
+            "        <TextLine ID=\"line_{}\" HPOS=\"{}\" VPOS=\"{}\" WIDTH=\"{}\" HEIGHT=\"{}\">\n",
+            line_idx + 1,
+            lb.left,
+            lb.top,
+            lb.width(),
+            lb.height()
+        ));
+
+        for (word_idx, word) in line.words.iter().enumerate() {
+            let wb = &word.bounding_box;
+            let wc = (word.confidence * 100.0).round() as u32;
+            xml.push_str(&format!(
+                "          <String ID=\"word_{}_{}\" HPOS=\"{}\" VPOS=\"{}\" WIDTH=\"{}\" HEIGHT=\"{}\" CONTENT=\"{}\" WC=\"0.{}\"/>\n",
+                line_idx + 1,
+                word_idx + 1,
+                wb.left,
+                wb.top,
+                wb.width(),
+                wb.height(),
+                xml_escape(&word.text),
+                wc
+            ));
+        }
+
+        xml.push_str("        </TextLine>\n");
+    }
+
+    xml.push_str("      </PrintSpace>\n");
+    xml.push_str("    </Page>\n");
+    xml.push_str("  </Layout>\n");
+    xml.push_str("</alto>\n");
+
+    Ok(xml)
+}
+
+/// Escape text for XML attribute
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 /// Format output in the specified format
 pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String> {
     match format {
@@ -312,6 +386,7 @@ pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String
         OutputFormat::Json => format_json(result),
         OutputFormat::HOcr => format_hocr(result),
         OutputFormat::Tsv => format_tsv(result),
+        OutputFormat::Alto => format_alto(result),
     }
 }
 
@@ -322,8 +397,9 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
         "json" => Ok(OutputFormat::Json),
         "hocr" | "html" => Ok(OutputFormat::HOcr),
         "tsv" => Ok(OutputFormat::Tsv),
+        "alto" | "xml" => Ok(OutputFormat::Alto),
         _ => Err(crate::OcrError::InvalidInput(format!(
-            "Unknown output format: {}. Supported: text, json, hocr, tsv",
+            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto",
             s
         ))
         .into()),
@@ -412,5 +488,31 @@ mod tests {
         let result = create_test_result();
         let output = format_output(&result, OutputFormat::PlainText).unwrap();
         assert_eq!(output, "Hello World");
+    }
+
+    #[test]
+    fn test_format_alto() {
+        let result = create_test_result();
+        let alto = format_alto(&result).unwrap();
+
+        assert!(alto.contains("<?xml version=\"1.0\""));
+        assert!(alto.contains("<alto xmlns=\"http://www.loc.gov/standards/alto/ns-v4#\""));
+        assert!(alto.contains("<String"));
+        assert!(alto.contains("CONTENT=\"Hello\""));
+        assert!(alto.contains("CONTENT=\"World\""));
+        assert!(alto.contains("</alto>"));
+    }
+
+    #[test]
+    fn test_xml_escape() {
+        assert_eq!(xml_escape("A & B"), "A &amp; B");
+        assert_eq!(xml_escape("<tag>"), "&lt;tag&gt;");
+        assert_eq!(xml_escape("say \"hi\""), "say &quot;hi&quot;");
+    }
+
+    #[test]
+    fn test_parse_alto_format() {
+        assert!(matches!(parse_output_format("alto"), Ok(OutputFormat::Alto)));
+        assert!(matches!(parse_output_format("xml"), Ok(OutputFormat::Alto)));
     }
 }
