@@ -53,6 +53,10 @@ pub enum Commands {
         /// Compute device: cpu, gpu, auto (default: auto)
         #[arg(long, default_value = "auto")]
         device: String,
+
+        /// Enable orientation and script detection (OSD)
+        #[arg(long)]
+        osd: bool,
     },
 
     /// Batch process multiple images from a directory

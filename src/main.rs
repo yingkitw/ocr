@@ -9,7 +9,7 @@ use tracing::{error, info, warn};
 
 use ocr::api::{Ocr, TextProcessor};
 use ocr::core::config::{OcrConfig, PageSegMode, RecognitionEngine};
-use ocr::core::output::{format_alto, format_hocr, format_tsv, to_json_output};
+use ocr::core::output::{format_alto, format_box, format_hocr, format_tsv, to_json_output};
 use ocr::core::text::TextResult;
 use ocr::lang::dictionary::Dictionary;
 
@@ -36,8 +36,9 @@ async fn main() -> Result<()> {
             engine,
             dict_correct,
             device,
+            osd,
         } => {
-            extract_text(image_path, output, &lang, preprocess, &format, psm, confidence, &engine, dict_correct, &device).await?;
+            extract_text(image_path, output, &lang, preprocess, &format, psm, confidence, &engine, dict_correct, &device, osd).await?;
         }
         Commands::Batch {
             input_dir,
@@ -104,6 +105,7 @@ fn build_config(
     engine: &str,
     dict_correct: bool,
     device: &str,
+    osd: bool,
 ) -> OcrConfig {
     let mut config = OcrConfig::default();
     config.recognition.language = lang.to_string();
@@ -116,6 +118,8 @@ fn build_config(
     config.image_processing.enable_contrast_enhancement = preprocess;
     config.image_processing.enable_deskewing = preprocess;
     config.layout_analysis.page_seg_mode = psm_to_mode(psm);
+    config.layout_analysis.enable_orientation_detection = osd || preprocess;
+    config.performance.device = device.to_string();
     config
 }
 
@@ -172,6 +176,8 @@ fn format_result(result: &TextResult, format: &str) -> Result<String> {
         "hocr" | "html" => Ok(format_hocr(result)?),
         "tsv" => Ok(format_tsv(result)?),
         "alto" | "xml" => Ok(format_alto(result)?),
+        "box" => Ok(format_box(result)?),
+        "pdf" => Ok("PDF output requires binary generation. Use --format pdf with --output.".to_string()),
         _ => {
             if result.text.is_empty() {
                 warn!("No text recognized");
@@ -209,13 +215,14 @@ async fn extract_text(
     engine: &str,
     dict_correct: bool,
     device: &str,
+    osd: bool,
 ) -> Result<()> {
     info!(
         "Starting OCR extraction for: {:?} (psm={}, format={}, engine={})",
         image_path, psm, format, engine
     );
 
-    let config = build_config(lang, preprocess, psm, confidence, engine, dict_correct, device);
+    let config = build_config(lang, preprocess, psm, confidence, engine, dict_correct, device, osd);
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
@@ -249,8 +256,81 @@ async fn extract_text(
 
     info!("OCR completed with confidence: {:.2}%", result.confidence * 100.0);
 
+    if format.to_lowercase() == "pdf" {
+        return generate_searchable_pdf(&image_path, &result, output).await;
+    }
+
     let output_content = format_result(&result, format)?;
     write_output(&output_content, output)
+}
+
+async fn generate_searchable_pdf(
+    image_path: &std::path::Path,
+    result: &TextResult,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    let out_path = match output {
+        Some(p) => p,
+        None => return Err(anyhow!("PDF output requires --output file path")),
+    };
+
+    let img_data = tokio::fs::read(image_path).await?;
+    let dynamic_img = ::image::load_from_memory(&img_data)?;
+    let (img_width_px, img_height_px) = dynamic_img.dimensions();
+
+    // Use 300 DPI for pixel-to-mm conversion
+    let px_to_mm = |px: f32| printpdf::Mm(px * 25.4 / 300.0);
+    let page_width = px_to_mm(img_width_px as f32);
+    let page_height = px_to_mm(img_height_px as f32);
+
+    let mut doc = printpdf::PdfDocument::new("OCR Output");
+    let page_idx = doc.add_page(page_width, page_height, "Layer1");
+    let page = doc.get_page(page_idx);
+    let layer = page.get_layer(page.get_layers().keys().next().cloned().unwrap());
+
+    // Embed image
+    let pdf_image = printpdf::Image::from_dynamic_image(&dynamic_img);
+    let transform = printpdf::ImageTransform {
+        translate_x: Some(printpdf::Mm(0.0)),
+        translate_y: Some(printpdf::Mm(0.0)),
+        scale_x: Some(page_width.0 / img_width_px as f32),
+        scale_y: Some(page_height.0 / img_height_px as f32),
+        rotate: None,
+        dpi: Some(300.0),
+    };
+    pdf_image.add_to_layer(layer.clone(), transform);
+
+    // Add text overlay
+    let font = doc.add_builtin_font(printpdf::BuiltinFont::Helvetica)?;
+
+    for line in &result.lines {
+        for word in &line.words {
+            let bbox = &word.bounding_box;
+            let x = px_to_mm(bbox.left as f32);
+            // PDF y=0 is at bottom, image y=0 is at top, so flip
+            let y = page_height - px_to_mm(bbox.bottom as f32);
+            let font_size = px_to_mm((bbox.bottom - bbox.top) as f32).0.max(1.0);
+
+            layer.use_font(&font, font_size);
+            layer.begin_text_section();
+            layer.set_text_cursor(x, y);
+            layer.set_line_height(font_size * 1.2);
+            layer.set_fill_color(printpdf::Color::Rgb(printpdf::Rgb {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                icc_profile: None,
+            }));
+            layer.write_text(&word.text, &font);
+            layer.end_text_section();
+        }
+    }
+
+    let mut file = std::fs::File::create(&out_path)?;
+    doc.save_to(&mut file)
+        .map_err(|e| anyhow!("PDF save error: {}", e))?;
+    println!("Searchable PDF saved to: {:?}", out_path);
+    Ok(())
 }
 
 #[cfg(feature = "pdf")]
@@ -333,7 +413,7 @@ async fn batch_process(
 
     tokio::fs::create_dir_all(&output_dir).await?;
 
-    let config = build_config(lang, true, 3, confidence, engine, dict_correct, device);
+    let config = build_config(lang, true, 3, confidence, engine, dict_correct, device, false);
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 

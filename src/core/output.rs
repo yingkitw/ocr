@@ -24,6 +24,10 @@ pub enum OutputFormat {
     Tsv,
     /// ALTO XML (standard library format)
     Alto,
+    /// Box file for Tesseract training
+    Box,
+    /// Searchable PDF with invisible text layer
+    Pdf,
 }
 
 /// JSON output structure
@@ -174,7 +178,7 @@ pub fn format_json(result: &TextResult) -> Result<String> {
 /// Generate hOCR (HTML OCR format) output
 ///
 /// hOCR is an HTML-based format for representing OCR output with spatial information.
-/// It follows the hOCR specification from http://kba.cloud/hocr-spec/
+/// It follows the hOCR 4.1 specification from http://kba.cloud/hocr-spec/
 pub fn format_hocr(result: &TextResult) -> Result<String> {
     let mut html = String::new();
 
@@ -188,43 +192,59 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
     html.push_str("  <meta name='ocr-system' content='OCR ");
     html.push_str(env!("CARGO_PKG_VERSION"));
     html.push_str("' />\n");
+    html.push_str("  <meta name='ocr-capabilities' content='ocr_page ocr_carea ocr_par ocr_line ocrx_word ocr_cinfo' />\n");
     html.push_str("</head>\n");
     html.push_str("<body>\n");
 
     // OCR page
-    html.push_str("  <div class='ocr_page' id='page_1' title='image \"\"; bbox ");
-
     let bbox = &result.bounding_box;
     html.push_str(&format!(
-        "{} {} {} {}",
+        "  <div class='ocr_page' id='page_1' title=\"image \"\"; bbox {} {} {} {}; ppageno 0\">\n",
         bbox.left,
         bbox.top,
         bbox.right,
         bbox.bottom
     ));
-    html.push_str("; ppageno 0'>\n");
+
+    // Content area (single carea for now)
+    html.push_str(&format!(
+        "    <div class='ocr_carea' id='block_1_1' title=\"bbox {} {} {} {}\">\n",
+        bbox.left,
+        bbox.top,
+        bbox.right,
+        bbox.bottom
+    ));
+
+    // Paragraph
+    html.push_str(&format!(
+        "      <p class='ocr_par' id='par_1_1' title=\"bbox {} {} {} {}\">\n",
+        bbox.left,
+        bbox.top,
+        bbox.right,
+        bbox.bottom
+    ));
 
     // Lines
     for (line_idx, line) in result.lines.iter().enumerate() {
         let line_bbox = &line.bounding_box;
         html.push_str(&format!(
-            "    <div class='ocr_line' id='line_1_{}' title=\"bbox {} {} {} {}; baseline ",
+            "        <span class='ocr_line' id='line_1_{}' title=\"bbox {} {} {} {}; baseline {} 0; x_size {}; x_descenders {}; x_ascenders {}\">\n",
             line_idx + 1,
             line_bbox.left,
             line_bbox.top,
             line_bbox.right,
-            line_bbox.bottom
+            line_bbox.bottom,
+            line_bbox.bottom,
+            line_bbox.height(),
+            line_bbox.height() / 4,
+            line_bbox.height() / 4
         ));
-
-        // Estimate baseline (use bottom of line for now)
-        let baseline = line_bbox.bottom;
-        html.push_str(&format!("{} 0; x_size 0; x_descenders 0; x_ascenders 0\">\n", baseline));
 
         // Words
         for (word_idx, word) in line.words.iter().enumerate() {
             let word_bbox = &word.bounding_box;
             html.push_str(&format!(
-                "      <span class='ocrx_word' id='word_1_{}_{}' title=\"bbox {} {} {} {}; x_wconf {:.0}\">",
+                "          <span class='ocrx_word' id='word_1_{}_{}' title=\"bbox {} {} {} {}; x_wconf {:.0}\">",
                 line_idx + 1,
                 word_idx + 1,
                 word_bbox.left,
@@ -234,11 +254,11 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
                 word.confidence * 100.0
             ));
 
-            // Characters with x_word
+            // Characters (ocr_cinfo per hOCR spec)
             for (char_idx, ch) in word.characters.iter().enumerate() {
                 let ch_bbox = &ch.bounding_box;
                 html.push_str(&format!(
-                    "<span class='ocrx_cinfo' id='xword_1_{}_{}_{}' title='bbox {} {} {} {}; x_wconf {:.0}'>{}</span>",
+                    "<span class='ocr_cinfo' id='cinfo_1_{}_{}_{}' title='bbox {} {} {} {}; x_wconf {:.0}'>{}</span>",
                     line_idx + 1,
                     word_idx + 1,
                     char_idx + 1,
@@ -247,16 +267,18 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
                     ch_bbox.right,
                     ch_bbox.bottom,
                     ch.confidence * 100.0,
-                    ch.character
+                    html_escape_char(ch.character)
                 ));
             }
 
             html.push_str("</span>\n");
         }
 
-        html.push_str("    </div>\n");
+        html.push_str("        </span>\n");
     }
 
+    html.push_str("      </p>\n");
+    html.push_str("    </div>\n");
     html.push_str("  </div>\n");
     html.push_str("</body>\n");
     html.push_str("</html>\n");
@@ -266,46 +288,115 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
 
 /// Generate TSV (tab-separated values) output
 ///
-/// TSV format: character-level output with tabs and confidence scores
-/// Format: char\tleft\ttop\tright\tbottom\tpage_id\n
+/// Matches Tesseract's TSV column format:
+/// level page_num block_num par_num line_num word_num left top width height conf text
 pub fn format_tsv(result: &TextResult) -> Result<String> {
     let mut output = String::new();
 
-    // Header line (optional, commented out)
-    // output.push_str("# char\tleft\ttop\tright\tbottom\tpage_id\tconf\tfont_id\n");
+    // Header
+    output.push_str("level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n");
 
-    let mut page_num = 1;
-    let mut line_num = 1;
-    let mut word_num = 1;
+    let page_num = 1;
+    let block_num = 1;
+    let par_num = 1;
 
-    for line in &result.lines {
-        for word in &line.words {
-            for ch in &word.characters {
-                let bbox = &ch.bounding_box;
-                output.push_str(&format!(
-                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\n",
-                    ch.character,
-                    bbox.left,
-                    bbox.top,
-                    bbox.right,
-                    bbox.bottom,
-                    page_num,
-                    ch.confidence,
-                    0 // font_id (not used)
-                ));
-            }
-            word_num += 1;
+    // Page level
+    let pb = &result.bounding_box;
+    output.push_str(&format!(
+        "1\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t\n",
+        page_num,
+        block_num,
+        par_num,
+        0,
+        0,
+        pb.left,
+        pb.top,
+        pb.width(),
+        pb.height(),
+        result.confidence * 100.0,
+    ));
+
+    // Block level
+    output.push_str(&format!(
+        "2\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t\n",
+        page_num,
+        block_num,
+        par_num,
+        0,
+        0,
+        pb.left,
+        pb.top,
+        pb.width(),
+        pb.height(),
+        result.confidence * 100.0,
+    ));
+
+    // Paragraph level
+    output.push_str(&format!(
+        "3\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t\n",
+        page_num,
+        block_num,
+        par_num,
+        0,
+        0,
+        pb.left,
+        pb.top,
+        pb.width(),
+        pb.height(),
+        result.confidence * 100.0,
+    ));
+
+    for (line_idx, line) in result.lines.iter().enumerate() {
+        let line_num = line_idx + 1;
+        let lb = &line.bounding_box;
+
+        // Line level
+        output.push_str(&format!(
+            "4\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t\n",
+            page_num,
+            block_num,
+            par_num,
+            line_num,
+            0,
+            lb.left,
+            lb.top,
+            lb.width(),
+            lb.height(),
+            line.confidence * 100.0,
+        ));
+
+        for (word_idx, word) in line.words.iter().enumerate() {
+            let word_num = word_idx + 1;
+            let wb = &word.bounding_box;
+            let conf = word.confidence * 100.0;
+
+            // Word level
+            output.push_str(&format!(
+                "5\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:.2}\t{}\n",
+                page_num,
+                block_num,
+                par_num,
+                line_num,
+                word_num,
+                wb.left,
+                wb.top,
+                wb.width(),
+                wb.height(),
+                conf,
+                escape_tsv_text(&word.text),
+            ));
         }
-        line_num += 1;
     }
 
     Ok(output)
 }
 
+/// Escape text for TSV output (tab and newline)
+fn escape_tsv_text(s: &str) -> String {
+    s.replace('\t', " ").replace('\n', " ")
+}
+
 /// Generate ALTO XML output
-///
-/// ALTO (Analyzed Layout and Text Object) is a standard XML format
-/// for representing OCR output, used by digital libraries.
 pub fn format_alto(result: &TextResult) -> Result<String> {
     let mut xml = String::new();
     let bbox = &result.bounding_box;
@@ -371,12 +462,81 @@ pub fn format_alto(result: &TextResult) -> Result<String> {
     Ok(xml)
 }
 
+/// Generate box file output for Tesseract training
+///
+/// Format per character: char left top right bottom page
+/// Spaces are represented as a special box with page -1
+pub fn format_box(result: &TextResult) -> Result<String> {
+    let mut output = String::new();
+    let page = 0;
+
+    for line in &result.lines {
+        for word in &line.words {
+            for ch in &word.characters {
+                let bbox = &ch.bounding_box;
+                output.push_str(&format!(
+                    "{} {} {} {} {} {}\n",
+                    ch.character,
+                    bbox.left,
+                    bbox.top,
+                    bbox.right,
+                    bbox.bottom,
+                    page
+                ));
+            }
+            // Add space between words
+            if !word.characters.is_empty() {
+                let last_ch = word.characters.last().unwrap();
+                let space_left = last_ch.bounding_box.right;
+                let space_right = space_left + 5;
+                output.push_str(&format!(
+                    "{} {} {} {} {} {}\n",
+                    ' ',
+                    space_left,
+                    last_ch.bounding_box.top,
+                    space_right,
+                    last_ch.bounding_box.bottom,
+                    page
+                ));
+            }
+        }
+        // Add newline between lines
+        if !line.words.is_empty() {
+            let last_word = line.words.last().unwrap();
+            if !last_word.characters.is_empty() {
+                let last_ch = last_word.characters.last().unwrap();
+                output.push_str(&format!(
+                    "\t {} {} {} {}\n",
+                    last_ch.bounding_box.right + 5,
+                    last_ch.bounding_box.top,
+                    last_ch.bounding_box.right + 10,
+                    last_ch.bounding_box.bottom,
+                ));
+            }
+        }
+    }
+
+    Ok(output)
+}
+
 /// Escape text for XML attribute
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// Escape a single character for HTML content
+fn html_escape_char(c: char) -> String {
+    match c {
+        '<' => "&lt;".to_string(),
+        '>' => "&gt;".to_string(),
+        '&' => "&amp;".to_string(),
+        '"' => "&quot;".to_string(),
+        '\'' => "&#x27;".to_string(),
+        _ => c.to_string(),
+    }
 }
 
 /// Format output in the specified format
@@ -387,6 +547,11 @@ pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String
         OutputFormat::HOcr => format_hocr(result),
         OutputFormat::Tsv => format_tsv(result),
         OutputFormat::Alto => format_alto(result),
+        OutputFormat::Box => format_box(result),
+        OutputFormat::Pdf => Err(crate::OcrError::Internal(
+            "PDF output requires image path. Use format_pdf_with_image instead.".to_string(),
+        )
+        .into()),
     }
 }
 
@@ -398,8 +563,10 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
         "hocr" | "html" => Ok(OutputFormat::HOcr),
         "tsv" => Ok(OutputFormat::Tsv),
         "alto" | "xml" => Ok(OutputFormat::Alto),
+        "box" => Ok(OutputFormat::Box),
+        "pdf" => Ok(OutputFormat::Pdf),
         _ => Err(crate::OcrError::InvalidInput(format!(
-            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto",
+            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, pdf",
             s
         ))
         .into()),
