@@ -254,22 +254,7 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
                 word.confidence * 100.0
             ));
 
-            // Characters (ocr_cinfo per hOCR spec)
-            for (char_idx, ch) in word.characters.iter().enumerate() {
-                let ch_bbox = &ch.bounding_box;
-                html.push_str(&format!(
-                    "<span class='ocr_cinfo' id='cinfo_1_{}_{}_{}' title='bbox {} {} {} {}; x_wconf {:.0}'>{}</span>",
-                    line_idx + 1,
-                    word_idx + 1,
-                    char_idx + 1,
-                    ch_bbox.left,
-                    ch_bbox.top,
-                    ch_bbox.right,
-                    ch_bbox.bottom,
-                    ch.confidence * 100.0,
-                    html_escape_char(ch.character)
-                ));
-            }
+            html.push_str(&xml_escape(&word.text));
 
             html.push_str("</span>\n");
         }
@@ -629,7 +614,8 @@ mod tests {
         assert!(hocr.contains("<html"));
         assert!(hocr.contains("ocr_page"));
         assert!(hocr.contains("ocr_line"));
-        assert!(hocr.contains("Hello World"));
+        assert!(hocr.contains("Hello"));
+        assert!(hocr.contains("World"));
     }
 
     #[test]

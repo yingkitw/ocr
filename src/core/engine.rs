@@ -353,7 +353,7 @@ impl OcrEngine {
 
         // Step 4: Post-processing
         profiler.start_operation("post_processing");
-        let text_result = self.post_process_result(recognition_result).await?;
+        let text_result = self.post_process_result(recognition_result, &preprocessed_image).await?;
         profiler.stop_operation();
 
         profiler.stop_operation(); // total
@@ -651,19 +651,26 @@ impl OcrEngine {
     }
 
     /// Post-process result
-    async fn post_process_result(&self, recognition: RecognitionResult) -> Result<TextResult> {
+    async fn post_process_result(
+        &self,
+        recognition: RecognitionResult,
+        image: &OcrImage,
+    ) -> Result<TextResult> {
         use crate::lang::dictionary::DictionaryHandler;
 
         let whitelist = &self.config.recognition.character_whitelist;
         let blacklist = &self.config.recognition.character_blacklist;
         let confidence_threshold = self.config.recognition.confidence_threshold;
         let enable_dict_correction = self.config.recognition.enable_dictionary_correction;
+        let enable_font_analysis = self.config.recognition.enable_font_attribute_detection;
 
         let dict = if enable_dict_correction {
             Some(DictionaryHandler::new_for_language(&self.config.recognition.language))
         } else {
             None
         };
+
+        let dynamic_img = image.data.clone();
 
         let mut text_result = TextResult::new(
             recognition.text.clone(),
@@ -742,6 +749,17 @@ impl OcrEngine {
                     continue;
                 }
 
+                // Font attribute detection
+                if enable_font_analysis {
+                    if let Ok((is_bold, is_italic, is_monospace)) =
+                        crate::image::font_analysis::analyze_font_attributes(&dynamic_img, &word_result)
+                    {
+                        word_result.properties.is_bold = is_bold;
+                        word_result.properties.is_italic = is_italic;
+                        word_result.properties.is_monospace = is_monospace;
+                    }
+                }
+
                 if !filtered_line_text.is_empty() {
                     filtered_line_text.push(' ');
                 }
@@ -765,6 +783,16 @@ impl OcrEngine {
                 line_bbox,
             );
             line_result.words = filtered_words;
+
+            // Vertical text detection: tall narrow lines are likely vertical CJK
+            if self.config.layout_analysis.enable_vertical_text_detection {
+                let line_width = line_bbox.right.saturating_sub(line_bbox.left);
+                let line_height = line_bbox.bottom.saturating_sub(line_bbox.top);
+                if line_height > line_width.saturating_mul(2) {
+                    line_result.properties.is_vertical = true;
+                    line_result.properties.reading_order = crate::core::text::ReadingOrder::TopToBottom;
+                }
+            }
 
             text_result.lines.push(line_result);
         }

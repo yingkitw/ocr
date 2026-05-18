@@ -51,6 +51,8 @@ pub struct RecognitionConfig {
     pub enable_dictionary_correction: bool,
     /// Enable language model
     pub enable_language_model: bool,
+    /// Enable font attribute detection (bold, italic, monospace)
+    pub enable_font_attribute_detection: bool,
     /// Additional parameters
     pub parameters: HashMap<String, String>,
 }
@@ -65,6 +67,7 @@ impl Default for RecognitionConfig {
             character_blacklist: None,
             enable_dictionary_correction: true,
             enable_language_model: true,
+            enable_font_attribute_detection: true,
             parameters: HashMap::new(),
         }
     }
@@ -151,6 +154,8 @@ pub struct LayoutAnalysisConfig {
     pub enable_reading_order_detection: bool,
     /// Enable orientation detection
     pub enable_orientation_detection: bool,
+    /// Enable vertical text detection (CJK)
+    pub enable_vertical_text_detection: bool,
     /// Page segmentation mode (Tesseract PSM)
     pub page_seg_mode: PageSegMode,
     /// Minimum text region size
@@ -170,6 +175,7 @@ impl Default for LayoutAnalysisConfig {
             enable_table_detection: true,
             enable_reading_order_detection: true,
             enable_orientation_detection: true,
+            enable_vertical_text_detection: true,
             page_seg_mode: PageSegMode::Auto,
             min_text_region_size: (10, 10),
             max_text_region_size: (10000, 10000),

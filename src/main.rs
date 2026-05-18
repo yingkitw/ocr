@@ -278,57 +278,75 @@ async fn generate_searchable_pdf(
     let dynamic_img = ::image::load_from_memory(&img_data)?;
     let (img_width_px, img_height_px) = dynamic_img.dimensions();
 
-    // Use 300 DPI for pixel-to-mm conversion
-    let px_to_mm = |px: f32| printpdf::Mm(px * 25.4 / 300.0);
-    let page_width = px_to_mm(img_width_px as f32);
-    let page_height = px_to_mm(img_height_px as f32);
+    // Use 300 DPI for pixel-to-pt conversion (1 pt = 1/72 inch)
+    let px_to_pt = |px: f32| printpdf::Pt(px * 72.0 / 300.0);
+    let page_width_pt = px_to_pt(img_width_px as f32);
+    let page_height_pt = px_to_pt(img_height_px as f32);
 
     let mut doc = printpdf::PdfDocument::new("OCR Output");
-    let page_idx = doc.add_page(page_width, page_height, "Layer1");
-    let page = doc.get_page(page_idx);
-    let layer = page.get_layer(page.get_layers().keys().next().cloned().unwrap());
 
-    // Embed image
-    let pdf_image = printpdf::Image::from_dynamic_image(&dynamic_img);
-    let transform = printpdf::ImageTransform {
-        translate_x: Some(printpdf::Mm(0.0)),
-        translate_y: Some(printpdf::Mm(0.0)),
-        scale_x: Some(page_width.0 / img_width_px as f32),
-        scale_y: Some(page_height.0 / img_height_px as f32),
-        rotate: None,
-        dpi: Some(300.0),
+    // Convert dynamic image to RawImage for printpdf
+    let rgb_img = dynamic_img.to_rgb8();
+    let (w, h) = rgb_img.dimensions();
+    let raw_image = printpdf::RawImage {
+        pixels: printpdf::RawImageData::U8(rgb_img.into_raw()),
+        width: w as usize,
+        height: h as usize,
+        data_format: printpdf::RawImageFormat::RGB8,
+        tag: Vec::new(),
     };
-    pdf_image.add_to_layer(layer.clone(), transform);
+    let image_id = doc.add_image(&raw_image);
 
-    // Add text overlay
-    let font = doc.add_builtin_font(printpdf::BuiltinFont::Helvetica)?;
+    // Build page operations
+    let mut ops = Vec::new();
 
+    // Draw image full-page
+    ops.push(printpdf::Op::UseXobject {
+        id: image_id,
+        transform: printpdf::XObjectTransform {
+            translate_x: Some(printpdf::Pt(0.0)),
+            translate_y: Some(printpdf::Pt(0.0)),
+            scale_x: Some((page_width_pt.0 / img_width_px as f32) as f32),
+            scale_y: Some((page_height_pt.0 / img_height_px as f32) as f32),
+            rotate: None,
+            dpi: Some(300.0),
+        },
+    });
+
+    // Overlay text for each recognized word
     for line in &result.lines {
         for word in &line.words {
             let bbox = &word.bounding_box;
-            let x = px_to_mm(bbox.left as f32);
+            let x = px_to_pt(bbox.left as f32);
             // PDF y=0 is at bottom, image y=0 is at top, so flip
-            let y = page_height - px_to_mm(bbox.bottom as f32);
-            let font_size = px_to_mm((bbox.bottom - bbox.top) as f32).0.max(1.0);
+            let y = page_height_pt - px_to_pt(bbox.bottom as f32);
+            let font_size = px_to_pt((bbox.bottom - bbox.top) as f32).0.max(1.0);
 
-            layer.use_font(&font, font_size);
-            layer.begin_text_section();
-            layer.set_text_cursor(x, y);
-            layer.set_line_height(font_size * 1.2);
-            layer.set_fill_color(printpdf::Color::Rgb(printpdf::Rgb {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                icc_profile: None,
-            }));
-            layer.write_text(&word.text, &font);
-            layer.end_text_section();
+            ops.push(printpdf::Op::StartTextSection);
+            ops.push(printpdf::Op::SetFont {
+                font: printpdf::PdfFontHandle::Builtin(printpdf::BuiltinFont::Helvetica),
+                size: printpdf::Pt(font_size),
+            });
+            ops.push(printpdf::Op::SetTextCursor {
+                pos: printpdf::Point { x, y },
+            });
+            ops.push(printpdf::Op::ShowText {
+                items: vec![printpdf::TextItem::Text(word.text.clone())],
+            });
+            ops.push(printpdf::Op::EndTextSection);
         }
     }
 
-    let mut file = std::fs::File::create(&out_path)?;
-    doc.save_to(&mut file)
-        .map_err(|e| anyhow!("PDF save error: {}", e))?;
+    let page = printpdf::PdfPage::new(
+        printpdf::Mm(page_width_pt.0 * 25.4 / 72.0),
+        printpdf::Mm(page_height_pt.0 * 25.4 / 72.0),
+        ops,
+    );
+    doc.pages.push(page);
+
+    let mut warnings = Vec::new();
+    let pdf_bytes = doc.save(&printpdf::PdfSaveOptions::default(), &mut warnings);
+    std::fs::write(&out_path, pdf_bytes)?;
     println!("Searchable PDF saved to: {:?}", out_path);
     Ok(())
 }

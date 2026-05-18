@@ -316,6 +316,12 @@ pub struct WordProperties {
     pub font_size: f32,
     /// Text direction (left-to-right, right-to-left, etc.)
     pub direction: TextDirection,
+    /// Whether the word appears to be bold
+    pub is_bold: bool,
+    /// Whether the word appears to be italic
+    pub is_italic: bool,
+    /// Whether the word appears to be monospace
+    pub is_monospace: bool,
 }
 
 impl Default for WordProperties {
@@ -327,6 +333,9 @@ impl Default for WordProperties {
             average_character_height: 0.0,
             font_size: 0.0,
             direction: TextDirection::LeftToRight,
+            is_bold: false,
+            is_italic: false,
+            is_monospace: false,
         }
     }
 }
@@ -344,6 +353,8 @@ pub struct LineProperties {
     pub alignment: TextAlignment,
     /// Reading order
     pub reading_order: ReadingOrder,
+    /// Whether the line is detected as vertical text (CJK)
+    pub is_vertical: bool,
 }
 
 impl Default for LineProperties {
@@ -354,6 +365,7 @@ impl Default for LineProperties {
             line_spacing: 0.0,
             alignment: TextAlignment::Left,
             reading_order: ReadingOrder::TopToBottom,
+            is_vertical: false,
         }
     }
 }

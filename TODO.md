@@ -8,14 +8,14 @@
 
 Implement features comparable to Tesseract OCR:
 
-- [ ] **ALTO XML output format** — Standard XML for digital library interchange (Library of Congress standard)
-- [ ] **OSD (Orientation & Script Detection)** — Auto-detect text rotation angle (0/90/180/270°) and dominant script before recognition
-- [ ] **Font attribute detection** — Detect bold, italic, monospace from character stroke width/slant analysis; populate WordFlag::Bold/Italic
-- [ ] **Searchable PDF output** — Generate PDF with invisible text layer overlaid on original image (`ocr extract input.png --format pdf`)
-- [ ] **Vertical text support** — CJK vertical text layout detection and proper top-to-bottom reading order
-- [ ] **Fix hOCR output** — Remove duplicate title attributes; ensure valid hOCR 4.1 spec compliance
-- [ ] **Box file generation** — Generate `.box` files for model training from ground-truth + image pairs
-- [ ] **Word-level and char-level confidence in TSV** — Match Tesseract's `level`, `page_num`, `block_num`, `par_num`, `line_num`, `word_num`, `left`, `top`, `width`, `height`, `conf`, `text` columns
+- [x] **ALTO XML output format** — Standard XML for digital library interchange (Library of Congress standard)
+- [x] **OSD (Orientation & Script Detection)** — Auto-detect text rotation angle (0/90/180/270°) and dominant script before recognition
+- [x] **Font attribute detection** — Detect bold, italic, monospace from character stroke width/slant analysis; populate `WordResult.properties.is_bold/italic/monospace`
+- [x] **Searchable PDF output** — Generate PDF with invisible text layer overlaid on original image (`ocr extract input.png --format pdf`)
+- [x] **Vertical text support** — CJK vertical text layout detection and proper top-to-bottom reading order
+- [x] **Fix hOCR output** — Remove duplicate title attributes; ensure valid hOCR 4.1 spec compliance
+- [x] **Box file generation** — Generate `.box` files for model training from ground-truth + image pairs
+- [x] **Word-level and char-level confidence in TSV** — Match Tesseract's `level`, `page_num`, `block_num`, `par_num`, `line_num`, `word_num`, `left`, `top`, `width`, `height`, `conf`, `text` columns
 
 ## Completed
 
