@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+pub mod commands;
+
 #[derive(Parser)]
 #[command(name = "ocr")]
 #[command(about = "A pure Rust CLI OCR tool for printed text extraction")]

@@ -1,49 +1,124 @@
 # TODO
 
-## Near-term
+## Phase 0 — Baseline (DONE)
 
-- [x] Add CUDA/OpenCL backend support for neural network models
+Establish a working, tested pipeline before adding new capabilities.
 
-### Tesseract-like Capabilities
+- [x] Fix compilation errors (removed conflicting `domain/` module, fixed CLI helpers, layout, pdf)
+- [x] `cargo test` passes with 289+ tests
+- [x] End-to-end pipeline: image → preprocess → layout → recognize → output
+- [x] Pattern-matching recognition engine with 37 glyph templates
+- [x] Layout analysis: Union-Find CCL, column/line detection, reading order
+- [x] Image preprocessing: deskew, binarization (Otsu, Sauvola), noise reduction, contrast enhancement
+- [x] Output formats: text, JSON, hOCR, TSV, ALTO XML, box files
+- [x] Dictionary post-correction for 7 languages (en, fr, de, es, it, pt, ru)
+- [x] CLI: extract, batch, layout, list-languages, check, info, validate
+- [x] Web API server (feature `web-api`)
+- [x] PDF input support (feature `pdf`)
 
-Implement features comparable to Tesseract OCR:
+## Phase 1 — Synthetic Training Infrastructure
 
-- [x] **ALTO XML output format** — Standard XML for digital library interchange (Library of Congress standard)
-- [x] **OSD (Orientation & Script Detection)** — Auto-detect text rotation angle (0/90/180/270°) and dominant script before recognition
-- [x] **Font attribute detection** — Detect bold, italic, monospace from character stroke width/slant analysis; populate `WordResult.properties.is_bold/italic/monospace`
-- [x] **Searchable PDF output** — Generate PDF with invisible text layer overlaid on original image (`ocr extract input.png --format pdf`)
-- [x] **Vertical text support** — CJK vertical text layout detection and proper top-to-bottom reading order
-- [x] **Fix hOCR output** — Remove duplicate title attributes; ensure valid hOCR 4.1 spec compliance
-- [x] **Box file generation** — Generate `.box` files for model training from ground-truth + image pairs
-- [x] **Word-level and char-level confidence in TSV** — Match Tesseract's `level`, `page_num`, `block_num`, `par_num`, `line_num`, `word_num`, `left`, `top`, `width`, `height`, `conf`, `text` columns
+**Goal:** Generate unlimited labeled training data from fonts + distortions.
 
-## Completed
+- [ ] Create `src/synthetic/` module for text-line image generation
+  - [ ] Render text with system fonts (monospace, serif, sans-serif, 10+ fonts)
+  - [ ] Configurable image dimensions, colors, padding
+  - [ ] Batch generation API
+- [ ] Implement distortion pipeline
+  - [ ] Rotation ±5°
+  - [ ] Gaussian blur, salt & pepper noise
+  - [ ] Random contrast/brightness adjustment
+  - [ ] Perspective shear
+- [ ] Build benchmark harness
+  - [ ] Generate 10k synthetic test samples
+  - [ ] Run pattern matcher, report CER/WER baseline
+  - [ ] Save results to `benchmarks/` for regression tracking
+- [ ] Train pattern-matching templates from synthetic data
+  - [ ] Extract normalized character images from rendered lines
+  - [ ] Build per-font templates, average them
+  - [ ] Evaluate accuracy improvement over hand-coded 5×7 bitmaps
 
-- [x] Add A-Z, 0-9, and common symbols to test font renderer (`core/engine.rs` glyph_rows) — 37 glyphs in 5x7 bitmap
-- [x] Expand supported languages from 10 to 30 codes (added nl, pl, sv, da, fi, no, tr, el, hi, th, vi, ar, he, id, ms, uk, cs, hu, ro, bg)
-- [x] Update CLI `--lang` help text in `cli/mod.rs` (Extract + Batch)
-- [x] Add per-language dictionaries: French, Spanish, German, Italian, Portuguese, Russian (`lang/dictionary.rs`)
-- [x] Wire language-aware dictionary selection into engine post-processing (`DictionaryHandler::new_for_language`)
+## Phase 2 — Robust Text Detection
 
-- [x] Improve layout analysis for complex multi-column documents — recursive XY-cut, region classifier (heading/body/caption/footer/page-number)
-- [x] Add PDF input support — `ocr extract file.pdf` extracts embedded images via `pdf` crate
-- [x] Add web API mode for HTTP-based OCR — `ocr serve` with axum, multipart upload, /health, /languages, /recognize
-- [x] Enable and test SIMD acceleration (`simd` feature flag) — NEON on aarch64, SSE4.1/AVX2 on x86_64
-- [x] Benchmark and profile recognition performance — Profiler wired into engine stages, synthetic benchmarks
-- [x] Wire up LSTM/CNN/transformer recognition engines as alternatives via `--engine` flag
-- [x] Add CJK language codes (zh, ja, ko) to CLI `--lang` and `list-languages`
-- [x] Complete image preprocessing pipeline (deskew, binarization, contrast, noise reduction)
-- [x] Add dictionary-based post-correction via `--dict-correct` flag
-- [x] Comprehensive CLI test suite (14 tests covering engine, lang, dict, format options)
-- [x] Fix clippy ambiguous glob re-export warnings
-- [x] Add `ocr_demo` example with full pipeline demo
-- [x] Merge miniocr library into main crate
-- [x] CLI with extract, batch, layout, list-languages, check, info, validate commands
-- [x] Pattern matching recognition engine (default)
-- [x] Image preprocessing pipeline
-- [x] Multiple output formats (text, json, hocr, tsv)
-- [x] Layout analysis (column/line detection, text ordering)
-- [x] Language detection (N-gram based)
-- [x] CJK character segmentation
-- [x] Round-trip tests and snapshot tests
-- [x] 235+ tests across all modules
+**Goal:** Replace pure CCL with learned detection for complex layouts and scene text.
+
+- [ ] Implement lightweight detection CNN in pure Rust (ndarray)
+  - [ ] 3-layer U-Net style architecture for text region heatmap
+  - [ ] Sigmoid output for text probability per pixel
+  - [ ] Post-process: threshold → contour → bounding boxes
+- [ ] Integrate detection into pipeline
+  - [ ] `TextDetector` trait with `CclDetector` and `CnnDetector` implementations
+  - [ ] Configurable via `OcrConfig`
+  - [ ] Fallback to CCL when CNN weights not loaded
+- [ ] Evaluate on synthetic multi-column documents
+  - [ ] Recall ≥ 85%, Precision ≥ 90%
+  - [ ] Handle rotated text (0°, 90°, 180°, 270°)
+
+## Phase 3 — CRNN Recognition
+
+**Goal:** Replace pattern matching with a trainable sequence model.
+
+- [ ] Implement CNN feature extractor (ndarray)
+  - [ ] 5-layer VGG-style conv stack
+  - [ ] MaxPooling, ReLU activations
+  - [ ] Output: 512-channel feature sequence
+- [ ] Implement BiLSTM sequence model (ndarray)
+  - [ ] 2-layer bidirectional LSTM (256 hidden units)
+  - [ ] Forward/backward pass with gate mechanics
+- [ ] Implement CTC decoder
+  - [ ] Greedy decoding (collapse repeats, remove blanks)
+  - [ ] Beam search decoding (optional, width 5–10)
+- [ ] Implement CTC loss function
+  - [ ] Forward-backward algorithm for gradient computation
+- [ ] Wire training pipeline
+  - [ ] `CrnnTrainer` with Adam optimizer
+  - [ ] Batch training on synthetic data
+  - [ ] Checkpoint saving/loading
+- [ ] Acceptance criteria
+  - [ ] CER < 5% on clean synthetic test
+  - [ ] CER < 15% on distorted synthetic test
+  - [ ] Inference < 100ms/line on single CPU core
+  - [ ] Model size < 5MB
+
+## Phase 4 — Multi-Language Scale
+
+**Goal:** Support 30+ languages with automatic script detection.
+
+- [ ] Expand synthetic data to CJK, Arabic, Cyrillic scripts
+  - [ ] CJK: system font rendering, vertical text layout
+  - [ ] Arabic: RTL handling, diacritic support
+  - [ ] Cyrillic: extended character sets
+- [ ] Unicode script detection
+  - [ ] Script classifier based on unicode blocks
+  - [ ] Route to language-specific CRNN model
+- [ ] Expand dictionaries
+  - [ ] Add 20+ language dictionaries
+  - [ ] On-demand loading to keep memory low
+- [ ] Evaluate per-language accuracy on synthetic benchmarks
+
+## Phase 5 — Advanced Layout & Structure
+
+**Goal:** Understand document structure, not just flat text.
+
+- [ ] Table detection
+  - [ ] Grid line detection (Hough transform for horizontal/vertical lines)
+  - [ ] Cell boundary reconstruction
+  - [ ] Row/column span inference
+- [ ] Form field extraction
+  - [ ] Key-value pair detection
+  - [ ] Checkbox/radio button recognition
+- [ ] Document structure classification
+  - [ ] Heading, paragraph, list, figure, caption classification
+  - [ ] Hierarchical JSON/markdown output
+- [ ] Searchable PDF generation
+  - [ ] Overlay invisible text layer on original image coordinates
+  - [ ] Proper font encoding for Unicode
+
+## Backlog / Ideas
+
+- ONNX runtime integration for importing PaddleOCR/EasyOCR pre-trained models
+- GPU acceleration for CNN inference (CUDA via `cudarc`, OpenCL via `ocl`)
+- SIMD optimization for convolutions (AVX2, NEON)
+- Quantization (INT8) for edge deployment
+- Font attribute detection (bold, italic, monospace) from stroke analysis
+- Handwriting recognition (separate model, likely transformer-based)

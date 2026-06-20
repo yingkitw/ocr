@@ -9,6 +9,7 @@ pub mod layout;
 #[cfg(feature = "pdf")]
 pub mod pdf;
 pub mod recognition;
+pub mod synthetic;
 #[cfg(feature = "web-api")]
 pub mod server;
 pub mod training;
