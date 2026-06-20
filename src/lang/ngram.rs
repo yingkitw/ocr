@@ -56,7 +56,10 @@ impl NGramModel {
 
             for i in 0..text_lower.len().saturating_sub(n - 1) {
                 let ngram: String = text_lower.chars().skip(i).take(n).collect();
-                if ngram.chars().all(|c| c.is_alphabetic() || c.is_whitespace()) {
+                if ngram
+                    .chars()
+                    .all(|c| c.is_alphabetic() || c.is_whitespace())
+                {
                     *ngram_map.entry(ngram).or_insert(0) += 1;
                     *total += 1;
                 }

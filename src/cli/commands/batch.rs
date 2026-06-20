@@ -25,9 +25,20 @@ pub async fn handle_batch(
 
     tokio::fs::create_dir_all(&output_dir).await?;
 
-    let config = build_config(lang, true, 3, confidence, engine, dict_correct, device, false);
+    let config = build_config(
+        lang,
+        true,
+        3,
+        confidence,
+        engine,
+        dict_correct,
+        device,
+        false,
+    );
     let ocr = Ocr::with_config(config)?;
-    ocr.initialize().await.map_err(|e| anyhow::anyhow!("{}", e))?;
+    ocr.initialize()
+        .await
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
 
     let mut entries = tokio::fs::read_dir(&input_dir).await?;
     let mut image_files = Vec::new();
@@ -35,7 +46,10 @@ pub async fn handle_batch(
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
         if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if matches!(ext.to_lowercase().as_str(), "png" | "jpg" | "jpeg" | "tiff" | "tif" | "bmp" | "webp") {
+            if matches!(
+                ext.to_lowercase().as_str(),
+                "png" | "jpg" | "jpeg" | "tiff" | "tif" | "bmp" | "webp"
+            ) {
                 image_files.push(path);
             }
         }

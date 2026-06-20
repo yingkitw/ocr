@@ -4,8 +4,8 @@
 //! for pattern matching based recognition.
 
 use super::engine::*;
-use crate::core::ModelType;
 use crate::core::geometry::TBox;
+use crate::core::ModelType;
 use crate::utils::{OcrError, Result};
 use image::{GrayImage, ImageBuffer, Luma};
 

@@ -3,7 +3,7 @@
 use crate::utils::Point2D;
 use anyhow::Result;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, Pixel, RgbImage, RgbaImage};
-use imageproc::geometric_transformations::{Interpolation, rotate_about_center};
+use imageproc::geometric_transformations::{rotate_about_center, Interpolation};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 

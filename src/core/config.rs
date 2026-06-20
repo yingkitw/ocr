@@ -60,7 +60,7 @@ pub struct RecognitionConfig {
 impl Default for RecognitionConfig {
     fn default() -> Self {
         Self {
-            engine: RecognitionEngine::LSTM,
+            engine: RecognitionEngine::PatternMatching,
             language: "en".to_string(),
             confidence_threshold: 0.5,
             character_whitelist: None,

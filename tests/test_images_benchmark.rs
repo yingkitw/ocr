@@ -29,10 +29,15 @@ fn generate_synthetic_text_image(text: &str, font_size: f32) -> Vec<u8> {
         for dy in 0..((font_size * 0.7) as u32) {
             for dx in 0..((char_w * 0.6) as u32) {
                 let px = gx.saturating_add(dx);
-                let py = gy.saturating_sub((font_size * 0.35) as u32).saturating_add(dy);
+                let py = gy
+                    .saturating_sub((font_size * 0.35) as u32)
+                    .saturating_add(dy);
                 if px < width && py < height {
                     let bit = ((glyph_pattern >> ((dx + dy * 3) % 32)) & 1) == 1;
-                    let edge = dx == 0 || dy == 0 || dx >= (char_w * 0.6) as u32 - 1 || dy >= (font_size * 0.7) as u32 - 1;
+                    let edge = dx == 0
+                        || dy == 0
+                        || dx >= (char_w * 0.6) as u32 - 1
+                        || dy >= (font_size * 0.7) as u32 - 1;
                     if bit || edge {
                         img.put_pixel(px, py, Luma([0u8]));
                     }
@@ -43,7 +48,9 @@ fn generate_synthetic_text_image(text: &str, font_size: f32) -> Vec<u8> {
 
     let mut buf = Vec::new();
     let dynamic = image::DynamicImage::ImageLuma8(img);
-    dynamic.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).ok();
+    dynamic
+        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+        .ok();
     buf
 }
 
@@ -52,13 +59,20 @@ fn generate_noisy_image(width: u32, height: u32) -> Vec<u8> {
     let mut img = GrayImage::from_pixel(width, height, Luma([128u8]));
     for y in 0..height {
         for x in 0..width {
-            let noise = ((x.wrapping_mul(y.wrapping_add(1)).wrapping_mul(1103515245).wrapping_add(12345) >> 16) & 0xFF) as u8;
+            let noise = ((x
+                .wrapping_mul(y.wrapping_add(1))
+                .wrapping_mul(1103515245)
+                .wrapping_add(12345)
+                >> 16)
+                & 0xFF) as u8;
             img.put_pixel(x, y, Luma([noise]));
         }
     }
     let mut buf = Vec::new();
     let dynamic = image::DynamicImage::ImageLuma8(img);
-    dynamic.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png).ok();
+    dynamic
+        .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+        .ok();
     buf
 }
 
@@ -80,7 +94,10 @@ async fn benchmark_synthetic_text_recognition() -> Result<()> {
     println!("  Text: {}", result.text);
     println!("  Confidence: {:.2}%", result.confidence * 100.0);
 
-    assert!(duration.as_millis() < 10000, "Should complete in reasonable time");
+    assert!(
+        duration.as_millis() < 10000,
+        "Should complete in reasonable time"
+    );
     Ok(())
 }
 
@@ -101,7 +118,10 @@ async fn benchmark_noisy_image_recognition() -> Result<()> {
     println!("  Time: {:?}", duration);
     println!("  Text length: {}", result.text.len());
 
-    assert!(duration.as_millis() < 10000, "Should complete in reasonable time");
+    assert!(
+        duration.as_millis() < 10000,
+        "Should complete in reasonable time"
+    );
     Ok(())
 }
 
@@ -140,8 +160,13 @@ fn test_simd_contrast_consistency() {
     let result = SimdImageOps::contrast_adjust(&pixels, 1.0);
     assert_eq!(result.len(), pixels.len());
     for (i, (&p, &r)) in pixels.iter().zip(result.iter()).enumerate() {
-        assert!((p as i16 - r as i16).abs() <= 1,
-            "Pixel {} differs: input={}, output={}", i, p, r);
+        assert!(
+            (p as i16 - r as i16).abs() <= 1,
+            "Pixel {} differs: input={}, output={}",
+            i,
+            p,
+            r
+        );
     }
 }
 
@@ -152,7 +177,11 @@ fn test_simd_threshold_consistency() {
     assert_eq!(result.len(), pixels.len());
     for (i, (&p, &r)) in pixels.iter().zip(result.iter()).enumerate() {
         let expected = if p >= 128 { 255 } else { 0 };
-        assert_eq!(r, expected, "Pixel {}: input={}, expected={}, got={}", i, p, expected, r);
+        assert_eq!(
+            r, expected,
+            "Pixel {}: input={}, expected={}, got={}",
+            i, p, expected, r
+        );
     }
 }
 
@@ -160,11 +189,17 @@ fn test_simd_threshold_consistency() {
 fn test_simd_projections() {
     let width = 64usize;
     let height = 32usize;
-    let data: Vec<u8> = (0..(width * height)).map(|i| {
-        let x = i % width;
-        let y = i / width;
-        if x < width / 2 && y < height / 2 { 0u8 } else { 255u8 }
-    }).collect();
+    let data: Vec<u8> = (0..(width * height))
+        .map(|i| {
+            let x = i % width;
+            let y = i / width;
+            if x < width / 2 && y < height / 2 {
+                0u8
+            } else {
+                255u8
+            }
+        })
+        .collect();
 
     let (h_proj, v_proj) = SimdImageOps::compute_projections(&data, width, height);
     assert_eq!(h_proj.len(), height);

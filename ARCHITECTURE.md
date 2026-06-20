@@ -18,10 +18,11 @@ This OCR system is built from first principles in Rust, informed by studying Tes
                           │                    │
                    ┌──────┘                    └──────┐
                    ▼                                  ▼
-            Binarization (Otsu,            Text region detection
+            Binarization (Otsu,            Text region detection (CCL or CNN)
             Sauvola, Adaptive)             Line segmentation
             Noise reduction                Reading-order resolution
-            Deskew / dewarp                Word/char grouping
+            Deskew / dewarp                Table / form / structure extraction
+            Auto-rotate (0/90/180/270)     Word/char grouping
             Contrast enhancement
 ```
 
@@ -50,19 +51,19 @@ Shared data structures and the central engine:
 | `config.rs` | `OcrConfig` — top-level config with sub-configs for recognition, image processing, layout, language, performance |
 | `engine.rs` | `OcrEngine` — state machine: init → load image → preprocess → segment → recognize → post-process |
 | `geometry.rs` | `TBox`, `Polygon`, `Point2D` — layout geometry types |
-| `layout.rs` | `LayoutResult`, `Block`, `TextRegion`, `ReadingOrder` — layout analysis outputs |
-| `output.rs` | Formatters: text, JSON, hOCR, TSV, ALTO XML, box, PDF |
+| `layout.rs` | `LayoutResult`, `Block`, `TextRegion`, `Table`, `ReadingOrder` — layout analysis outputs |
+| `output.rs` | Formatters: text, JSON, hOCR, TSV, ALTO XML, box, PDF, Markdown, structured JSON |
 | `recognition.rs` | `RecognitionResult`, `CharacterRecognition`, `WordRecognition`, `LineRecognition` |
 | `text.rs` | `TextResult` — final unified output with confidence, bounding boxes, lines, words |
 
 ### Image Pipeline (`src/image/`)
 
-All preprocessing is deterministic and differentiable-friendly (so we can eventually backprop through it if needed):
+All preprocessing is deterministic and differentiable-friendly:
 
 - `Processor` — high-level interface: `preprocess_for_ocr(image) -> OcrImage`
 - `Pipeline` — composable chain of operations
 - `Thresholder` — Otsu global, Sauvola local, adaptive mean/Gaussian
-- `Enhancement` — CLAHE, unsharp mask, gamma correction
+- `Enhancement` — CLAHE, unsharp mask, gamma correction, orientation detection, border removal
 - `Quality` — blur detection, contrast score, resolution check
 
 ### Layout Analysis (`src/layout/`)
@@ -74,32 +75,46 @@ Inspired by Tesseract's layout analyzer but written in pure Rust:
 - `column_detector.rs` — XY-cut + whitespace analysis for multi-column documents
 - `line_detector.rs` — Baseline detection and text line segmentation
 - `text_ordering.rs` — Reading-order resolution (top-to-bottom, left-to-right, CJK vertical)
-- `classifier.rs` — Region type classification (heading, body, caption, footer, page-number)
+- `classifier.rs` — Region type classification (Heading, SubHeading, Body, ListItem, Caption, Footer, PageNumber, Header)
+- `detection_cnn.rs` — Lightweight 3-layer CNN for text region heatmaps (conv1→conv2→conv3, sigmoid output)
+- `detector.rs` — `TextDetector` trait with `CclDetector` and `CnnDetector` implementations, `TableDetector` with span inference
+- `form_extractor.rs` — Form field detection: checkboxes, key-value pairs, underline fields
 
 ### Recognition (`src/recognition/`)
 
-Multiple engines behind a unified trait. Currently only **PatternModel** is fully functional.
+Multiple engines behind a unified trait:
 
 | Engine | Status | Architecture | Notes |
 |--------|--------|-------------|-------|
 | `PatternModel` | **Working** | Bitmap template matching (L1 distance) | 37 glyphs, 5×7 bitmaps. Baseline. |
-| `BasicOcrEngine` | **Working** | Tesseract-inspired: CCL → lines → pattern match | More robust segmentation than raw PatternModel |
-| `LstmModel` | Stub | Manual LSTM cell (ndarray) | Needs training pipeline + weights |
-| `CnnModel` | Stub | Conv layers (ndarray) | Needs training pipeline + weights |
-| `TransformerModel` | Stub | Self-attention encoder (ndarray) | Needs training pipeline + weights |
-| `HybridModel` | Stub | Ensemble wrapper | Needs working sub-models first |
+| `BasicOcrEngine` | **Working** | Tesseract-inspired: CCL → lines → pattern match | More robust segmentation. Trainable via `TemplateTrainer`. |
+| `CrnnModel` | **Working** | 5-layer CNN + 2-layer BiLSTM + CTC decoder | Pure Rust ndarray. Model size < 5MB. Selectable via `--engine lstm`. |
+| `ScriptModelRegistry` | **Working** | HashMap of per-script CRNN models | Routes to Latin/CJK/Arabic/Cyrillic/etc. vocabularies. |
+| `LstmModel` | Working (internal) | Manual LSTM cell (ndarray) | Used inside `CrnnModel` BiLSTM layers. |
+| `TransformerModel` | Stub | Self-attention encoder (ndarray) | Future work. |
+| `HybridModel` | Stub | Ensemble wrapper | Future work. |
 
-**Planned evolution:**
-1. Replace stubs with a real **CRNN** (CNN feature extractor + BiLSTM + CTC decoder)
-2. Train on synthetic rendered-font data
-3. Add optional **ONNX runtime** integration for importing pre-trained models (PaddleOCR, etc.)
+**Evolution completed:**
+1. CRNN (CNN feature extractor + BiLSTM + CTC decoder) implemented and wired
+2. Trained templates from synthetic renders via `TemplateTrainer`
+3. ONNX runtime integration remains in backlog
 
 ### Language Support (`src/lang/`)
 
-- `dictionary.rs` — Edit-distance spell correction with per-language dictionaries (en, fr, de, es, it, pt, ru)
+- `dictionary.rs` — Edit-distance spell correction with per-language dictionaries for 25+ languages
 - `detector.rs` — N-gram based language identification
 - `cjk.rs` — CJK character segmentation and vertical text handling
-- `unicode.rs` — Unicode block classification for script routing
+- `unicode.rs` — Unicode block classification for script routing (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)
+
+### Synthetic Data (`src/synthetic/`)
+
+- `generator.rs` — `TextLineGenerator`: TTF font rendering + bitmap fallback, batch generation
+- `distortion.rs` — Rotation, blur, noise, contrast, shear
+- `bitmap_font.rs` — 5×7 bitmap glyph definitions for ASCII
+- `template_trainer.rs` — `TemplateTrainer`: crop glyphs from renders, average across fonts, build binary templates
+- `multi_script.rs` — `ScriptLineGenerator` + `ScriptCharPool`: generate text in CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
+- `document_generator.rs` — `DocumentGenerator`: synthetic multi-column documents with ground-truth bounding boxes
+- `benchmark.rs` — CER/WER metrics, clean/mild/heavy test sets
 
 ### Training (`src/training/`)
 
@@ -111,6 +126,7 @@ Infrastructure for learning models from data:
 - `optimizers.rs` — SGD, Adam (manual implementation with ndarray)
 - `metrics.rs` — Character Error Rate (CER), Word Error Rate (WER)
 - `checkpoint.rs` — Save/load model weights
+- `crnn_trainer.rs` — `CrnnTrainer`: synthetic batch training, checkpoint saving/loading
 
 ## Data Flow (Detailed)
 
@@ -118,58 +134,37 @@ Infrastructure for learning models from data:
 1. CLI parses args → builds OcrConfig
 2. Ocr::with_config(config) → creates OcrEngine
 3. OcrEngine::initialize():
-   a. Load recognition engine (currently PatternModel)
+   a. Load recognition engine (PatternModel or CRNN via config)
    b. Load language dictionaries
    c. Warm up image preprocessing pipeline
 4. Image loaded via image::open() → converted to OcrImage (Grayscale, 300 DPI)
 5. Preprocessing (if enabled):
-   a. Deskew (Hough transform for angle estimation)
-   b. Binarization (Sauvola for variable backgrounds)
-   c. Noise reduction (median filter)
+   a. Auto-rotate via projection-variance orientation detection
+   b. Deskew (Hough transform for angle estimation)
+   c. Binarization (Sauvola for variable backgrounds)
+   d. Noise reduction (median filter)
+   e. Border removal
 6. Layout analysis:
-   a. Union-Find CCL → character blobs
+   a. TextDetector (CCL or CNN) → text regions
    b. Blob grouping → text lines (baseline clustering)
    c. Line grouping → columns (whitespace valleys)
-   d. Reading order resolution
+   d. Table detection (grid line scan + span inference)
+   e. Form field extraction (checkboxes, key-value pairs)
+   f. Reading order resolution
 7. Recognition (per text line):
    a. Normalize line height
-   b. Segment into character candidates (or use CTC for no segmentation)
-   c. PatternModel: compute L1 similarity against templates
-   d. Build WordRecognition → LineRecognition → TextResult
+   b. Script detection → route to appropriate engine
+   c. PatternModel: L1 similarity against templates
+   d. CRNN: CNN features → BiLSTM → CTC decode
+   e. Build WordRecognition → LineRecognition → TextResult
 8. Post-processing:
-   a. Dictionary correction (if enabled)
-   b. Confidence score aggregation
+   a. Document structure classification (headings, lists, paragraphs)
+   b. Dictionary correction (if enabled)
+   c. Confidence score aggregation
 9. Output formatting:
-   a. Plain text, JSON, hOCR, TSV, ALTO XML, box, or PDF
+   a. Plain text, JSON, hOCR, TSV, ALTO XML, box, PDF, Markdown, structured JSON
    b. Write to stdout or file
 ```
-
-## Evolution Plan
-
-### Phase 0 (Current)
-Pattern matching baseline. Everything wired together and tested.
-
-### Phase 1 — Synthetic Data Engine
-Add a `synthetic/` module that renders text with random fonts, backgrounds, and distortions. Use it to:
-- Generate 10k+ training samples
-- Benchmark the pattern matcher (establish baseline CER/WER)
-- Bootstrap the CRNN with pre-trained weights
-
-### Phase 2 — Detection (CRAFT/DBNet-lite)
-Implement a lightweight detection CNN in pure Rust (ndarray) or via ONNX. This replaces the CCL-based text finding for better robustness on complex layouts and scene text.
-
-### Phase 3 — CRNN Recognition
-Implement a real CRNN:
-- 5-layer CNN (VGG-style) for feature extraction
-- 2-layer BiLSTM for sequence modeling
-- CTC decoder (greedy + beam search)
-- Train end-to-end on synthetic data, fine-tune on real data
-
-### Phase 4 — Scale & Optimize
-- ONNX runtime for running imported PaddleOCR/EasyOCR models
-- SIMD/AVX2 optimization for CNN convolutions
-- GPU backend (CUDA/OpenCL) via cudarc/ocl
-- 80+ language support via unicode routing
 
 ## Key Decisions
 
@@ -177,7 +172,8 @@ Implement a real CRNN:
 |----------|-----------|
 | Pure Rust, no Tesseract dep | Learn from scratch, full control, easier deployment |
 | ndarray instead of burn/candle | Burn/candle are immature; ndarray gives full control for educational purposes |
-| Manual LSTM/CNN/Transformer stubs | We will fill them with learned weights once the training pipeline is ready |
-| Pattern matching as default | It works today and gives us a testable baseline to measure improvement against |
+| Manual LSTM/CNN implementations | Pure Rust control; slower than BLAS but no C dependencies |
+| Pattern matching as default (configurable) | Works today as baseline; CRNN selectable via `--engine lstm` |
 | Synthetic data first | Removes dependency on collecting labeled real-world data before training |
 | Two-stage pipeline (detect + recognize) | Proven architecture (Tesseract, EasyOCR, PaddleOCR), easier to debug and optimize per-stage |
+| Per-script CRNN models | Vocab size varies wildly (95 ASCII vs 3000+ CJK); separate models keep each lightweight |

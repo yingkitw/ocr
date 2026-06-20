@@ -5,7 +5,7 @@
 
 use super::{OutputFormattingError, OutputFormat};
 use crate::core::text::TextResult;
-use crate::core::output::{format_alto, format_box, format_hocr, format_tsv, to_json_output};
+use crate::core::output::{format_alto, format_box, format_hocr, format_tsv, format_markdown, format_structured_json, to_json_output};
 use std::path::PathBuf;
 
 pub struct OutputFormattingService;
@@ -53,6 +53,14 @@ impl OutputFormattingService {
                 Err(OutputFormattingError::PdfGenerationFailed(
                     "PDF generation requires image data. Use generate_pdf instead.".to_string()
                 ))
+            }
+            OutputFormat::Markdown => {
+                format_markdown(result)
+                    .map_err(|e| OutputFormattingError::FormattingFailed(e.to_string()))
+            }
+            OutputFormat::StructuredJson => {
+                format_structured_json(result)
+                    .map_err(|e| OutputFormattingError::FormattingFailed(e.to_string()))
             }
         }
     }

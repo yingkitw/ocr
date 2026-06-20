@@ -6,6 +6,7 @@
 pub mod augmentation;
 pub mod checkpoint;
 pub mod config;
+pub mod crnn_trainer;
 pub mod data;
 pub mod losses;
 pub mod metrics;
@@ -15,6 +16,7 @@ pub mod training;
 pub use augmentation::*;
 pub use checkpoint::*;
 pub use config::*;
+pub use crnn_trainer::*;
 pub use data::*;
 pub use losses::*;
 pub use metrics::*;

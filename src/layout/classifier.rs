@@ -13,6 +13,7 @@ pub enum RegionType {
     Heading,
     SubHeading,
     Body,
+    ListItem,
     Caption,
     Footer,
     PageNumber,
@@ -51,10 +52,7 @@ impl RegionClassifier {
 
         self.avg_font_size = self.estimate_avg_font_size(regions);
 
-        regions
-            .iter()
-            .map(|r| self.classify_region(r))
-            .collect()
+        regions.iter().map(|r| self.classify_region(r)).collect()
     }
 
     fn estimate_avg_font_size(&self, regions: &[TextRegion]) -> f32 {
@@ -130,11 +128,82 @@ impl RegionClassifier {
             };
         }
 
+        // List item: text starts with bullet or number marker
+        let text = region.text.trim();
+        if Self::is_list_item(text) {
+            return RegionClassification {
+                region_type: RegionType::ListItem,
+                confidence: 0.8,
+            };
+        }
+
         // Default: body text
         RegionClassification {
             region_type: RegionType::Body,
             confidence: 0.9,
         }
+    }
+
+    fn is_list_item(text: &str) -> bool {
+        let trimmed = text.trim_start();
+        // Bullet markers
+        if trimmed.starts_with("•") || trimmed.starts_with("-") || trimmed.starts_with("*") {
+            return true;
+        }
+        // Numbered list: "1.", "1)", "(1)", "a.", "A.", "i.", "I."
+        Self::is_numbered_list_item(trimmed)
+    }
+
+    fn is_numbered_list_item(text: &str) -> bool {
+        if text.is_empty() {
+            return false;
+        }
+        // Pattern: digits followed by . or )
+        let mut chars = text.chars();
+        let first = chars.next().unwrap();
+        if first.is_numeric() {
+            // digits followed by . or )
+            let mut saw_digit = true;
+            for ch in chars {
+                if ch.is_numeric() {
+                    saw_digit = true;
+                } else if saw_digit && (ch == '.' || ch == ')') {
+                    return true;
+                } else {
+                    break;
+                }
+            }
+        }
+        // Single letter followed by .
+        if first.is_ascii_alphabetic() {
+            if let Some(second) = text.chars().nth(1) {
+                if second == '.' {
+                    return true;
+                }
+            }
+        }
+        // Roman numerals i. I. v. V. x. X. followed by .
+        if "iIvVxX".contains(first) {
+            if let Some(second) = text.chars().nth(1) {
+                if second == '.' {
+                    return true;
+                }
+            }
+        }
+        // Parenthesized number: (1)
+        if first == '(' {
+            let mut found_digit = false;
+            for ch in text.chars().skip(1) {
+                if ch.is_numeric() {
+                    found_digit = true;
+                } else if found_digit && ch == ')' {
+                    return true;
+                } else {
+                    break;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -211,5 +280,24 @@ mod tests {
         let regions = vec![make_region(10, 25, 100, 500)];
         let classes = classifier.classify(&regions);
         assert_eq!(classes[0].region_type, RegionType::Header);
+    }
+
+    #[test]
+    fn test_classify_list_item() {
+        let mut classifier = RegionClassifier::new(600, 800);
+        let mut region = make_region(100, 115, 100, 500);
+        region.text = "• First item".to_string();
+        let classes = classifier.classify(&[region]);
+        assert_eq!(classes[0].region_type, RegionType::ListItem);
+    }
+
+    #[test]
+    fn test_is_numbered_list_item() {
+        assert!(RegionClassifier::is_numbered_list_item("1. Hello"));
+        assert!(RegionClassifier::is_numbered_list_item("12) Hello"));
+        assert!(RegionClassifier::is_numbered_list_item("(3) Hello"));
+        assert!(RegionClassifier::is_numbered_list_item("a. Hello"));
+        assert!(RegionClassifier::is_numbered_list_item("i. Hello"));
+        assert!(!RegionClassifier::is_numbered_list_item("Hello"));
     }
 }

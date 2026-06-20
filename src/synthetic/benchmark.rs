@@ -129,10 +129,7 @@ impl BenchmarkDataset {
         let generator = TextLineGenerator::default();
         let texts = generator.generate_random_texts(count, 15);
         let mut samples = generator.generate_batch(&texts);
-        crate::synthetic::distortion::augment_batch(
-            &mut samples,
-            &DistortionConfig::mild(),
-        );
+        crate::synthetic::distortion::augment_batch(&mut samples, &DistortionConfig::mild());
         samples
     }
 
@@ -141,10 +138,7 @@ impl BenchmarkDataset {
         let generator = TextLineGenerator::default();
         let texts = generator.generate_random_texts(count, 15);
         let mut samples = generator.generate_batch(&texts);
-        crate::synthetic::distortion::augment_batch(
-            &mut samples,
-            &DistortionConfig::heavy(),
-        );
+        crate::synthetic::distortion::augment_batch(&mut samples, &DistortionConfig::heavy());
         samples
     }
 }
@@ -178,9 +172,7 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
             } else {
                 1
             };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -192,10 +184,7 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 fn word_error_distance(a: &str, b: &str) -> usize {
     let a_words: Vec<&str> = a.split_whitespace().collect();
     let b_words: Vec<&str> = b.split_whitespace().collect();
-    levenshtein_distance(
-        &a_words.join(" "),
-        &b_words.join(" "),
-    )
+    levenshtein_distance(&a_words.join(" "), &b_words.join(" "))
 }
 
 /// Save benchmark results to a JSON file for tracking over time

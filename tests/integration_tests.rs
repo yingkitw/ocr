@@ -5,8 +5,8 @@
 use insta::assert_snapshot;
 use ocr::core::*;
 use ocr::lang::cjk::{CJKLanguage, CJKProcessor as LangCJKProcessor};
-use ocr::recognition::*;
 use ocr::recognition::RecognitionEngine;
+use ocr::recognition::*;
 use std::path::Path;
 
 /// Test basic OCR functionality
@@ -34,29 +34,23 @@ fn test_cjk_language_detection() {
     // Test Chinese detection
     let chinese_scores = processor.detect_cjk_language("中文测试");
     assert!(!chinese_scores.is_empty());
-    assert!(
-        chinese_scores
-            .iter()
-            .any(|(lang, _)| *lang == CJKLanguage::ChineseSimplified)
-    );
+    assert!(chinese_scores
+        .iter()
+        .any(|(lang, _)| *lang == CJKLanguage::ChineseSimplified));
 
     // Test Japanese detection
     let japanese_scores = processor.detect_cjk_language("ひらがなカタカナ");
     assert!(!japanese_scores.is_empty());
-    assert!(
-        japanese_scores
-            .iter()
-            .any(|(lang, _)| *lang == CJKLanguage::Japanese)
-    );
+    assert!(japanese_scores
+        .iter()
+        .any(|(lang, _)| *lang == CJKLanguage::Japanese));
 
     // Test Korean detection
     let korean_scores = processor.detect_cjk_language("한글테스트");
     assert!(!korean_scores.is_empty());
-    assert!(
-        korean_scores
-            .iter()
-            .any(|(lang, _)| *lang == CJKLanguage::Korean)
-    );
+    assert!(korean_scores
+        .iter()
+        .any(|(lang, _)| *lang == CJKLanguage::Korean));
 }
 
 /// Test CJK text segmentation
@@ -196,11 +190,9 @@ async fn test_recognition_engine() {
 
     // Test engine properties
     assert_eq!(engine.model_type(), ModelType::LSTM);
-    assert!(
-        engine
-            .supported_languages()
-            .contains(&LanguageVariant::English)
-    );
+    assert!(engine
+        .supported_languages()
+        .contains(&LanguageVariant::English));
 
     // Test model switching
     assert!(engine.switch_model(ModelType::LSTM).await.is_ok());
@@ -262,21 +254,15 @@ fn test_model_configuration() {
     assert_eq!(config.input_shape, (224, 224, 3));
     assert_eq!(config.device, DeviceType::GPU);
     assert_eq!(config.quantization, Some(QuantizationType::FP16));
-    assert!(
-        config
-            .supported_languages
-            .contains(&LanguageVariant::English)
-    );
-    assert!(
-        config
-            .supported_languages
-            .contains(&LanguageVariant::ChineseSimplified)
-    );
-    assert!(
-        config
-            .supported_languages
-            .contains(&LanguageVariant::Japanese)
-    );
+    assert!(config
+        .supported_languages
+        .contains(&LanguageVariant::English));
+    assert!(config
+        .supported_languages
+        .contains(&LanguageVariant::ChineseSimplified));
+    assert!(config
+        .supported_languages
+        .contains(&LanguageVariant::Japanese));
 }
 
 /// Test recognition result serialization

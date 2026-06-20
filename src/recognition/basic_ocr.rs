@@ -11,7 +11,9 @@ use crate::core::recognition::{
     CharacterRecognition, LineRecognition, RecognitionResult, TextRecognizer, WordRecognition,
 };
 use crate::core::text::BoundingBox;
-use crate::recognition::tesseract_blob::{extract_outlines, outlines_to_blobs, ChainOutline, TBlob};
+use crate::recognition::tesseract_blob::{
+    extract_outlines, outlines_to_blobs, ChainOutline, TBlob,
+};
 use crate::recognition::tesseract_features::extract_features;
 use crate::utils::Result;
 use image::GrayImage;
@@ -67,6 +69,27 @@ impl BasicOcrEngine {
         }
     }
 
+    /// Create an engine using trained templates from synthetic font rendering
+    pub fn with_trained_templates(templates: &std::collections::HashMap<char, crate::synthetic::template_trainer::TrainedTemplate>) -> Self {
+        let mut character_templates = std::collections::BTreeMap::new();
+        for (ch, tpl) in templates {
+            character_templates.insert(
+                *ch,
+                CharacterTemplate {
+                    character: *ch,
+                    template: tpl.template.clone(),
+                    width: tpl.width,
+                    height: tpl.height,
+                },
+            );
+        }
+        Self {
+            character_templates,
+            min_blob_size: 4,
+            max_blob_size: 200_000,
+        }
+    }
+
     /// Recognize text from image
     pub fn recognize_sync(&self, image: &OcrImage) -> Result<RecognitionResult> {
         // Step 1: Convert to binary image (thresholding)
@@ -108,7 +131,8 @@ impl BasicOcrEngine {
         let confidence = if recognized_lines.is_empty() {
             0.0
         } else {
-            recognized_lines.iter().map(|l| l.confidence).sum::<f32>() / recognized_lines.len() as f32
+            recognized_lines.iter().map(|l| l.confidence).sum::<f32>()
+                / recognized_lines.len() as f32
         };
 
         let mut result = RecognitionResult {
@@ -908,13 +932,7 @@ impl BasicOcrEngine {
                 if let Some(last) = merged_words.last_mut() {
                     last.word = joined_word;
                 }
-                merged_words.extend(
-                    result.lines[i + 1]
-                        .words
-                        .iter()
-                        .skip(1)
-                        .cloned(),
-                );
+                merged_words.extend(result.lines[i + 1].words.iter().skip(1).cloned());
 
                 let new_line_text = merged_words
                     .iter()
@@ -925,11 +943,11 @@ impl BasicOcrEngine {
                 let mut new_line = LineRecognition::with_bounding_box(
                     new_line_text,
                     result.lines[i].confidence,
-                    result.lines[i]
-                        .bounding_box
-                        .unwrap_or(result.lines[i + 1]
+                    result.lines[i].bounding_box.unwrap_or(
+                        result.lines[i + 1]
                             .bounding_box
-                            .unwrap_or(crate::core::text::BoundingBox::new(0, 0, 0, 0))),
+                            .unwrap_or(crate::core::text::BoundingBox::new(0, 0, 0, 0)),
+                    ),
                 );
                 new_line.words = merged_words;
 
@@ -1013,11 +1031,7 @@ impl BasicOcrEngine {
     }
 
     /// Extract INT_FEATURE from a blob's region in the binary image
-    fn extract_blob_features(
-        &self,
-        image: &GrayImage,
-        blob: &Blob,
-    ) -> Result<(Vec<u8>, Vec<u8>)> {
+    fn extract_blob_features(&self, image: &GrayImage, blob: &Blob) -> Result<(Vec<u8>, Vec<u8>)> {
         let bbox = &blob.bounding_box;
         let pad = ((bbox.width().min(bbox.height()) / 10).max(1)).min(3);
         let left = bbox.left.saturating_sub(pad);
@@ -1246,7 +1260,11 @@ impl BasicOcrEngine {
             }
         } else if v_peaks >= 2 && has_horizontal_bar {
             // Both vertical and horizontal features
-            if h_top_heavy { ('A', 0.45) } else { ('H', 0.4) }
+            if h_top_heavy {
+                ('A', 0.45)
+            } else {
+                ('H', 0.4)
+            }
         } else if aspect_ratio > 1.0 && aspect_ratio < 1.3 {
             // Square-ish - check if it's actually a hole or just dense
             if has_hole {
@@ -1700,7 +1718,9 @@ impl BasicOcrEngine {
         }
 
         // Common punctuation
-        for ch in ['.', '-', ':', '/', ',', '!', '?', ';', '(', ')', '[', ']', '{', '}', '"', '\''] {
+        for ch in [
+            '.', '-', ':', '/', ',', '!', '?', ';', '(', ')', '[', ']', '{', '}', '"', '\'',
+        ] {
             if let Some(rows) = Self::glyph_5x7_rows(ch) {
                 let template = Self::glyph_5x7_to_template(rows, TEMPLATE_SIZE, TEMPLATE_SIZE);
                 templates.insert(

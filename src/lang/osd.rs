@@ -138,12 +138,8 @@ impl OsdDetector {
         let (y_projection, x_projection) = Self::compute_projections(pixels, width, height);
 
         // Detect orientation from projection profiles
-        let (orientation, orientation_conf) = Self::detect_orientation_from_projections(
-            &y_projection,
-            &x_projection,
-            width,
-            height,
-        );
+        let (orientation, orientation_conf) =
+            Self::detect_orientation_from_projections(&y_projection, &x_projection, width, height);
         result.orientation = orientation;
         result.orientation_confidence = orientation_conf;
 
@@ -156,11 +152,7 @@ impl OsdDetector {
     }
 
     /// Compute horizontal (Y) and vertical (X) pixel projections
-    fn compute_projections(
-        pixels: &[u8],
-        width: u32,
-        height: u32,
-    ) -> (Vec<u32>, Vec<u32>) {
+    fn compute_projections(pixels: &[u8], width: u32, height: u32) -> (Vec<u32>, Vec<u32>) {
         let w = width as usize;
         let h = height as usize;
 
@@ -247,11 +239,8 @@ impl OsdDetector {
             return 0.0;
         }
 
-        let variance = spacings
-            .iter()
-            .map(|s| (s - mean).powi(2))
-            .sum::<f32>()
-            / spacings.len() as f32;
+        let variance =
+            spacings.iter().map(|s| (s - mean).powi(2)).sum::<f32>() / spacings.len() as f32;
         let std_dev = variance.sqrt();
         let coefficient_of_variation = std_dev / mean;
 
@@ -298,11 +287,7 @@ impl OsdDetector {
     }
 
     /// Detect dominant script from image pixels (simplified heuristic)
-    fn detect_script_from_pixels(
-        pixels: &[u8],
-        width: u32,
-        height: u32,
-    ) -> (DetectedScript, f32) {
+    fn detect_script_from_pixels(pixels: &[u8], width: u32, height: u32) -> (DetectedScript, f32) {
         let w = width as usize;
         let h = height as usize;
 

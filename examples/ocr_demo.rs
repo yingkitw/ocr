@@ -28,33 +28,49 @@ fn apply_dict_correction(text: &mut ocr::core::text::TextResult, lang: &str) {
     let mut dict = Dictionary::new();
     match lang {
         "en" => dict.load_words(&[
-            "the", "this", "that", "and", "for", "are", "was", "but", "not", "you",
-            "from", "they", "been", "with", "their", "would", "about", "which",
-            "there", "could", "should", "people", "hello", "world", "ocr", "text",
+            "the", "this", "that", "and", "for", "are", "was", "but", "not", "you", "from", "they",
+            "been", "with", "their", "would", "about", "which", "there", "could", "should",
+            "people", "hello", "world", "ocr", "text",
         ]),
         "fr" => dict.load_words(&[
-            "le", "de", "et", "être", "avoir", "pour", "pas", "dans", "une", "ils",
-            "bonjour", "monde", "merci", "oui", "non", "travail", "amour", "vie",
+            "le", "de", "et", "être", "avoir", "pour", "pas", "dans", "une", "ils", "bonjour",
+            "monde", "merci", "oui", "non", "travail", "amour", "vie",
         ]),
         "es" => dict.load_words(&[
-            "el", "de", "que", "ser", "haber", "para", "con", "muy", "todo", "pero",
-            "hola", "mundo", "gracias", "si", "no", "amor", "vida", "trabajo",
+            "el", "de", "que", "ser", "haber", "para", "con", "muy", "todo", "pero", "hola",
+            "mundo", "gracias", "si", "no", "amor", "vida", "trabajo",
         ]),
         "de" => dict.load_words(&[
-            "der", "die", "und", "sein", "haben", "für", "mit", "nicht", "auch", "auf",
-            "hallo", "welt", "danke", "ja", "nein", "arbeit", "liebe", "leben",
+            "der", "die", "und", "sein", "haben", "für", "mit", "nicht", "auch", "auf", "hallo",
+            "welt", "danke", "ja", "nein", "arbeit", "liebe", "leben",
         ]),
         "it" => dict.load_words(&[
-            "il", "di", "che", "essere", "avere", "per", "con", "ma", "come", "non",
-            "ciao", "mondo", "grazie", "sì", "no", "amore", "vita", "lavoro",
+            "il", "di", "che", "essere", "avere", "per", "con", "ma", "come", "non", "ciao",
+            "mondo", "grazie", "sì", "no", "amore", "vita", "lavoro",
         ]),
         "pt" => dict.load_words(&[
-            "o", "de", "que", "ser", "estar", "para", "com", "muito", "tudo", "mas",
-            "olá", "mundo", "obrigado", "sim", "não", "amor", "vida", "trabalho",
+            "o", "de", "que", "ser", "estar", "para", "com", "muito", "tudo", "mas", "olá",
+            "mundo", "obrigado", "sim", "não", "amor", "vida", "trabalho",
         ]),
         "ru" => dict.load_words(&[
-            "и", "в", "не", "на", "я", "быть", "он", "с", "что", "а",
-            "привет", "мир", "спасибо", "да", "нет", "любовь", "жизнь", "работа",
+            "и",
+            "в",
+            "не",
+            "на",
+            "я",
+            "быть",
+            "он",
+            "с",
+            "что",
+            "а",
+            "привет",
+            "мир",
+            "спасибо",
+            "да",
+            "нет",
+            "любовь",
+            "жизнь",
+            "работа",
         ]),
         _ => {}
     }
@@ -67,15 +83,22 @@ fn apply_dict_correction(text: &mut ocr::core::text::TextResult, lang: &str) {
             }
         }
     }
-    text.text = text.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+    text.text = text
+        .words
+        .iter()
+        .map(|w| w.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: {} <image-path> [engine] [lang] [preprocess] [dict-correct]",
-                  args.first().map(|s| s.as_str()).unwrap_or("ocr_demo"));
+        eprintln!(
+            "Usage: {} <image-path> [engine] [lang] [preprocess] [dict-correct]",
+            args.first().map(|s| s.as_str()).unwrap_or("ocr_demo")
+        );
         eprintln!("  engine: pattern (default), lstm, hybrid");
         eprintln!("  lang: en (default), fr, es, de, it, pt, ru, zh, ja, ko, nl, pl, sv, da, fi, no, tr, el, hi, th, vi, ar, he, id, ms, uk, cs, hu, ro, bg");
         eprintln!("  preprocess: true (default), false");
@@ -139,8 +162,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Lines: {}", stats.line_count);
     println!("  Words: {}", stats.word_count);
     println!("  Characters: {}", stats.character_count);
-    println!("  Avg char confidence: {:.1}%", stats.avg_character_confidence * 100.0);
-    println!("  Avg word confidence: {:.1}%", stats.avg_word_confidence * 100.0);
+    println!(
+        "  Avg char confidence: {:.1}%",
+        stats.avg_character_confidence * 100.0
+    );
+    println!(
+        "  Avg word confidence: {:.1}%",
+        stats.avg_word_confidence * 100.0
+    );
 
     Ok(())
 }

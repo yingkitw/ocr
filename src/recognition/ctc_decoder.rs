@@ -327,10 +327,8 @@ mod tests {
             (3, 3),
             vec![
                 // t=0: favor 'a' (class 1)
-                -10.0, 10.0, -10.0,
-                // t=1: favor 'b' (class 2)
-                -10.0, -10.0, 10.0,
-                // t=2: favor blank (class 0)
+                -10.0, 10.0, -10.0, // t=1: favor 'b' (class 2)
+                -10.0, -10.0, 10.0, // t=2: favor blank (class 0)
                 10.0, -10.0, -10.0,
             ],
         )

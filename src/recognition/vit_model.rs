@@ -4,8 +4,8 @@
 //! for optical character recognition tasks.
 
 use super::engine::*;
-use crate::core::ModelType;
 use crate::core::image::OcrImage;
+use crate::core::ModelType;
 use crate::utils::{OcrError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;

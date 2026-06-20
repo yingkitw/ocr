@@ -339,9 +339,17 @@ impl ImageThresholder {
         // D = SAT[y1][x1]
         let d = sat[y1 as usize * w + x1 as usize];
         // B = SAT[y0-1][x1]  (0 if y0 == 0)
-        let b = if y0 > 0 { sat[(y0 as usize - 1) * w + x1 as usize] } else { 0 };
+        let b = if y0 > 0 {
+            sat[(y0 as usize - 1) * w + x1 as usize]
+        } else {
+            0
+        };
         // C = SAT[y1][x0-1]  (0 if x0 == 0)
-        let c = if x0 > 0 { sat[y1 as usize * w + (x0 as usize - 1)] } else { 0 };
+        let c = if x0 > 0 {
+            sat[y1 as usize * w + (x0 as usize - 1)]
+        } else {
+            0
+        };
         // A = SAT[y0-1][x0-1]  (0 if y0==0 or x0==0)
         let a = if y0 > 0 && x0 > 0 {
             sat[(y0 as usize - 1) * w + (x0 as usize - 1)]

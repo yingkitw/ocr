@@ -6,8 +6,8 @@
 //! - Ascender/descender detection
 //! - Line height estimation
 
-use image::{GrayImage, Luma};
 use crate::core::text::BoundingBox;
+use image::{GrayImage, Luma};
 
 /// Features extracted from a text line
 #[derive(Debug, Clone)]
@@ -56,9 +56,7 @@ impl BaselineEstimate {
         match self {
             BaselineEstimate::Horizontal { .. } => true,
             BaselineEstimate::Linear { slope, .. } => slope.abs() < tolerance,
-            BaselineEstimate::Quadratic { a, b, .. } => {
-                a.abs() < tolerance && b.abs() < tolerance
-            }
+            BaselineEstimate::Quadratic { a, b, .. } => a.abs() < tolerance && b.abs() < tolerance,
         }
     }
 }
@@ -67,10 +65,7 @@ impl BaselineEstimate {
 ///
 /// This implements Tesseract's approach of finding the bottom edge of
 /// characters and fitting a curve to them.
-pub fn estimate_baseline(
-    binary_image: &GrayImage,
-    line_bbox: &BoundingBox,
-) -> BaselineEstimate {
+pub fn estimate_baseline(binary_image: &GrayImage, line_bbox: &BoundingBox) -> BaselineEstimate {
     let width = line_bbox.width() as usize;
     let height = line_bbox.height() as usize;
     let left = line_bbox.left as usize;
@@ -92,9 +87,7 @@ pub fn estimate_baseline(
         // Scan from bottom to top to find the first dark pixel
         for y_rel in (0..height).rev() {
             let img_y = top + y_rel;
-            if img_x >= binary_image.width() as usize
-                || img_y >= binary_image.height() as usize
-            {
+            if img_x >= binary_image.width() as usize || img_y >= binary_image.height() as usize {
                 break;
             }
 
@@ -118,9 +111,7 @@ pub fn estimate_baseline(
     let valid_points: Vec<(f32, f32)> = bottom_y
         .iter()
         .enumerate()
-        .filter_map(|(x, &y_opt)| {
-            y_opt.map(|y| (x as f32 + left as f32, y))
-        })
+        .filter_map(|(x, &y_opt)| y_opt.map(|y| (x as f32 + left as f32, y)))
         .collect();
 
     if valid_points.is_empty() {
@@ -146,9 +137,7 @@ pub fn estimate_baseline(
 
     if filtered_points.len() < 3 {
         // Not enough points - return horizontal baseline
-        return BaselineEstimate::Horizontal {
-            y: mean_y.round(),
-        };
+        return BaselineEstimate::Horizontal { y: mean_y.round() };
     }
 
     // Try fitting linear baseline
@@ -168,9 +157,7 @@ pub fn estimate_baseline(
     if residual_error < 2.0 && slope.abs() < 0.1 {
         BaselineEstimate::Linear { slope, intercept }
     } else {
-        BaselineEstimate::Horizontal {
-            y: mean_y.round(),
-        }
+        BaselineEstimate::Horizontal { y: mean_y.round() }
     }
 }
 
@@ -381,7 +368,13 @@ pub fn extract_text_line_features(
     let (x_height, x_height_conf) = estimate_x_height(binary_image, line_bbox, &baseline);
     let (ascender_height, descender_depth) =
         estimate_ascender_descender(binary_image, line_bbox, &baseline, x_height);
-    let cap_height = estimate_cap_height(binary_image, line_bbox, &baseline, x_height, ascender_height);
+    let cap_height = estimate_cap_height(
+        binary_image,
+        line_bbox,
+        &baseline,
+        x_height,
+        ascender_height,
+    );
 
     let line_height = x_height + ascender_height + descender_depth;
 
@@ -438,13 +431,19 @@ mod tests {
         let y_at_center = baseline.y_at_x(100.0);
         // Allow a wider range since we're sampling from the center (x=100) where there's no text
         // The algorithm should extrapolate from the text regions
-        assert!(y_at_center >= 20.0 && y_at_center <= 50.0,
-            "Baseline at center {} is not in expected range [20.0, 50.0]", y_at_center);
+        assert!(
+            y_at_center >= 20.0 && y_at_center <= 50.0,
+            "Baseline at center {} is not in expected range [20.0, 50.0]",
+            y_at_center
+        );
 
         // Check that baseline is more reasonable at the actual text positions
         let y_at_text = baseline.y_at_x(20.0);
-        assert!(y_at_text >= 25.0 && y_at_text <= 35.0,
-            "Baseline at text position {} is not in expected range [25.0, 35.0]", y_at_text);
+        assert!(
+            y_at_text >= 25.0 && y_at_text <= 35.0,
+            "Baseline at text position {} is not in expected range [25.0, 35.0]",
+            y_at_text
+        );
     }
 
     #[test]

@@ -308,8 +308,8 @@ impl DataLoader {
 
     fn split_dataset(&self, mut samples: Vec<TrainingSample>) -> DatasetSplits {
         if self.config.shuffle {
-            use rand::SeedableRng;
             use rand::seq::SliceRandom;
+            use rand::SeedableRng;
             let mut rng = if let Some(seed) = self.config.seed {
                 rand::rngs::StdRng::seed_from_u64(seed)
             } else {

@@ -1,7 +1,7 @@
 //! Loss functions for OCR training
 
 use anyhow::Result;
-use ndarray::{Array1, Array2, s};
+use ndarray::{s, Array1, Array2};
 
 /// Trait for loss functions
 pub trait LossFunction {

@@ -31,7 +31,16 @@ pub async fn handle_extract(
         image_path, psm, format, engine
     );
 
-    let config = build_config(lang, preprocess, psm, confidence, engine, dict_correct, device, osd);
+    let config = build_config(
+        lang,
+        preprocess,
+        psm,
+        confidence,
+        engine,
+        dict_correct,
+        device,
+        osd,
+    );
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
@@ -44,7 +53,15 @@ pub async fn handle_extract(
     if ext == "pdf" {
         #[cfg(feature = "pdf")]
         {
-            return super::pdf::handle_pdf_extraction(&ocr, &image_path, output, format, lang, dict_correct).await;
+            return super::pdf::handle_pdf_extraction(
+                &ocr,
+                &image_path,
+                output,
+                format,
+                lang,
+                dict_correct,
+            )
+            .await;
         }
         #[cfg(not(feature = "pdf"))]
         {
@@ -63,7 +80,10 @@ pub async fn handle_extract(
         apply_dictionary_correction(&mut result, lang);
     }
 
-    info!("OCR completed with confidence: {:.2}%", result.confidence * 100.0);
+    info!(
+        "OCR completed with confidence: {:.2}%",
+        result.confidence * 100.0
+    );
 
     if format.to_lowercase() == "pdf" {
         return generate_searchable_pdf(&image_path, &result, output).await;

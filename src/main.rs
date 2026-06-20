@@ -1,7 +1,7 @@
 mod cli;
 
 use anyhow::Result;
-use cli::{parse, Commands, commands::*};
+use cli::{commands::*, parse, Commands};
 use tracing::info;
 
 #[tokio::main]
@@ -29,7 +29,20 @@ async fn main() -> Result<()> {
             device,
             osd,
         } => {
-            handle_extract(image_path, output, &lang, preprocess, &format, psm, confidence, &engine, dict_correct, &device, osd).await?;
+            handle_extract(
+                image_path,
+                output,
+                &lang,
+                preprocess,
+                &format,
+                psm,
+                confidence,
+                &engine,
+                dict_correct,
+                &device,
+                osd,
+            )
+            .await?;
         }
         Commands::Batch {
             input_dir,
@@ -41,12 +54,19 @@ async fn main() -> Result<()> {
             dict_correct,
             device,
         } => {
-            handle_batch(input_dir, output_dir, &lang, confidence, max_concurrent, &engine, dict_correct, device.as_str()).await?;
+            handle_batch(
+                input_dir,
+                output_dir,
+                &lang,
+                confidence,
+                max_concurrent,
+                &engine,
+                dict_correct,
+                device.as_str(),
+            )
+            .await?;
         }
-        Commands::Layout {
-            image_path,
-            output,
-        } => {
+        Commands::Layout { image_path, output } => {
             handle_layout(image_path, output).await?;
         }
         Commands::ListLanguages => {

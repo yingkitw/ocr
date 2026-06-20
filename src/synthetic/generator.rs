@@ -70,6 +70,11 @@ impl TextLineGenerator {
         }
     }
 
+    /// Number of loaded fonts (0 = bitmap fallback)
+    pub fn font_count(&self) -> usize {
+        self.fonts.len()
+    }
+
     /// Set padding
     pub fn with_padding(mut self, padding: u32) -> Self {
         self.padding = padding;

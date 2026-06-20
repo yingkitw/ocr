@@ -140,7 +140,12 @@ mod tests {
                 if !status.is_success() {
                     eprintln!("Recognize endpoint returned {}: {}", status, body_text);
                 }
-                assert!(status.is_success(), "Expected success, got {}: {}", status, body_text);
+                assert!(
+                    status.is_success(),
+                    "Expected success, got {}: {}",
+                    status,
+                    body_text
+                );
             }
             Err(e) => {
                 panic!("Recognize endpoint request failed: {}", e);

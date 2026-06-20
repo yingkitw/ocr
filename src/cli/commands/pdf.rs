@@ -23,11 +23,17 @@ pub async fn handle_pdf_extraction(
     let images = extract_images(pdf_path)?;
 
     if images.is_empty() {
-        tracing::warn!("No embedded images found in PDF. For vector-based PDFs, convert to images first.");
+        tracing::warn!(
+            "No embedded images found in PDF. For vector-based PDFs, convert to images first."
+        );
         return Ok(());
     }
 
-    info!("Found {} images across {} pages", images.len(), images.iter().map(|i| i.page_number).max().unwrap_or(0));
+    info!(
+        "Found {} images across {} pages",
+        images.len(),
+        images.iter().map(|i| i.page_number).max().unwrap_or(0)
+    );
 
     let mut all_text = Vec::new();
     for img in &images {
@@ -80,5 +86,7 @@ pub async fn handle_pdf_extraction(
     _lang: &str,
     _dict_correct: bool,
 ) -> Result<()> {
-    Err(anyhow::anyhow!("PDF support is not enabled. Rebuild with: cargo build --features pdf"))
+    Err(anyhow::anyhow!(
+        "PDF support is not enabled. Rebuild with: cargo build --features pdf"
+    ))
 }

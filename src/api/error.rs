@@ -81,12 +81,8 @@ impl From<OcrError> for ApiError {
     fn from(err: OcrError) -> Self {
         match err {
             OcrError::ImageProcessing(msg) => ApiError::ImageProcessing(msg),
-            OcrError::Recognition(msg) => {
-                ApiError::OcrProcessing(OcrError::Recognition(msg))
-            }
-            OcrError::LayoutAnalysis(msg) => {
-                ApiError::OcrProcessing(OcrError::LayoutAnalysis(msg))
-            }
+            OcrError::Recognition(msg) => ApiError::OcrProcessing(OcrError::Recognition(msg)),
+            OcrError::LayoutAnalysis(msg) => ApiError::OcrProcessing(OcrError::LayoutAnalysis(msg)),
             OcrError::LanguageSupport(msg) => {
                 ApiError::OcrProcessing(OcrError::LanguageSupport(msg))
             }
@@ -98,9 +94,7 @@ impl From<OcrError> for ApiError {
             OcrError::SemaphoreAcquire(msg) => {
                 ApiError::Internal(format!("Semaphore acquire failed: {}", msg))
             }
-            OcrError::ModelNotFound(msg) => {
-                ApiError::Internal(format!("Model not found: {}", msg))
-            }
+            OcrError::ModelNotFound(msg) => ApiError::Internal(format!("Model not found: {}", msg)),
         }
     }
 }

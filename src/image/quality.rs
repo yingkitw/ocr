@@ -240,7 +240,9 @@ impl ImageQualityAssessor {
 
         let mut thresholder = ImageThresholder::new();
         thresholder.set_image(img.clone()).ok()?;
-        let binary = thresholder.threshold(crate::image::ThresholdMethod::Otsu).ok()?;
+        let binary = thresholder
+            .threshold(crate::image::ThresholdMethod::Otsu)
+            .ok()?;
         let binary_gray = binary.data.to_luma8();
 
         let ccl_result = connected_components_4connectivity(&binary_gray);

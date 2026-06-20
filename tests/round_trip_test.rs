@@ -19,68 +19,153 @@ use ocr::core::engine::{EngineStatistics, OcrEngine};
 use ocr::core::image::OcrImage;
 
 const SUPPORTED_LETTERS: &[char] = &[
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R',
-    'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
+    'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
 ];
 const SUPPORTED_DIGITS: &[char] = &['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const SUPPORTED_SPECIALS: &[char] = &['.', '-', ':', '/', ',', '\'', '!', '?'];
 
 fn glyph_rows(ch: char) -> [&'static str; 7] {
     match ch {
-        'A' => ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
-        'B' => ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
-        'C' => ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
-        'D' => ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
-        'E' => ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
-        'F' => ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
-        'G' => ["01111", "10000", "10000", "10111", "10001", "10001", "01111"],
-        'H' => ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
-        'I' => ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
-        'J' => ["00111", "00010", "00010", "00010", "00010", "10010", "01100"],
-        'K' => ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
-        'L' => ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
-        'M' => ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
-        'N' => ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
-        'O' => ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
-        'P' => ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
-        'Q' => ["01110", "10001", "10001", "10001", "10101", "10010", "01101"],
-        'R' => ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
-        'S' => ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
-        'T' => ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
-        'U' => ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
-        'V' => ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
-        'W' => ["10001", "10001", "10001", "10101", "10101", "10101", "01010"],
-        'X' => ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
-        'Y' => ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
-        'Z' => ["11111", "00001", "00010", "00100", "01000", "10000", "11111"],
-        '0' => ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
-        '1' => ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
-        '2' => ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
-        '3' => ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
-        '4' => ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
-        '5' => ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
-        '6' => ["01110", "10000", "10000", "11110", "10001", "10001", "01110"],
-        '7' => ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
-        '8' => ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
-        '9' => ["01110", "10001", "10001", "01111", "00001", "00001", "01110"],
-        '.' => ["00000", "00000", "00000", "00000", "00000", "00100", "00100"],
-        '-' => ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
-        ':' => ["00000", "00100", "00100", "00000", "00100", "00100", "00000"],
-        '/' => ["00001", "00010", "00100", "01000", "10000", "00000", "00000"],
-        ',' => ["00000", "00000", "00000", "00000", "00000", "00100", "01000"],
-        '\'' => ["00100", "00100", "00000", "00000", "00000", "00000", "00000"],
-        '!' => ["00100", "00100", "00100", "00100", "00100", "00000", "00100"],
-        '?' => ["01110", "10001", "00001", "00010", "00100", "00000", "00100"],
-        _ => ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+        'A' => [
+            "01110", "10001", "10001", "11111", "10001", "10001", "10001",
+        ],
+        'B' => [
+            "11110", "10001", "10001", "11110", "10001", "10001", "11110",
+        ],
+        'C' => [
+            "01111", "10000", "10000", "10000", "10000", "10000", "01111",
+        ],
+        'D' => [
+            "11110", "10001", "10001", "10001", "10001", "10001", "11110",
+        ],
+        'E' => [
+            "11111", "10000", "10000", "11110", "10000", "10000", "11111",
+        ],
+        'F' => [
+            "11111", "10000", "10000", "11110", "10000", "10000", "10000",
+        ],
+        'G' => [
+            "01111", "10000", "10000", "10111", "10001", "10001", "01111",
+        ],
+        'H' => [
+            "10001", "10001", "10001", "11111", "10001", "10001", "10001",
+        ],
+        'I' => [
+            "11111", "00100", "00100", "00100", "00100", "00100", "11111",
+        ],
+        'J' => [
+            "00111", "00010", "00010", "00010", "00010", "10010", "01100",
+        ],
+        'K' => [
+            "10001", "10010", "10100", "11000", "10100", "10010", "10001",
+        ],
+        'L' => [
+            "10000", "10000", "10000", "10000", "10000", "10000", "11111",
+        ],
+        'M' => [
+            "10001", "11011", "10101", "10101", "10001", "10001", "10001",
+        ],
+        'N' => [
+            "10001", "11001", "10101", "10011", "10001", "10001", "10001",
+        ],
+        'O' => [
+            "01110", "10001", "10001", "10001", "10001", "10001", "01110",
+        ],
+        'P' => [
+            "11110", "10001", "10001", "11110", "10000", "10000", "10000",
+        ],
+        'Q' => [
+            "01110", "10001", "10001", "10001", "10101", "10010", "01101",
+        ],
+        'R' => [
+            "11110", "10001", "10001", "11110", "10100", "10010", "10001",
+        ],
+        'S' => [
+            "01111", "10000", "10000", "01110", "00001", "00001", "11110",
+        ],
+        'T' => [
+            "11111", "00100", "00100", "00100", "00100", "00100", "00100",
+        ],
+        'U' => [
+            "10001", "10001", "10001", "10001", "10001", "10001", "01110",
+        ],
+        'V' => [
+            "10001", "10001", "10001", "10001", "10001", "01010", "00100",
+        ],
+        'W' => [
+            "10001", "10001", "10001", "10101", "10101", "10101", "01010",
+        ],
+        'X' => [
+            "10001", "10001", "01010", "00100", "01010", "10001", "10001",
+        ],
+        'Y' => [
+            "10001", "10001", "01010", "00100", "00100", "00100", "00100",
+        ],
+        'Z' => [
+            "11111", "00001", "00010", "00100", "01000", "10000", "11111",
+        ],
+        '0' => [
+            "01110", "10001", "10011", "10101", "11001", "10001", "01110",
+        ],
+        '1' => [
+            "00100", "01100", "00100", "00100", "00100", "00100", "01110",
+        ],
+        '2' => [
+            "01110", "10001", "00001", "00010", "00100", "01000", "11111",
+        ],
+        '3' => [
+            "11110", "00001", "00001", "01110", "00001", "00001", "11110",
+        ],
+        '4' => [
+            "00010", "00110", "01010", "10010", "11111", "00010", "00010",
+        ],
+        '5' => [
+            "11111", "10000", "11110", "00001", "00001", "10001", "01110",
+        ],
+        '6' => [
+            "01110", "10000", "10000", "11110", "10001", "10001", "01110",
+        ],
+        '7' => [
+            "11111", "00001", "00010", "00100", "01000", "01000", "01000",
+        ],
+        '8' => [
+            "01110", "10001", "10001", "01110", "10001", "10001", "01110",
+        ],
+        '9' => [
+            "01110", "10001", "10001", "01111", "00001", "00001", "01110",
+        ],
+        '.' => [
+            "00000", "00000", "00000", "00000", "00000", "00100", "00100",
+        ],
+        '-' => [
+            "00000", "00000", "00000", "11111", "00000", "00000", "00000",
+        ],
+        ':' => [
+            "00000", "00100", "00100", "00000", "00100", "00100", "00000",
+        ],
+        '/' => [
+            "00001", "00010", "00100", "01000", "10000", "00000", "00000",
+        ],
+        ',' => [
+            "00000", "00000", "00000", "00000", "00000", "00100", "01000",
+        ],
+        '\'' => [
+            "00100", "00100", "00000", "00000", "00000", "00000", "00000",
+        ],
+        '!' => [
+            "00100", "00100", "00100", "00100", "00100", "00000", "00100",
+        ],
+        '?' => [
+            "01110", "10001", "00001", "00010", "00100", "00000", "00100",
+        ],
+        _ => [
+            "00000", "00000", "00000", "00000", "00000", "00000", "00000",
+        ],
     }
 }
 
-fn render_text_5x7(
-    text: &str,
-    scale: u32,
-    char_spacing: u32,
-    line_spacing: u32,
-) -> GrayImage {
+fn render_text_5x7(text: &str, scale: u32, char_spacing: u32, line_spacing: u32) -> GrayImage {
     let lines: Vec<&str> = text.lines().collect();
     let glyph_w = 5 * scale;
     let glyph_h = 7 * scale;
@@ -190,11 +275,7 @@ fn character_accuracy(recognized: &str, expected: &str) -> f32 {
     if max_len == 0 {
         return 1.0;
     }
-    let matches = r
-        .iter()
-        .zip(e.iter())
-        .filter(|(a, b)| a == b)
-        .count();
+    let matches = r.iter().zip(e.iter()).filter(|(a, b)| a == b).count();
     matches as f32 / max_len as f32
 }
 
@@ -214,7 +295,12 @@ fn count_glyph_pixels(ch: char) -> u32 {
 fn test_glyph_render_all_letters_have_pixels() {
     for &ch in SUPPORTED_LETTERS {
         let px = count_glyph_pixels(ch);
-        assert!(px > 0, "Glyph '{}' should have at least 1 foreground pixel, got {}", ch, px);
+        assert!(
+            px > 0,
+            "Glyph '{}' should have at least 1 foreground pixel, got {}",
+            ch,
+            px
+        );
     }
 }
 
@@ -222,7 +308,12 @@ fn test_glyph_render_all_letters_have_pixels() {
 fn test_glyph_render_all_digits_have_pixels() {
     for &ch in SUPPORTED_DIGITS {
         let px = count_glyph_pixels(ch);
-        assert!(px > 0, "Glyph '{}' should have at least 1 foreground pixel, got {}", ch, px);
+        assert!(
+            px > 0,
+            "Glyph '{}' should have at least 1 foreground pixel, got {}",
+            ch,
+            px
+        );
     }
 }
 
@@ -264,7 +355,12 @@ fn test_render_multi_line_height() {
     let img2 = render_text_5x7("HELLO\nWORLD", 6, 6, 12);
     let (_, h1) = img1.dimensions();
     let (_, h2) = img2.dimensions();
-    assert!(h2 > h1, "Two lines should be taller than one line ({} > {})", h2, h1);
+    assert!(
+        h2 > h1,
+        "Two lines should be taller than one line ({} > {})",
+        h2,
+        h1
+    );
 }
 
 #[test]
@@ -277,7 +373,9 @@ fn test_render_pixel_values_are_binary() {
             assert!(
                 v == 0 || v == 255,
                 "All pixels should be 0 or 255, got {} at ({}, {})",
-                v, x, y
+                v,
+                x,
+                y
             );
         }
     }
@@ -312,7 +410,10 @@ fn test_render_has_white_pixels() {
             }
         }
     }
-    assert!(has_white, "Rendered text should contain white pixels (background)");
+    assert!(
+        has_white,
+        "Rendered text should contain white pixels (background)"
+    );
 }
 
 #[test]
@@ -351,7 +452,9 @@ async fn test_roundtrip_each_letter_a_through_m() {
     let engine = make_engine();
     engine.initialize().await.unwrap();
     let mut failures = Vec::new();
-    for &ch in &['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'] {
+    for &ch in &[
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+    ] {
         let img = render_text_5x7(&ch.to_string(), 6, 6, 12);
         let text = recognize_with(&engine, img).await;
         let acc = character_accuracy(&text, &ch.to_string());
@@ -372,7 +475,9 @@ async fn test_roundtrip_each_letter_n_through_z() {
     let engine = make_engine();
     engine.initialize().await.unwrap();
     let mut failures = Vec::new();
-    for &ch in &['N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'] {
+    for &ch in &[
+        'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    ] {
         let img = render_text_5x7(&ch.to_string(), 6, 6, 12);
         let text = recognize_with(&engine, img).await;
         let acc = character_accuracy(&text, &ch.to_string());
@@ -485,7 +590,12 @@ async fn test_roundtrip_long_word() {
     let img = render_text_5x7("ABCDEFGHIJ", 6, 6, 12);
     let text = recognize(img).await;
     let acc = character_accuracy(&text, "ABCDEFGHIJ");
-    assert!(acc >= 0.5, "ABCDEFGHIJ: got '{}' ({:.0}%)", text, acc * 100.0);
+    assert!(
+        acc >= 0.5,
+        "ABCDEFGHIJ: got '{}' ({:.0}%)",
+        text,
+        acc * 100.0
+    );
 }
 
 #[tokio::test]
@@ -493,7 +603,12 @@ async fn test_roundtrip_all_digits_sequence() {
     let img = render_text_5x7("0123456789", 6, 6, 12);
     let text = recognize(img).await;
     let acc = character_accuracy(&text, "0123456789");
-    assert!(acc >= 0.5, "0123456789: got '{}' ({:.0}%)", text, acc * 100.0);
+    assert!(
+        acc >= 0.5,
+        "0123456789: got '{}' ({:.0}%)",
+        text,
+        acc * 100.0
+    );
 }
 
 // ============================================================
@@ -526,7 +641,12 @@ async fn test_roundtrip_three_words_with_spaces() {
     let text = recognize_with(&engine, img).await;
     assert!(!text.is_empty(), "Should recognize text with spaces");
     let parts: Vec<&str> = text.split_whitespace().collect();
-    assert!(parts.len() >= 2, "Should have at least 2 words, got {}: {:?}", parts.len(), parts);
+    assert!(
+        parts.len() >= 2,
+        "Should have at least 2 words, got {}: {:?}",
+        parts.len(),
+        parts
+    );
 }
 
 #[tokio::test]
@@ -551,7 +671,13 @@ async fn test_roundtrip_two_lines() {
     let img = render_text_5x7("HELLO\nWORLD", 6, 6, 12);
     let text = recognize(img).await;
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 2, "Expected 2 lines, got {}: {:?}", lines.len(), lines);
+    assert_eq!(
+        lines.len(),
+        2,
+        "Expected 2 lines, got {}: {:?}",
+        lines.len(),
+        lines
+    );
     assert!(lines[0].starts_with("HELL"), "Line 1: got '{}'", lines[0]);
     assert!(!lines[1].is_empty(), "Line 2 should not be empty");
 }
@@ -561,7 +687,13 @@ async fn test_roundtrip_three_lines() {
     let img = render_text_5x7("HELLO\nWORLD\nTEST", 6, 6, 12);
     let text = recognize(img).await;
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 3, "Expected 3 lines, got {}: {:?}", lines.len(), lines);
+    assert_eq!(
+        lines.len(),
+        3,
+        "Expected 3 lines, got {}: {:?}",
+        lines.len(),
+        lines
+    );
     for (i, line) in lines.iter().enumerate() {
         assert!(!line.is_empty(), "Line {} should not be empty", i);
     }
@@ -572,7 +704,13 @@ async fn test_roundtrip_four_lines() {
     let img = render_text_5x7("AAA\nBBB\nCCC\nDDD", 6, 6, 12);
     let text = recognize(img).await;
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 4, "Expected 4 lines, got {}: {:?}", lines.len(), lines);
+    assert_eq!(
+        lines.len(),
+        4,
+        "Expected 4 lines, got {}: {:?}",
+        lines.len(),
+        lines
+    );
 }
 
 #[tokio::test]
@@ -580,7 +718,13 @@ async fn test_roundtrip_five_lines() {
     let img = render_text_5x7("A\nB\nC\nD\nE", 6, 6, 12);
     let text = recognize(img).await;
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 5, "Expected 5 lines, got {}: {:?}", lines.len(), lines);
+    assert_eq!(
+        lines.len(),
+        5,
+        "Expected 5 lines, got {}: {:?}",
+        lines.len(),
+        lines
+    );
 }
 
 #[tokio::test]
@@ -652,7 +796,12 @@ async fn test_roundtrip_wide_spacing() {
     let img = render_text_5x7("AB", 6, 20, 12);
     let text = recognize(img).await;
     let acc = character_accuracy(&text, "AB");
-    assert!(acc >= 0.5, "Wide spacing: got '{}' ({:.0}%)", text, acc * 100.0);
+    assert!(
+        acc >= 0.5,
+        "Wide spacing: got '{}' ({:.0}%)",
+        text,
+        acc * 100.0
+    );
 }
 
 #[tokio::test]
@@ -669,7 +818,11 @@ async fn test_roundtrip_wide_line_spacing() {
     let img = render_text_5x7("HELLO\nWORLD", 6, 6, 40);
     let text = recognize(img).await;
     let lines: Vec<&str> = text.lines().collect();
-    assert_eq!(lines.len(), 2, "Wide line spacing should still produce 2 lines");
+    assert_eq!(
+        lines.len(),
+        2,
+        "Wide line spacing should still produce 2 lines"
+    );
 }
 
 // ============================================================
@@ -754,8 +907,7 @@ async fn test_roundtrip_binarization_adaptive() {
     let mut config = OcrConfig::default();
     config.image_processing.enable_preprocessing = true;
     config.image_processing.enable_binarization = true;
-    config.image_processing.binarization_method =
-        ocr::core::config::BinarizationMethod::Adaptive;
+    config.image_processing.binarization_method = ocr::core::config::BinarizationMethod::Adaptive;
     config.layout_analysis.enable_layout_analysis = false;
     let engine = OcrEngine::with_config(config).unwrap();
     engine.initialize().await.unwrap();
@@ -769,8 +921,7 @@ async fn test_roundtrip_binarization_sauvola() {
     let mut config = OcrConfig::default();
     config.image_processing.enable_preprocessing = true;
     config.image_processing.enable_binarization = true;
-    config.image_processing.binarization_method =
-        ocr::core::config::BinarizationMethod::Sauvola;
+    config.image_processing.binarization_method = ocr::core::config::BinarizationMethod::Sauvola;
     config.layout_analysis.enable_layout_analysis = false;
     let engine = OcrEngine::with_config(config).unwrap();
     engine.initialize().await.unwrap();
@@ -792,14 +943,21 @@ async fn test_roundtrip_inverted_image_with_preprocessing() {
     engine.initialize().await.unwrap();
     let img = render_inverted("HELLO", 6, 6, 12);
     let result = engine.process_image(make_ocr_image(img)).await;
-    assert!(result.is_ok(), "Inverted image should not crash with preprocessing");
+    assert!(
+        result.is_ok(),
+        "Inverted image should not crash with preprocessing"
+    );
 }
 
 #[tokio::test]
 async fn test_roundtrip_empty_white_image() {
     let img = GrayImage::from_pixel(100, 100, Luma([255u8]));
     let text = recognize(img).await;
-    assert!(text.trim().is_empty(), "Empty white image => empty text, got '{}'", text);
+    assert!(
+        text.trim().is_empty(),
+        "Empty white image => empty text, got '{}'",
+        text
+    );
 }
 
 #[tokio::test]
@@ -833,7 +991,12 @@ async fn test_roundtrip_single_pixel_image() {
 async fn test_roundtrip_min_size_image() {
     let img = render_text_5x7("A", 1, 0, 0);
     let (w, h) = img.dimensions();
-    assert!(w >= 10 && h >= 10, "Image must be >= min size, got {}x{}", w, h);
+    assert!(
+        w >= 10 && h >= 10,
+        "Image must be >= min size, got {}x{}",
+        w,
+        h
+    );
     let engine = make_engine();
     engine.initialize().await.unwrap();
     let result = engine.process_image(make_ocr_image(img)).await;
@@ -845,7 +1008,12 @@ async fn test_roundtrip_wide_text() {
     let img = render_text_5x7("ABCDEFGHIJKLMNOP", 6, 6, 12);
     let text = recognize(img).await;
     let acc = character_accuracy(&text, "ABCDEFGHIJKLMNOP");
-    assert!(acc >= 0.5, "Wide text: got '{}' ({:.0}%)", text, acc * 100.0);
+    assert!(
+        acc >= 0.5,
+        "Wide text: got '{}' ({:.0}%)",
+        text,
+        acc * 100.0
+    );
 }
 
 #[tokio::test]
@@ -870,7 +1038,10 @@ async fn test_result_has_text() {
     engine.initialize().await.unwrap();
     let img = render_text_5x7("HELLO", 6, 6, 12);
     let result = engine.process_image(make_ocr_image(img)).await.unwrap();
-    assert!(!result.text.trim().is_empty(), "text field should be populated");
+    assert!(
+        !result.text.trim().is_empty(),
+        "text field should be populated"
+    );
 }
 
 #[tokio::test]
@@ -941,10 +1112,7 @@ async fn test_result_has_lines() {
     engine.initialize().await.unwrap();
     let img = render_text_5x7("HELLO\nWORLD", 6, 6, 12);
     let result = engine.process_image(make_ocr_image(img)).await.unwrap();
-    assert!(
-        !result.lines.is_empty(),
-        "Should have line-level results"
-    );
+    assert!(!result.lines.is_empty(), "Should have line-level results");
 }
 
 #[tokio::test]
@@ -1000,11 +1168,7 @@ async fn test_result_empty_image_zero_confidence() {
         result.text.trim().is_empty(),
         "Empty image should produce empty text"
     );
-    assert_eq!(
-        result.word_count(),
-        0,
-        "Empty image should have 0 words"
-    );
+    assert_eq!(result.word_count(), 0, "Empty image should have 0 words");
     assert_eq!(
         result.character_count(),
         0,
@@ -1024,7 +1188,11 @@ async fn test_reproducibility_same_input_same_output() {
     let img2 = render_text_5x7("HELLO", 6, 6, 12);
     let r1 = engine.process_image(make_ocr_image(img1)).await.unwrap();
     let r2 = engine.process_image(make_ocr_image(img2)).await.unwrap();
-    assert_eq!(r1.text.trim(), r2.text.trim(), "Same input should produce same text");
+    assert_eq!(
+        r1.text.trim(),
+        r2.text.trim(),
+        "Same input should produce same text"
+    );
     assert!(
         (r1.confidence - r2.confidence).abs() < 0.001,
         "Same input should produce same confidence ({} vs {})",
@@ -1059,7 +1227,10 @@ async fn test_engine_reuse_after_empty_image() {
     assert!(r1.text.trim().is_empty());
     let hello = render_text_5x7("HELLO", 6, 6, 12);
     let r2 = engine.process_image(make_ocr_image(hello)).await.unwrap();
-    assert!(!r2.text.trim().is_empty(), "Engine should still work after empty image");
+    assert!(
+        !r2.text.trim().is_empty(),
+        "Engine should still work after empty image"
+    );
 }
 
 #[tokio::test]
@@ -1071,7 +1242,10 @@ async fn test_engine_reuse_after_black_image() {
     assert!(r1.is_ok());
     let hello = render_text_5x7("HELLO", 6, 6, 12);
     let r2 = engine.process_image(make_ocr_image(hello)).await.unwrap();
-    assert!(!r2.text.trim().is_empty(), "Engine should still work after black image");
+    assert!(
+        !r2.text.trim().is_empty(),
+        "Engine should still work after black image"
+    );
 }
 
 #[tokio::test]
@@ -1107,7 +1281,10 @@ async fn test_engine_statistics_updated() {
         stats_after.total_processing_time_ms >= stats_before.total_processing_time_ms,
         "Processing time should increase"
     );
-    assert!(stats_after.last_processed.is_some(), "Last processed should be set");
+    assert!(
+        stats_after.last_processed.is_some(),
+        "Last processed should be set"
+    );
 }
 
 #[tokio::test]
@@ -1216,8 +1393,14 @@ async fn test_confidence_increases_with_scale() {
     engine.initialize().await.unwrap();
     let img_small = render_text_5x7("HELLO", 3, 3, 6);
     let img_large = render_text_5x7("HELLO", 10, 10, 20);
-    let res_small = engine.process_image(make_ocr_image(img_small)).await.unwrap();
-    let res_large = engine.process_image(make_ocr_image(img_large)).await.unwrap();
+    let res_small = engine
+        .process_image(make_ocr_image(img_small))
+        .await
+        .unwrap();
+    let res_large = engine
+        .process_image(make_ocr_image(img_large))
+        .await
+        .unwrap();
     assert!(
         res_large.confidence >= res_small.confidence * 0.8,
         "Larger scale should have >= confidence (small={:.3}, large={:.3})",

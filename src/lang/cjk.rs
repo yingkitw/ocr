@@ -470,18 +470,14 @@ mod tests {
     fn test_language_detection() {
         let processor = CJKProcessor::new();
         let scores = processor.detect_cjk_language("中文");
-        assert!(
-            scores
-                .iter()
-                .any(|(lang, _)| *lang == CJKLanguage::ChineseSimplified)
-        );
+        assert!(scores
+            .iter()
+            .any(|(lang, _)| *lang == CJKLanguage::ChineseSimplified));
 
         let scores = processor.detect_cjk_language("ひらがな");
-        assert!(
-            scores
-                .iter()
-                .any(|(lang, _)| *lang == CJKLanguage::Japanese)
-        );
+        assert!(scores
+            .iter()
+            .any(|(lang, _)| *lang == CJKLanguage::Japanese));
 
         let scores = processor.detect_cjk_language("한글");
         assert!(scores.iter().any(|(lang, _)| *lang == CJKLanguage::Korean));

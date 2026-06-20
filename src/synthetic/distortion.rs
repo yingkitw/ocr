@@ -272,10 +272,7 @@ mod tests {
         let img = GrayImage::from_pixel(10, 10, Luma([128]));
         let noisy = add_noise(&DynamicImage::ImageLuma8(img), 0.5);
         // With 50% noise, almost certainly some pixels changed
-        let changed = noisy
-            .to_luma8()
-            .pixels()
-            .any(|p| p.0[0] != 128);
+        let changed = noisy.to_luma8().pixels().any(|p| p.0[0] != 128);
         assert!(changed);
     }
 }

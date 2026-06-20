@@ -7,8 +7,11 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 use crate::core::{
-    config::OcrConfig, image::OcrImage, layout::{LayoutResult, PageSize, TextRegion},
-    recognition::RecognitionResult, text::TextResult,
+    config::OcrConfig,
+    image::OcrImage,
+    layout::{LayoutResult, PageSize, TextRegion},
+    recognition::RecognitionResult,
+    text::TextResult,
 };
 
 /// Main OCR engine
@@ -353,7 +356,9 @@ impl OcrEngine {
 
         // Step 4: Post-processing
         profiler.start_operation("post_processing");
-        let text_result = self.post_process_result(recognition_result, &preprocessed_image).await?;
+        let text_result = self
+            .post_process_result(recognition_result, &preprocessed_image)
+            .await?;
         profiler.stop_operation();
 
         profiler.stop_operation(); // total
@@ -423,8 +428,10 @@ impl OcrEngine {
     }
 
     /// Create compute backend based on configuration
-    fn create_compute_backend(config: &OcrConfig) -> Option<Box<dyn crate::compute::ComputeBackend>> {
-        use crate::compute::{BackendType, create_backend};
+    fn create_compute_backend(
+        config: &OcrConfig,
+    ) -> Option<Box<dyn crate::compute::ComputeBackend>> {
+        use crate::compute::{create_backend, BackendType};
 
         let device_str = config.performance.device.to_lowercase();
         let backend_type = match device_str.as_str() {
@@ -447,7 +454,10 @@ impl OcrEngine {
         match create_backend(backend_type) {
             Ok(backend) => Some(backend),
             Err(e) => {
-                tracing::warn!("Failed to create compute backend: {}, using CPU fallback", e);
+                tracing::warn!(
+                    "Failed to create compute backend: {}, using CPU fallback",
+                    e
+                );
                 None
             }
         }
@@ -590,6 +600,19 @@ impl OcrEngine {
         image: &OcrImage,
         layout: &LayoutResult,
     ) -> Result<RecognitionResult> {
+        match self.config.recognition.engine {
+            crate::core::config::RecognitionEngine::LSTM => {
+                self.recognize_with_crnn(image, layout).await
+            }
+            _ => self.recognize_with_basic_ocr(image, layout).await,
+        }
+    }
+
+    async fn recognize_with_basic_ocr(
+        &self,
+        image: &OcrImage,
+        layout: &LayoutResult,
+    ) -> Result<RecognitionResult> {
         use crate::recognition::basic_ocr::BasicOcrEngine;
 
         let ocr_engine = BasicOcrEngine::new();
@@ -650,6 +673,77 @@ impl OcrEngine {
         })
     }
 
+    async fn recognize_with_crnn(
+        &self,
+        image: &OcrImage,
+        layout: &LayoutResult,
+    ) -> Result<RecognitionResult> {
+        use crate::recognition::crnn::{CrnnConfig, CrnnModel};
+
+        let config = CrnnConfig::default();
+        let model = CrnnModel::new(config);
+
+        let mut full_text = String::new();
+        let mut all_characters = Vec::new();
+        let mut all_words = Vec::new();
+        let mut all_lines = Vec::new();
+        let mut conf_sum = 0.0f32;
+        let mut conf_count = 0u32;
+
+        let regions = if layout.text_regions.is_empty() {
+            vec![image.clone()]
+        } else {
+            layout
+                .text_regions
+                .iter()
+                .map(|r| {
+                    image
+                        .crop(
+                            r.bounding_box.left,
+                            r.bounding_box.top,
+                            r.bounding_box.width(),
+                            r.bounding_box.height(),
+                        )
+                        .unwrap_or_else(|_| image.clone())
+                })
+                .collect()
+        };
+
+        for region_img in &regions {
+            let text = model.recognize(region_img).unwrap_or_default();
+            if !text.trim().is_empty() {
+                if !full_text.is_empty() {
+                    full_text.push('\n');
+                }
+                full_text.push_str(text.trim());
+            }
+            // Approximate confidence for CRNN output
+            conf_sum += 0.7;
+            conf_count += 1;
+        }
+
+        let confidence = if conf_count == 0 {
+            0.0
+        } else {
+            conf_sum / conf_count as f32
+        };
+
+        Ok(RecognitionResult {
+            text: full_text,
+            confidence,
+            characters: all_characters,
+            words: all_words,
+            lines: all_lines,
+            metadata: Default::default(),
+            model_type: Some(crate::core::recognition::ModelType::LSTM),
+            processing_time_ms: None,
+            language: Some(self.config.recognition.language.clone()),
+            character_results: Vec::new(),
+            word_results: Vec::new(),
+            line_results: Vec::new(),
+        })
+    }
+
     /// Post-process result
     async fn post_process_result(
         &self,
@@ -665,7 +759,9 @@ impl OcrEngine {
         let enable_font_analysis = self.config.recognition.enable_font_attribute_detection;
 
         let dict = if enable_dict_correction {
-            Some(DictionaryHandler::new_for_language(&self.config.recognition.language))
+            Some(DictionaryHandler::new_for_language(
+                &self.config.recognition.language,
+            ))
         } else {
             None
         };
@@ -728,21 +824,20 @@ impl OcrEngine {
                 let avg_conf = filtered_chars.iter().map(|c| c.confidence).sum::<f32>()
                     / filtered_chars.len() as f32;
 
-                let mut word_result = crate::core::text::WordResult::new(
-                    corrected_text.clone(),
-                    avg_conf,
-                    word_bbox,
-                );
+                let mut word_result =
+                    crate::core::text::WordResult::new(corrected_text.clone(), avg_conf, word_bbox);
 
                 for char_rec in &filtered_chars {
                     let char_bbox = char_rec
                         .bounding_box
                         .unwrap_or_else(|| crate::core::text::BoundingBox::new(0, 0, 0, 0));
-                    word_result.characters.push(crate::core::text::CharacterResult::new(
-                        char_rec.character,
-                        char_rec.confidence,
-                        char_bbox,
-                    ));
+                    word_result
+                        .characters
+                        .push(crate::core::text::CharacterResult::new(
+                            char_rec.character,
+                            char_rec.confidence,
+                            char_bbox,
+                        ));
                 }
 
                 if word_result.confidence < confidence_threshold {
@@ -752,7 +847,10 @@ impl OcrEngine {
                 // Font attribute detection
                 if enable_font_analysis {
                     if let Ok((is_bold, is_italic, is_monospace)) =
-                        crate::image::font_analysis::analyze_font_attributes(&dynamic_img, &word_result)
+                        crate::image::font_analysis::analyze_font_attributes(
+                            &dynamic_img,
+                            &word_result,
+                        )
                     {
                         word_result.properties.is_bold = is_bold;
                         word_result.properties.is_italic = is_italic;
@@ -771,17 +869,11 @@ impl OcrEngine {
                 continue;
             }
 
-            let line_conf = filtered_words
-                .iter()
-                .map(|w| w.confidence)
-                .sum::<f32>()
+            let line_conf = filtered_words.iter().map(|w| w.confidence).sum::<f32>()
                 / filtered_words.len() as f32;
 
-            let mut line_result = crate::core::text::LineResult::new(
-                filtered_line_text,
-                line_conf,
-                line_bbox,
-            );
+            let mut line_result =
+                crate::core::text::LineResult::new(filtered_line_text, line_conf, line_bbox);
             line_result.words = filtered_words;
 
             // Vertical text detection: tall narrow lines are likely vertical CJK
@@ -790,7 +882,8 @@ impl OcrEngine {
                 let line_height = line_bbox.bottom.saturating_sub(line_bbox.top);
                 if line_height > line_width.saturating_mul(2) {
                     line_result.properties.is_vertical = true;
-                    line_result.properties.reading_order = crate::core::text::ReadingOrder::TopToBottom;
+                    line_result.properties.reading_order =
+                        crate::core::text::ReadingOrder::TopToBottom;
                 }
             }
 
@@ -849,8 +942,7 @@ impl OcrEngine {
                 continue;
             }
 
-            let mut corrected_text: String =
-                filtered_chars.iter().map(|c| c.character).collect();
+            let mut corrected_text: String = filtered_chars.iter().map(|c| c.character).collect();
 
             if let Some(ref d) = dict {
                 corrected_text = d.correct(&corrected_text);

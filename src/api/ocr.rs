@@ -1,9 +1,7 @@
 //! Main OCR API for OCR
 
 use crate::api::error::{ApiError, ApiResult};
-use crate::core::{
-    LayoutResult, OcrConfig, OcrEngine, OcrImage, TextResult, image::ImageFormat,
-};
+use crate::core::{image::ImageFormat, LayoutResult, OcrConfig, OcrEngine, OcrImage, TextResult};
 use crate::utils::{OcrError, Result, Timer};
 use chrono::{DateTime, Utc};
 use image::GenericImageView;

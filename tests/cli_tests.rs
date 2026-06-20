@@ -91,12 +91,7 @@ fn test_cli_extract_with_preprocessing() {
 fn test_cli_extract_with_lstm_engine() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&[
-        "extract",
-        file.path().to_str().unwrap(),
-        "--engine",
-        "lstm",
-    ]);
+    cmd.args(&["extract", file.path().to_str().unwrap(), "--engine", "lstm"]);
     cmd.assert().success();
 }
 
@@ -117,11 +112,7 @@ fn test_cli_extract_with_hybrid_engine() {
 fn test_cli_extract_with_dict_correct() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&[
-        "extract",
-        file.path().to_str().unwrap(),
-        "--dict-correct",
-    ]);
+    cmd.args(&["extract", file.path().to_str().unwrap(), "--dict-correct"]);
     cmd.assert().success();
 }
 

@@ -28,7 +28,8 @@ pub enum PdfImageFormat {
 
 /// Extract all embedded images from a PDF file
 pub fn extract_images(path: &Path) -> Result<Vec<PdfImage>> {
-    let file = FileOptions::uncached().open(path)
+    let file = FileOptions::uncached()
+        .open(path)
         .map_err(|e| crate::utils::OcrError::Internal(format!("Failed to open PDF: {}", e)))?;
     let resolver = file.resolver();
     let mut images = Vec::new();

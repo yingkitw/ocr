@@ -1,4 +1,8 @@
 //! Region detection operations
+//!
+//! Provides a `TextDetector` trait with multiple implementations:
+//! - `CclDetector`: Connected component labeling (baseline)
+//! - `CnnDetector`: Lightweight CNN-based text detection (stub)
 
 use crate::core::layout::*;
 use crate::core::text::BoundingBox;
@@ -7,7 +11,91 @@ use crate::utils::Result;
 use image::{GenericImageView, Luma};
 use imageproc::distance_transform::Norm;
 use imageproc::morphology::dilate;
-use imageproc::region_labelling::{Connectivity, connected_components};
+use imageproc::region_labelling::{connected_components, Connectivity};
+
+/// Trait for text region detection algorithms
+pub trait TextDetector: Send + Sync {
+    /// Detect text regions in an image
+    fn detect(&self, image: &crate::core::image::OcrImage) -> Result<Vec<TextRegion>>;
+    /// Detector name
+    fn name(&self) -> &'static str;
+}
+
+/// CCL-based text detector using connected component labeling
+pub struct CclDetector;
+
+impl TextDetector for CclDetector {
+    fn detect(&self, image: &crate::core::image::OcrImage) -> Result<Vec<TextRegion>> {
+        TextRegionDetector::detect_text_regions(image)
+    }
+
+    fn name(&self) -> &'static str {
+        "CCL"
+    }
+}
+
+/// CNN-based text detector using a lightweight detection CNN
+pub struct CnnDetector {
+    cnn: crate::layout::detection_cnn::TextDetectionCNN,
+}
+
+impl Default for CnnDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CnnDetector {
+    /// Create a new CNN detector with heuristic initial weights
+    pub fn new() -> Self {
+        Self {
+            cnn: crate::layout::detection_cnn::TextDetectionCNN::new(),
+        }
+    }
+}
+
+impl TextDetector for CnnDetector {
+    fn detect(&self, image: &crate::core::image::OcrImage) -> Result<Vec<TextRegion>> {
+        let gray = image.to_grayscale();
+        let luma = gray.data.to_luma8();
+        let (w, h) = (luma.width() as usize, luma.height() as usize);
+
+        // Convert to normalized ndarray [0,1]
+        let mut arr = ndarray::Array2::zeros((h, w));
+        for y in 0..h {
+            for x in 0..w {
+                arr[(y, x)] = luma.get_pixel(x as u32, y as u32)[0] as f32 / 255.0;
+            }
+        }
+
+        // Run CNN
+        let heatmap = self.cnn.forward(&arr);
+
+        // Post-process: threshold, connected components, bounding boxes
+        let boxes = self.cnn.post_process(&heatmap, 0.5, 20);
+
+        let mut regions = Vec::new();
+        for (min_x, max_x, min_y, max_y) in boxes {
+            let bbox = BoundingBox::new(min_x as u32, min_y as u32, (max_x + 1) as u32, (max_y + 1) as u32);
+            regions.push(TextRegion::new(
+                format!("cnn_{}_{}", min_x, min_y),
+                bbox,
+                String::new(),
+            ));
+        }
+
+        // Fallback to CCL if CNN finds nothing (safety net)
+        if regions.is_empty() {
+            return TextRegionDetector::detect_text_regions(image);
+        }
+
+        Ok(regions)
+    }
+
+    fn name(&self) -> &'static str {
+        "CNN"
+    }
+}
 
 /// Text region detector
 pub struct TextRegionDetector;
@@ -460,6 +548,10 @@ impl TableDetector {
                         }
                         cells.push(row_cells);
                     }
+
+                    // 6. Span inference: check which internal grid lines are actually present
+                    Self::infer_spans(&mut cells, &unique_rows, &unique_cols, &gray);
+
                     table.structure.cells = cells;
                 }
 
@@ -468,5 +560,118 @@ impl TableDetector {
         }
 
         Ok(tables)
+    }
+
+    /// Infer row and column spans by checking which internal grid lines are actually present.
+    fn infer_spans(
+        cells: &mut [Vec<TableCell>],
+        unique_rows: &[u32],
+        unique_cols: &[u32],
+        gray: &image::GrayImage,
+    ) {
+        if cells.is_empty() || cells[0].is_empty() {
+            return;
+        }
+        let rows = cells.len();
+        let cols = cells[0].len();
+
+        // Check horizontal line presence between each pair of rows
+        // h_present[r][c] = true if line between row r and r+1 exists at column c
+        let mut h_present = vec![vec![false; cols]; rows.saturating_sub(1)];
+        for r in 0..rows.saturating_sub(1) {
+            let y = unique_rows[r + 1];
+            if y >= gray.height() {
+                continue;
+            }
+            for c in 0..cols {
+                let x_start = unique_cols[c];
+                let x_end = unique_cols[(c + 1).min(unique_cols.len() - 1)];
+                let dark_count = Self::count_dark_pixels_horizontal(gray, y, x_start, x_end);
+                let length = (x_end - x_start).max(1);
+                // Line is "present" if > 30% of pixels are dark
+                h_present[r][c] = (dark_count as f32 / length as f32) > 0.30;
+            }
+        }
+
+        // Check vertical line presence between each pair of columns
+        // v_present[r][c] = true if line between col c and c+1 exists at row r
+        let mut v_present = vec![vec![false; cols.saturating_sub(1)]; rows];
+        for r in 0..rows {
+            let y_start = unique_rows[r];
+            let y_end = unique_rows[(r + 1).min(unique_rows.len() - 1)];
+            for c in 0..cols.saturating_sub(1) {
+                let x = unique_cols[c + 1];
+                if x >= gray.width() {
+                    continue;
+                }
+                let dark_count = Self::count_dark_pixels_vertical(gray, x, y_start, y_end);
+                let length = (y_end - y_start).max(1);
+                v_present[r][c] = (dark_count as f32 / length as f32) > 0.30;
+            }
+        }
+
+        // Merge column spans: for each row, find consecutive cells without vertical lines between them
+        for r in 0..rows {
+            let mut c = 0;
+            while c < cols {
+                let mut span = 1;
+                while c + span < cols && !v_present[r][c + span - 1] {
+                    span += 1;
+                }
+                for k in 0..span {
+                    cells[r][c + k].column_span = span - k;
+                }
+                // Widen bbox for the first cell in the span
+                cells[r][c].bounding_box.right = cells[r][c + span - 1].bounding_box.right;
+                c += span;
+            }
+        }
+
+        // Merge row spans: for each col, find consecutive cells without horizontal lines between them
+        for c in 0..cols {
+            let mut r = 0;
+            while r < rows {
+                let mut span = 1;
+                while r + span < rows && !h_present[r + span - 1][c] {
+                    span += 1;
+                }
+                for k in 0..span {
+                    cells[r + k][c].row_span = span - k;
+                }
+                // Widen bbox for the first cell in the span
+                cells[r][c].bounding_box.bottom = cells[r + span - 1][c].bounding_box.bottom;
+                r += span;
+            }
+        }
+    }
+
+    fn count_dark_pixels_horizontal(
+        gray: &image::GrayImage,
+        y: u32,
+        x_start: u32,
+        x_end: u32,
+    ) -> u32 {
+        let mut count = 0;
+        for x in x_start..x_end.min(gray.width()) {
+            if gray.get_pixel(x, y)[0] < 128 {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    fn count_dark_pixels_vertical(
+        gray: &image::GrayImage,
+        x: u32,
+        y_start: u32,
+        y_end: u32,
+    ) -> u32 {
+        let mut count = 0;
+        for y in y_start..y_end.min(gray.height()) {
+            if gray.get_pixel(x, y)[0] < 128 {
+                count += 1;
+            }
+        }
+        count
     }
 }

@@ -43,11 +43,9 @@ mod tests {
 
         // Verify models are loaded
         assert!(manager.get_model(ModelType::LSTM).is_some());
-        assert!(
-            manager
-                .get_model(ModelType::Custom("PatternMatching".to_string()))
-                .is_some()
-        );
+        assert!(manager
+            .get_model(ModelType::Custom("PatternMatching".to_string()))
+            .is_some());
 
         // Verify switching
         manager.switch_model(ModelType::LSTM).unwrap();

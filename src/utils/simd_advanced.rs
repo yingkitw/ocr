@@ -68,20 +68,28 @@ impl SIMDOperations for SIMDVector {
             (SIMDVector::I32x4(a), SIMDVector::I32x4(b)) => {
                 SIMDVector::I32x4([a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]])
             }
-            (SIMDVector::I32x8(a), SIMDVector::I32x8(b)) => {
-                SIMDVector::I32x8([
-                    a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3],
-                    a[4] + b[4], a[5] + b[5], a[6] + b[6], a[7] + b[7],
-                ])
-            }
+            (SIMDVector::I32x8(a), SIMDVector::I32x8(b)) => SIMDVector::I32x8([
+                a[0] + b[0],
+                a[1] + b[1],
+                a[2] + b[2],
+                a[3] + b[3],
+                a[4] + b[4],
+                a[5] + b[5],
+                a[6] + b[6],
+                a[7] + b[7],
+            ]),
             (SIMDVector::U8x16(a), SIMDVector::U8x16(b)) => {
                 let mut r = [0u8; 16];
-                for i in 0..16 { r[i] = a[i].wrapping_add(b[i]); }
+                for i in 0..16 {
+                    r[i] = a[i].wrapping_add(b[i]);
+                }
                 SIMDVector::U8x16(r)
             }
             (SIMDVector::U8x32(a), SIMDVector::U8x32(b)) => {
                 let mut r = [0u8; 32];
-                for i in 0..32 { r[i] = a[i].wrapping_add(b[i]); }
+                for i in 0..32 {
+                    r[i] = a[i].wrapping_add(b[i]);
+                }
                 SIMDVector::U8x32(r)
             }
             _ => unreachable!("type mismatch"),
@@ -128,11 +136,12 @@ impl SIMDOperations for SIMDVector {
             (SIMDVector::F32x4(a), SIMDVector::F32x4(b)) => {
                 SIMDVector::F32x4(simd_max_f32x4(*a, *b))
             }
-            (SIMDVector::I32x4(a), SIMDVector::I32x4(b)) => {
-                SIMDVector::I32x4([
-                    a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2]), a[3].max(b[3]),
-                ])
-            }
+            (SIMDVector::I32x4(a), SIMDVector::I32x4(b)) => SIMDVector::I32x4([
+                a[0].max(b[0]),
+                a[1].max(b[1]),
+                a[2].max(b[2]),
+                a[3].max(b[3]),
+            ]),
             _ => unreachable!("type mismatch"),
         }
     }
@@ -155,7 +164,9 @@ impl SIMDOperations for SIMDVector {
 
     fn abs(&self) -> Self {
         match self {
-            SIMDVector::F32x4(a) => SIMDVector::F32x4([a[0].abs(), a[1].abs(), a[2].abs(), a[3].abs()]),
+            SIMDVector::F32x4(a) => {
+                SIMDVector::F32x4([a[0].abs(), a[1].abs(), a[2].abs(), a[3].abs()])
+            }
             _ => unreachable!("type mismatch"),
         }
     }
@@ -223,9 +234,9 @@ fn simd_sub_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     {
         if std::is_x86_feature_detected!("sse4.1") {
             unsafe {
-                use std::arch::x86_64::_mm_sub_ps;
                 use std::arch::x86_64::_mm_loadu_ps;
                 use std::arch::x86_64::_mm_storeu_ps;
+                use std::arch::x86_64::_mm_sub_ps;
                 let va = _mm_loadu_ps(a.as_ptr());
                 let vb = _mm_loadu_ps(b.as_ptr());
                 let vr = _mm_sub_ps(va, vb);
@@ -238,9 +249,9 @@ fn simd_sub_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     #[cfg(all(feature = "simd", target_arch = "aarch64"))]
     {
         unsafe {
-            use std::arch::aarch64::vsubq_f32;
             use std::arch::aarch64::vld1q_f32;
             use std::arch::aarch64::vst1q_f32;
+            use std::arch::aarch64::vsubq_f32;
             let va = vld1q_f32(a.as_ptr());
             let vb = vld1q_f32(b.as_ptr());
             let vr = vsubq_f32(va, vb);
@@ -257,8 +268,8 @@ fn simd_mul_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     {
         if std::is_x86_feature_detected!("sse4.1") {
             unsafe {
-                use std::arch::x86_64::_mm_mul_ps;
                 use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_mul_ps;
                 use std::arch::x86_64::_mm_storeu_ps;
                 let va = _mm_loadu_ps(a.as_ptr());
                 let vb = _mm_loadu_ps(b.as_ptr());
@@ -272,8 +283,8 @@ fn simd_mul_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     #[cfg(all(feature = "simd", target_arch = "aarch64"))]
     {
         unsafe {
-            use std::arch::aarch64::vmulq_f32;
             use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vmulq_f32;
             use std::arch::aarch64::vst1q_f32;
             let va = vld1q_f32(a.as_ptr());
             let vb = vld1q_f32(b.as_ptr());
@@ -291,8 +302,8 @@ fn simd_max_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     {
         if std::is_x86_feature_detected!("sse4.1") {
             unsafe {
-                use std::arch::x86_64::_mm_max_ps;
                 use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_max_ps;
                 use std::arch::x86_64::_mm_storeu_ps;
                 let va = _mm_loadu_ps(a.as_ptr());
                 let vb = _mm_loadu_ps(b.as_ptr());
@@ -306,8 +317,8 @@ fn simd_max_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     #[cfg(all(feature = "simd", target_arch = "aarch64"))]
     {
         unsafe {
-            use std::arch::aarch64::vmaxq_f32;
             use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vmaxq_f32;
             use std::arch::aarch64::vst1q_f32;
             let va = vld1q_f32(a.as_ptr());
             let vb = vld1q_f32(b.as_ptr());
@@ -317,7 +328,12 @@ fn simd_max_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
             return r;
         }
     }
-    [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2]), a[3].max(b[3])]
+    [
+        a[0].max(b[0]),
+        a[1].max(b[1]),
+        a[2].max(b[2]),
+        a[3].max(b[3]),
+    ]
 }
 
 fn simd_min_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
@@ -325,8 +341,8 @@ fn simd_min_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     {
         if std::is_x86_feature_detected!("sse4.1") {
             unsafe {
-                use std::arch::x86_64::_mm_min_ps;
                 use std::arch::x86_64::_mm_loadu_ps;
+                use std::arch::x86_64::_mm_min_ps;
                 use std::arch::x86_64::_mm_storeu_ps;
                 let va = _mm_loadu_ps(a.as_ptr());
                 let vb = _mm_loadu_ps(b.as_ptr());
@@ -340,8 +356,8 @@ fn simd_min_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
     #[cfg(all(feature = "simd", target_arch = "aarch64"))]
     {
         unsafe {
-            use std::arch::aarch64::vminq_f32;
             use std::arch::aarch64::vld1q_f32;
+            use std::arch::aarch64::vminq_f32;
             use std::arch::aarch64::vst1q_f32;
             let va = vld1q_f32(a.as_ptr());
             let vb = vld1q_f32(b.as_ptr());
@@ -351,7 +367,12 @@ fn simd_min_f32x4(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
             return r;
         }
     }
-    [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2]), a[3].min(b[3])]
+    [
+        a[0].min(b[0]),
+        a[1].min(b[1]),
+        a[2].min(b[2]),
+        a[3].min(b[3]),
+    ]
 }
 
 fn simd_sqrt_f32x4(a: [f32; 4]) -> [f32; 4] {
@@ -394,8 +415,12 @@ impl SIMDMatrix {
         Self { data, rows, cols }
     }
 
-    pub fn rows(&self) -> usize { self.rows }
-    pub fn cols(&self) -> usize { self.cols }
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+    pub fn cols(&self) -> usize {
+        self.cols
+    }
 
     /// Matrix multiplication using SIMD
     pub fn matmul_simd(&self, other: &SIMDMatrix) -> Result<SIMDMatrix> {
@@ -609,7 +634,8 @@ impl SIMDImageProcessor {
                         let img_y = y as i32 + ky as i32 - padding as i32;
                         let img_x = x as i32 + kx as i32 - padding as i32;
 
-                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32 {
+                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32
+                        {
                             let pixel_idx = (img_y as usize * width + img_x as usize) as usize;
                             let kernel_val = kernel[ky * kernel_size + kx];
                             sum += image[pixel_idx] * kernel_val;
@@ -670,7 +696,8 @@ impl SIMDImageProcessor {
                         let img_y = y as i32 + ky as i32 - padding as i32;
                         let img_x = x as i32 + kx as i32 - padding as i32;
 
-                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32 {
+                        if img_y >= 0 && img_y < height as i32 && img_x >= 0 && img_x < width as i32
+                        {
                             let pixel_idx = img_y as usize * width + img_x as usize;
                             let kernel_idx = ky * kernel_size + kx;
                             sum += image[pixel_idx] * kernel[kernel_idx];

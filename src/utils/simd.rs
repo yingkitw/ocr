@@ -159,7 +159,9 @@ impl SimdImageOps {
         #[cfg(all(feature = "simd", target_arch = "x86_64"))]
         {
             if std::is_x86_feature_detected!("sse4.1") {
-                unsafe { i = sse_contrast_adjust(pixels, &mut result, factor); }
+                unsafe {
+                    i = sse_contrast_adjust(pixels, &mut result, factor);
+                }
             }
         }
 
@@ -202,7 +204,9 @@ impl SimdImageOps {
         #[cfg(all(feature = "simd", target_arch = "x86_64"))]
         {
             if std::is_x86_feature_detected!("sse2") {
-                unsafe { i = sse_threshold(pixels, &mut result, threshold); }
+                unsafe {
+                    i = sse_threshold(pixels, &mut result, threshold);
+                }
             }
         }
 
@@ -373,7 +377,13 @@ impl SimdImageOps {
     }
 }
 
-fn scalar_horizontal_blur(input: &[f32], output: &mut [f32], width: usize, height: usize, radius: usize) {
+fn scalar_horizontal_blur(
+    input: &[f32],
+    output: &mut [f32],
+    width: usize,
+    height: usize,
+    radius: usize,
+) {
     for y in 0..height {
         let row_start = y * width;
         for x in 0..width {
@@ -547,13 +557,13 @@ unsafe fn avx2_mul_f32x8(a: [f32; 8], b: [f32; 8]) -> [f32; 8] {
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 unsafe fn avx2_max_f32x8(v: [f32; 8]) -> f32 {
+    use std::arch::x86_64::_mm256_castps256_ps128;
+    use std::arch::x86_64::_mm256_extractf128_ps;
     use std::arch::x86_64::_mm256_loadu_ps;
     use std::arch::x86_64::_mm256_max_ps;
     use std::arch::x86_64::_mm256_permutevar8x32_ps;
-    use std::arch::x86_64::_mm256_castps256_ps128;
     use std::arch::x86_64::_mm_max_ps;
     use std::arch::x86_64::_mm_storeu_ps;
-    use std::arch::x86_64::_mm256_extractf128_ps;
     let vv = _mm256_loadu_ps(v.as_ptr());
     let perm = _mm256_permutevar8x32_ps(vv, _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0));
     let max_v = _mm256_max_ps(vv, perm);
@@ -568,12 +578,12 @@ unsafe fn avx2_max_f32x8(v: [f32; 8]) -> f32 {
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 unsafe fn avx2_min_f32x8(v: [f32; 8]) -> f32 {
+    use std::arch::x86_64::_mm256_castps256_ps128;
+    use std::arch::x86_64::_mm256_extractf128_ps;
     use std::arch::x86_64::_mm256_loadu_ps;
     use std::arch::x86_64::_mm256_min_ps;
-    use std::arch::x86_64::_mm256_castps256_ps128;
     use std::arch::x86_64::_mm_min_ps;
     use std::arch::x86_64::_mm_storeu_ps;
-    use std::arch::x86_64::_mm256_extractf128_ps;
     let vv = _mm256_loadu_ps(v.as_ptr());
     let low = _mm256_castps256_ps128(vv);
     let high = _mm256_extractf128_ps(vv, 1);
@@ -587,7 +597,9 @@ fn simd_add_f32x8(a: [f32; 8], b: [f32; 8]) -> [f32; 8] {
     #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     {
         if std::is_x86_feature_detected!("avx2") {
-            unsafe { return avx2_add_f32x8(a, b); }
+            unsafe {
+                return avx2_add_f32x8(a, b);
+            }
         }
     }
     #[cfg(all(feature = "simd", target_arch = "aarch64"))]
@@ -610,8 +622,14 @@ fn simd_add_f32x8(a: [f32; 8], b: [f32; 8]) -> [f32; 8] {
     }
     // Scalar fallback
     [
-        a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3],
-        a[4] + b[4], a[5] + b[5], a[6] + b[6], a[7] + b[7],
+        a[0] + b[0],
+        a[1] + b[1],
+        a[2] + b[2],
+        a[3] + b[3],
+        a[4] + b[4],
+        a[5] + b[5],
+        a[6] + b[6],
+        a[7] + b[7],
     ]
 }
 
@@ -619,7 +637,9 @@ fn simd_mul_f32x8(a: [f32; 8], b: [f32; 8]) -> [f32; 8] {
     #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     {
         if std::is_x86_feature_detected!("avx2") {
-            unsafe { return avx2_mul_f32x8(a, b); }
+            unsafe {
+                return avx2_mul_f32x8(a, b);
+            }
         }
     }
     #[cfg(all(feature = "simd", target_arch = "aarch64"))]
@@ -641,8 +661,14 @@ fn simd_mul_f32x8(a: [f32; 8], b: [f32; 8]) -> [f32; 8] {
         }
     }
     [
-        a[0] * b[0], a[1] * b[1], a[2] * b[2], a[3] * b[3],
-        a[4] * b[4], a[5] * b[5], a[6] * b[6], a[7] * b[7],
+        a[0] * b[0],
+        a[1] * b[1],
+        a[2] * b[2],
+        a[3] * b[3],
+        a[4] * b[4],
+        a[5] * b[5],
+        a[6] * b[6],
+        a[7] * b[7],
     ]
 }
 
@@ -650,7 +676,9 @@ fn simd_max_f32x8(v: [f32; 8]) -> f32 {
     #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     {
         if std::is_x86_feature_detected!("avx2") {
-            unsafe { return avx2_max_f32x8(v); }
+            unsafe {
+                return avx2_max_f32x8(v);
+            }
         }
     }
     v.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b))
@@ -660,7 +688,9 @@ fn simd_min_f32x8(v: [f32; 8]) -> f32 {
     #[cfg(all(feature = "simd", target_arch = "x86_64"))]
     {
         if std::is_x86_feature_detected!("avx2") {
-            unsafe { return avx2_min_f32x8(v); }
+            unsafe {
+                return avx2_min_f32x8(v);
+            }
         }
     }
     v.iter().fold(f32::INFINITY, |a, &b| a.min(b))

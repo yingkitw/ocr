@@ -152,8 +152,8 @@ impl ColumnDetector {
         // Assuming white background (255) and black text (0).
 
         let gray = image.to_grayscale(); // This creates a new image, might be expensive if called many times
-        // Optimization: Pass the gray image to find_columns and propagate it down
-        // But for now, we follow the signature.
+                                         // Optimization: Pass the gray image to find_columns and propagate it down
+                                         // But for now, we follow the signature.
 
         let width = image.width;
         let y_start = y_start.min(image.height);
@@ -415,10 +415,8 @@ impl ColumnDetector {
         if depth % 2 == 0 {
             // Vertical cut: look for column gaps
             if let Some(cut_x) = self.find_best_vertical_cut(regions, x, w, min_gap) {
-                let (left_regions, right_regions): (Vec<_>, Vec<_>) = regions
-                    .iter()
-                    .cloned()
-                    .partition(|r| {
+                let (left_regions, right_regions): (Vec<_>, Vec<_>) =
+                    regions.iter().cloned().partition(|r| {
                         let cx = (r.bounding_box.left + r.bounding_box.right) / 2;
                         cx < cut_x
                     });
@@ -440,10 +438,8 @@ impl ColumnDetector {
         } else {
             // Horizontal cut: look for section gaps
             if let Some(cut_y) = self.find_best_horizontal_cut(regions, y, h, min_gap) {
-                let (top_regions, bottom_regions): (Vec<_>, Vec<_>) = regions
-                    .iter()
-                    .cloned()
-                    .partition(|r| {
+                let (top_regions, bottom_regions): (Vec<_>, Vec<_>) =
+                    regions.iter().cloned().partition(|r| {
                         let cy = (r.bounding_box.top + r.bounding_box.bottom) / 2;
                         cy < cut_y
                     });

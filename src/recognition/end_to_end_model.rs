@@ -4,8 +4,8 @@
 //! and recognition in a single unified architecture.
 
 use super::engine::*;
-use crate::core::ModelType;
 use crate::core::geometry::TBox;
+use crate::core::ModelType;
 use crate::utils::{OcrError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;

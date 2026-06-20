@@ -103,9 +103,7 @@ pub async fn run_server(config: ServerConfig) -> crate::utils::Result<()> {
     let ocr = Ocr::new()?;
     ocr.initialize().await?;
 
-    let state = Arc::new(AppState {
-        ocr: Arc::new(ocr),
-    });
+    let state = Arc::new(AppState { ocr: Arc::new(ocr) });
 
     let cors = CorsLayer::new()
         .allow_origin(Any)

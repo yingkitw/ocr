@@ -42,11 +42,8 @@ impl LayoutAnalyzer {
 
         // Detect columns using recursive XY-cut for complex layouts
         let column_detector = ColumnDetector::default();
-        let column_partitions = column_detector.find_columns_xycut(
-            &text_regions,
-            img.width,
-            img.height,
-        );
+        let column_partitions =
+            column_detector.find_columns_xycut(&text_regions, img.width, img.height);
 
         // Use column reading order
         let reading_order = column_detector.determine_reading_order(&column_partitions);
@@ -110,6 +107,7 @@ impl LayoutAnalyzer {
                 crate::layout::classifier::RegionType::Heading => 1,
                 crate::layout::classifier::RegionType::SubHeading => 2,
                 crate::layout::classifier::RegionType::Body => 10,
+                crate::layout::classifier::RegionType::ListItem => 8,
                 crate::layout::classifier::RegionType::Caption => 20,
                 crate::layout::classifier::RegionType::Footer => 90,
                 crate::layout::classifier::RegionType::PageNumber => 91,

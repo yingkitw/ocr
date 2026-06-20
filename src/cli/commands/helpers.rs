@@ -9,11 +9,15 @@ use ocr::lang::dictionary::DictionaryHandler;
 
 pub fn apply_dictionary_correction(result: &mut TextResult, lang: &str) {
     let handler = DictionaryHandler::new_for_language(lang);
-    
-    let words: Vec<String> = result.text.split_whitespace().map(|s| s.to_string()).collect();
+
+    let words: Vec<String> = result
+        .text
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
     let mut corrected_words = Vec::new();
     let mut changed = false;
-    
+
     for word in &words {
         if handler.is_word_valid(word) {
             corrected_words.push(word.clone());
@@ -25,7 +29,7 @@ pub fn apply_dictionary_correction(result: &mut TextResult, lang: &str) {
             corrected_words.push(correction);
         }
     }
-    
+
     if changed {
         result.text = corrected_words.join(" ");
         info!("Applied dictionary correction for language: {}", lang);
@@ -50,7 +54,7 @@ pub fn build_config(
     device: &str,
     osd: bool,
 ) -> ocr::core::config::OcrConfig {
-    use ocr::core::config::{PageSegMode, OcrConfig};
+    use ocr::core::config::{OcrConfig, PageSegMode};
 
     let psm_mode = match psm {
         4 => PageSegMode::SingleColumn,
@@ -90,7 +94,9 @@ pub fn format_result(result: &TextResult, format: &str) -> Result<String> {
         "tsv" => Ok(format_tsv(result)?),
         "alto" | "xml" => Ok(format_alto(result)?),
         "box" => Ok(format_box(result)?),
-        "pdf" => Ok("PDF output requires binary generation. Use --format pdf with --output.".to_string()),
+        "pdf" => Ok(
+            "PDF output requires binary generation. Use --format pdf with --output.".to_string(),
+        ),
         _ => {
             if result.text.is_empty() {
                 warn!("No text recognized");
@@ -103,7 +109,7 @@ pub fn format_result(result: &TextResult, format: &str) -> Result<String> {
 }
 
 pub async fn generate_searchable_pdf(
-    _image_path: &std::path::Path,
+    image_path: &std::path::Path,
     result: &TextResult,
     output: Option<PathBuf>,
 ) -> Result<()> {
@@ -112,10 +118,81 @@ pub async fn generate_searchable_pdf(
         None => return Err(anyhow::anyhow!("PDF output requires --output file path")),
     };
 
-    // Write text content as a simple placeholder
-    // TODO: Implement proper searchable PDF with image + invisible text layer
-    std::fs::write(&out_path, &result.text)?;
-    println!("Text saved to: {:?} (PDF generation needs printpdf update)", out_path);
+    let img_data = std::fs::read(image_path)?;
+    let dynamic_img = image::load_from_memory(&img_data)?;
+    let img_width_px = dynamic_img.width();
+    let img_height_px = dynamic_img.height();
+
+    let px_to_pt = |px: f32| printpdf::Pt(px * 72.0 / 300.0);
+    let page_width_pt = px_to_pt(img_width_px as f32);
+    let page_height_pt = px_to_pt(img_height_px as f32);
+
+    let mut doc = printpdf::PdfDocument::new("OCR Output");
+
+    let rgb_img = dynamic_img.to_rgb8();
+    let (w, h) = (rgb_img.width(), rgb_img.height());
+    let raw_image = printpdf::RawImage {
+        pixels: printpdf::RawImageData::U8(rgb_img.into_raw()),
+        width: w as usize,
+        height: h as usize,
+        data_format: printpdf::RawImageFormat::RGB8,
+        tag: Vec::new(),
+    };
+    let image_id = doc.add_image(&raw_image);
+
+    let mut ops = Vec::new();
+
+    // Draw the original image as background
+    ops.push(printpdf::Op::UseXobject {
+        id: image_id,
+        transform: printpdf::XObjectTransform {
+            translate_x: Some(printpdf::Pt(0.0)),
+            translate_y: Some(printpdf::Pt(0.0)),
+            scale_x: Some((page_width_pt.0 / img_width_px as f32) as f32),
+            scale_y: Some((page_height_pt.0 / img_height_px as f32) as f32),
+            rotate: None,
+            dpi: Some(300.0),
+        },
+    });
+
+    // Overlay invisible text for searchability
+    ops.push(printpdf::Op::SetTextRenderingMode {
+        mode: printpdf::TextRenderingMode::Invisible,
+    });
+
+    for line in &result.lines {
+        for word in &line.words {
+            let bbox = &word.bounding_box;
+            let x = px_to_pt(bbox.left as f32);
+            let y = page_height_pt - px_to_pt(bbox.bottom as f32);
+            let font_size = px_to_pt((bbox.bottom - bbox.top) as f32).0.max(1.0);
+
+            ops.push(printpdf::Op::StartTextSection);
+            ops.push(printpdf::Op::SetFont {
+                font: printpdf::PdfFontHandle::Builtin(printpdf::BuiltinFont::Helvetica),
+                size: printpdf::Pt(font_size),
+            });
+            ops.push(printpdf::Op::SetTextCursor {
+                pos: printpdf::Point { x, y },
+            });
+            ops.push(printpdf::Op::ShowText {
+                items: vec![printpdf::TextItem::Text(word.text.clone())],
+            });
+            ops.push(printpdf::Op::EndTextSection);
+        }
+    }
+
+    let page = printpdf::PdfPage::new(
+        printpdf::Mm(page_width_pt.0 * 25.4 / 72.0),
+        printpdf::Mm(page_height_pt.0 * 25.4 / 72.0),
+        ops,
+    );
+    doc.pages.push(page);
+
+    let mut warnings = Vec::new();
+    let pdf_bytes = doc.save(&printpdf::PdfSaveOptions::default(), &mut warnings);
+    std::fs::write(&out_path, pdf_bytes)?;
+    println!("Searchable PDF saved to: {:?}", out_path);
     Ok(())
 }
 

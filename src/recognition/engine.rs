@@ -259,13 +259,15 @@ impl ModelManager {
     /// Create a new model manager
     pub fn new(device: DeviceType) -> Self {
         let backend = match device {
-            DeviceType::CPU => Some(crate::compute::create_backend(
-                crate::compute::BackendType::Cpu,
-            ).ok()).flatten(),
+            DeviceType::CPU => {
+                Some(crate::compute::create_backend(crate::compute::BackendType::Cpu).ok())
+                    .flatten()
+            }
             DeviceType::GPU => Some(crate::compute::create_auto_backend().ok()).flatten(),
-            DeviceType::NPU => Some(crate::compute::create_backend(
-                crate::compute::BackendType::Cpu,
-            ).ok()).flatten(),
+            DeviceType::NPU => {
+                Some(crate::compute::create_backend(crate::compute::BackendType::Cpu).ok())
+                    .flatten()
+            }
             DeviceType::Auto => Some(crate::compute::create_auto_backend().ok()).flatten(),
         };
 

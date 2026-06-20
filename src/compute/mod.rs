@@ -4,8 +4,8 @@
 //! Enabled via the `cuda` and `opencl` feature flags.
 
 use crate::utils::Result;
-use serde::{Deserialize, Serialize};
 use rayon;
+use serde::{Deserialize, Serialize};
 
 /// Supported compute backends
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -53,14 +53,7 @@ pub trait ComputeBackend: Send + Sync {
     fn total_memory(&self) -> usize;
 
     /// Matrix multiplication: C = A * B
-    fn matmul(
-        &self,
-        a: &[f32],
-        b: &[f32],
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> Result<Vec<f32>>;
+    fn matmul(&self, a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Result<Vec<f32>>;
 
     /// 2D Convolution
     fn conv2d(
@@ -133,14 +126,7 @@ impl ComputeBackend for CpuBackend {
         0 // Not applicable
     }
 
-    fn matmul(
-        &self,
-        a: &[f32],
-        b: &[f32],
-        m: usize,
-        k: usize,
-        n: usize,
-    ) -> Result<Vec<f32>> {
+    fn matmul(&self, a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Result<Vec<f32>> {
         let mut c = vec![0.0f32; m * n];
         // a: m x k, b: k x n, c: m x n
         for i in 0..m {
@@ -182,15 +168,9 @@ impl ComputeBackend for CpuBackend {
                             for kw in 0..k_w {
                                 let ih = (oh * stride + kh) as isize - padding as isize;
                                 let iw = (ow * stride + kw) as isize - padding as isize;
-                                if ih >= 0
-                                    && ih < in_h as isize
-                                    && iw >= 0
-                                    && iw < in_w as isize
-                                {
-                                    let input_idx =
-                                        (ic * in_h + ih as usize) * in_w + iw as usize;
-                                    let kernel_idx =
-                                        ((oc * in_c + ic) * k_h + kh) * k_w + kw;
+                                if ih >= 0 && ih < in_h as isize && iw >= 0 && iw < in_w as isize {
+                                    let input_idx = (ic * in_h + ih as usize) * in_w + iw as usize;
+                                    let kernel_idx = ((oc * in_c + ic) * k_h + kh) * k_w + kw;
                                     sum += input[input_idx] * kernel[kernel_idx];
                                 }
                             }
@@ -265,8 +245,7 @@ pub struct CudaBackend {
 impl CudaBackend {
     pub fn is_available() -> bool {
         // Check if CUDA runtime is available
-        std::env::var("CUDA_VISIBLE_DEVICES").is_ok()
-            || cfg!(target_os = "linux")
+        std::env::var("CUDA_VISIBLE_DEVICES").is_ok() || cfg!(target_os = "linux")
     }
 
     pub fn new() -> Result<Self> {
@@ -310,7 +289,9 @@ impl ComputeBackend for CudaBackend {
         stride: usize,
         padding: usize,
     ) -> Result<Vec<f32>> {
-        CpuBackend::new().conv2d(input, kernel, bias, in_h, in_w, in_c, out_c, k_h, k_w, stride, padding)
+        CpuBackend::new().conv2d(
+            input, kernel, bias, in_h, in_w, in_c, out_c, k_h, k_w, stride, padding,
+        )
     }
 
     fn add(&self, a: &[f32], b: &[f32]) -> Result<Vec<f32>> {
@@ -354,7 +335,11 @@ pub struct OpenClBackend {
 impl OpenClBackend {
     pub fn is_available() -> bool {
         // Check if OpenCL is available
-        cfg!(any(target_os = "macos", target_os = "linux", target_os = "windows"))
+        cfg!(any(
+            target_os = "macos",
+            target_os = "linux",
+            target_os = "windows"
+        ))
     }
 
     pub fn new() -> Result<Self> {
@@ -397,7 +382,9 @@ impl ComputeBackend for OpenClBackend {
         stride: usize,
         padding: usize,
     ) -> Result<Vec<f32>> {
-        CpuBackend::new().conv2d(input, kernel, bias, in_h, in_w, in_c, out_c, k_h, k_w, stride, padding)
+        CpuBackend::new().conv2d(
+            input, kernel, bias, in_h, in_w, in_c, out_c, k_h, k_w, stride, padding,
+        )
     }
 
     fn add(&self, a: &[f32], b: &[f32]) -> Result<Vec<f32>> {

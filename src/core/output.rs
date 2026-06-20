@@ -10,6 +10,7 @@ use crate::core::text::{BoundingBox, TextResult};
 use crate::utils::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Output format enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +29,10 @@ pub enum OutputFormat {
     Box,
     /// Searchable PDF with invisible text layer
     Pdf,
+    /// Hierarchical structured JSON with document elements
+    StructuredJson,
+    /// Markdown output with heading/paragraph/list structure
+    Markdown,
 }
 
 /// JSON output structure
@@ -200,28 +205,19 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
     let bbox = &result.bounding_box;
     html.push_str(&format!(
         "  <div class='ocr_page' id='page_1' title=\"image \"\"; bbox {} {} {} {}; ppageno 0\">\n",
-        bbox.left,
-        bbox.top,
-        bbox.right,
-        bbox.bottom
+        bbox.left, bbox.top, bbox.right, bbox.bottom
     ));
 
     // Content area (single carea for now)
     html.push_str(&format!(
         "    <div class='ocr_carea' id='block_1_1' title=\"bbox {} {} {} {}\">\n",
-        bbox.left,
-        bbox.top,
-        bbox.right,
-        bbox.bottom
+        bbox.left, bbox.top, bbox.right, bbox.bottom
     ));
 
     // Paragraph
     html.push_str(&format!(
         "      <p class='ocr_par' id='par_1_1' title=\"bbox {} {} {} {}\">\n",
-        bbox.left,
-        bbox.top,
-        bbox.right,
-        bbox.bottom
+        bbox.left, bbox.top, bbox.right, bbox.bottom
     ));
 
     // Lines
@@ -394,7 +390,10 @@ pub fn format_alto(result: &TextResult) -> Result<String> {
     xml.push_str("      <ocrProcessingStep>\n");
     xml.push_str("        <processingSoftware>\n");
     xml.push_str(&format!("          <softwareName>OCR</softwareName>\n"));
-    xml.push_str(&format!("          <softwareVersion>{}</softwareVersion>\n", env!("CARGO_PKG_VERSION")));
+    xml.push_str(&format!(
+        "          <softwareVersion>{}</softwareVersion>\n",
+        env!("CARGO_PKG_VERSION")
+    ));
     xml.push_str("        </processingSoftware>\n");
     xml.push_str("      </ocrProcessingStep>\n");
     xml.push_str("    </OCRProcessing>\n");
@@ -461,12 +460,7 @@ pub fn format_box(result: &TextResult) -> Result<String> {
                 let bbox = &ch.bounding_box;
                 output.push_str(&format!(
                     "{} {} {} {} {} {}\n",
-                    ch.character,
-                    bbox.left,
-                    bbox.top,
-                    bbox.right,
-                    bbox.bottom,
-                    page
+                    ch.character, bbox.left, bbox.top, bbox.right, bbox.bottom, page
                 ));
             }
             // Add space between words
@@ -524,6 +518,214 @@ fn html_escape_char(c: char) -> String {
     }
 }
 
+/// Document element type for structured output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DocElement {
+    Heading { level: u8, text: String },
+    Paragraph { text: String },
+    ListItem { text: String, ordered: bool, number: Option<usize> },
+    Table { rows: Vec<Vec<String>> },
+    Figure { caption: String },
+    CodeBlock { text: String },
+}
+
+/// Structured document output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredDocument {
+    pub title: Option<String>,
+    pub elements: Vec<DocElement>,
+    pub metadata: HashMap<String, String>,
+}
+
+impl StructuredDocument {
+    pub fn from_text(text: &str) -> Self {
+        let mut elements = Vec::new();
+        let mut current_paragraph = String::new();
+
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                if !current_paragraph.is_empty() {
+                    elements.push(DocElement::Paragraph {
+                        text: current_paragraph.trim().to_string(),
+                    });
+                    current_paragraph.clear();
+                }
+                continue;
+            }
+
+            // Check for list items
+            if let Some(list_item) = Self::parse_list_item(trimmed) {
+                if !current_paragraph.is_empty() {
+                    elements.push(DocElement::Paragraph {
+                        text: current_paragraph.trim().to_string(),
+                    });
+                    current_paragraph.clear();
+                }
+                elements.push(list_item);
+                continue;
+            }
+
+            // Check for heading (simple heuristic: short line, all caps, or ends without period)
+            if Self::is_heading(trimmed, &current_paragraph) {
+                if !current_paragraph.is_empty() {
+                    elements.push(DocElement::Paragraph {
+                        text: current_paragraph.trim().to_string(),
+                    });
+                    current_paragraph.clear();
+                }
+                let level = Self::heading_level(trimmed);
+                elements.push(DocElement::Heading {
+                    level,
+                    text: trimmed.to_string(),
+                });
+                continue;
+            }
+
+            if !current_paragraph.is_empty() {
+                current_paragraph.push(' ');
+            }
+            current_paragraph.push_str(trimmed);
+        }
+
+        if !current_paragraph.is_empty() {
+            elements.push(DocElement::Paragraph {
+                text: current_paragraph.trim().to_string(),
+            });
+        }
+
+        StructuredDocument {
+            title: None,
+            elements,
+            metadata: HashMap::new(),
+        }
+    }
+
+    fn parse_list_item(text: &str) -> Option<DocElement> {
+        let trimmed = text.trim_start();
+        for prefix in ["• ", "- ", "* "] {
+            if let Some(rest) = trimmed.strip_prefix(prefix) {
+                return Some(DocElement::ListItem {
+                    text: rest.to_string(),
+                    ordered: false,
+                    number: None,
+                });
+            }
+        }
+        // Numbered list: "1. text" or "1) text"
+        let mut chars = trimmed.chars();
+        let first = chars.next()?;
+        if first.is_numeric() {
+            let mut num_str = first.to_string();
+            for ch in chars {
+                if ch.is_numeric() {
+                    num_str.push(ch);
+                } else if ch == '.' || ch == ')' {
+                    let rest = trimmed[num_str.len() + 1..].trim_start().to_string();
+                    return Some(DocElement::ListItem {
+                        text: rest,
+                        ordered: true,
+                        number: num_str.parse().ok(),
+                    });
+                } else {
+                    break;
+                }
+            }
+        }
+        None
+    }
+
+    fn is_heading(text: &str, prev_context: &str) -> bool {
+        if text.len() < 3 || text.len() > 120 {
+            return false;
+        }
+        // All caps heading
+        if text.chars().all(|c| c.is_uppercase() || c.is_numeric() || c.is_whitespace() || c == '-' || c == '_')
+            && text.chars().any(|c| c.is_alphabetic())
+            && text.len() < 80
+        {
+            return true;
+        }
+        // Short line without ending punctuation (likely heading)
+        let words = text.split_whitespace().count();
+        if words <= 8 && !text.ends_with('.') && !text.ends_with(',') && !text.ends_with(';') {
+            // If previous context exists, this is likely a new section
+            if !prev_context.is_empty() && text.len() > 3 {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn heading_level(text: &str) -> u8 {
+        if text.chars().all(|c| c.is_uppercase() || c.is_numeric() || c.is_whitespace() || c == '-' || c == '_') {
+            1
+        } else if text.len() < 40 {
+            2
+        } else {
+            3
+        }
+    }
+
+    pub fn to_markdown(&self) -> String {
+        let mut md = String::new();
+        for element in &self.elements {
+            match element {
+                DocElement::Heading { level, text } => {
+                    let hashes = "#".repeat(*level as usize);
+                    md.push_str(&format!("{} {}\n\n", hashes, text));
+                }
+                DocElement::Paragraph { text } => {
+                    md.push_str(&format!("{}\n\n", text));
+                }
+                DocElement::ListItem { text, ordered: false, .. } => {
+                    md.push_str(&format!("- {}\n", text));
+                }
+                DocElement::ListItem { text, ordered: true, number: Some(n) } => {
+                    md.push_str(&format!("{}. {}\n", n, text));
+                }
+                DocElement::ListItem { text, ordered: true, number: None } => {
+                    md.push_str(&format!("1. {}\n", text));
+                }
+                DocElement::Table { rows } => {
+                    if !rows.is_empty() {
+                        for (i, row) in rows.iter().enumerate() {
+                            let cells: Vec<String> = row.iter().map(|c| format!("| {} ", c)).collect();
+                            md.push_str(&cells.join(""));
+                            md.push_str("|\n");
+                            if i == 0 {
+                                let sep = "|---".repeat(row.len());
+                                md.push_str(&format!("{}|\n", sep));
+                            }
+                        }
+                        md.push('\n');
+                    }
+                }
+                DocElement::Figure { caption } => {
+                    md.push_str(&format!("*Figure: {}*\n\n", caption));
+                }
+                DocElement::CodeBlock { text } => {
+                    md.push_str(&format!("```\n{}\n```\n\n", text));
+                }
+            }
+        }
+        md
+    }
+}
+
+/// Generate structured JSON output with document elements
+pub fn format_structured_json(result: &TextResult) -> Result<String> {
+    let doc = StructuredDocument::from_text(&result.text);
+    serde_json::to_string_pretty(&doc)
+        .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)).into())
+}
+
+/// Generate Markdown output with document structure
+pub fn format_markdown(result: &TextResult) -> Result<String> {
+    let doc = StructuredDocument::from_text(&result.text);
+    Ok(doc.to_markdown())
+}
+
 /// Format output in the specified format
 pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String> {
     match format {
@@ -537,6 +739,8 @@ pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String
             "PDF output requires image path. Use format_pdf_with_image instead.".to_string(),
         )
         .into()),
+        OutputFormat::StructuredJson => format_structured_json(result),
+        OutputFormat::Markdown => format_markdown(result),
     }
 }
 
@@ -550,8 +754,10 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
         "alto" | "xml" => Ok(OutputFormat::Alto),
         "box" => Ok(OutputFormat::Box),
         "pdf" => Ok(OutputFormat::Pdf),
+        "md" | "markdown" => Ok(OutputFormat::Markdown),
+        "structured" | "structured-json" | "doc" => Ok(OutputFormat::StructuredJson),
         _ => Err(crate::OcrError::InvalidInput(format!(
-            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, pdf",
+            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, pdf, markdown, structured-json",
             s
         ))
         .into()),
@@ -571,11 +777,16 @@ mod tests {
         );
 
         // Add a line
-        let mut line = LineResult::new("Hello World".to_string(), 0.9, BoundingBox::new(0, 0, 200, 20));
+        let mut line = LineResult::new(
+            "Hello World".to_string(),
+            0.9,
+            BoundingBox::new(0, 0, 200, 20),
+        );
 
         // Add words
         let mut word1 = WordResult::new("Hello".to_string(), 0.95, BoundingBox::new(0, 0, 60, 20));
-        let mut word2 = WordResult::new("World".to_string(), 0.85, BoundingBox::new(70, 0, 130, 20));
+        let mut word2 =
+            WordResult::new("World".to_string(), 0.85, BoundingBox::new(70, 0, 130, 20));
 
         // Add characters
         for (i, ch) in "Hello".chars().enumerate() {
@@ -630,9 +841,18 @@ mod tests {
 
     #[test]
     fn test_parse_output_format() {
-        assert!(matches!(parse_output_format("json"), Ok(OutputFormat::Json)));
-        assert!(matches!(parse_output_format("TEXT"), Ok(OutputFormat::PlainText)));
-        assert!(matches!(parse_output_format("hocr"), Ok(OutputFormat::HOcr)));
+        assert!(matches!(
+            parse_output_format("json"),
+            Ok(OutputFormat::Json)
+        ));
+        assert!(matches!(
+            parse_output_format("TEXT"),
+            Ok(OutputFormat::PlainText)
+        ));
+        assert!(matches!(
+            parse_output_format("hocr"),
+            Ok(OutputFormat::HOcr)
+        ));
         assert!(parse_output_format("invalid").is_err());
     }
 
@@ -665,7 +885,65 @@ mod tests {
 
     #[test]
     fn test_parse_alto_format() {
-        assert!(matches!(parse_output_format("alto"), Ok(OutputFormat::Alto)));
+        assert!(matches!(
+            parse_output_format("alto"),
+            Ok(OutputFormat::Alto)
+        ));
         assert!(matches!(parse_output_format("xml"), Ok(OutputFormat::Alto)));
+    }
+
+    #[test]
+    fn test_parse_markdown_format() {
+        assert!(matches!(
+            parse_output_format("markdown"),
+            Ok(OutputFormat::Markdown)
+        ));
+        assert!(matches!(parse_output_format("md"), Ok(OutputFormat::Markdown)));
+    }
+
+    #[test]
+    fn test_parse_structured_json_format() {
+        assert!(matches!(
+            parse_output_format("structured-json"),
+            Ok(OutputFormat::StructuredJson)
+        ));
+        assert!(matches!(parse_output_format("doc"), Ok(OutputFormat::StructuredJson)));
+    }
+
+    #[test]
+    fn test_structured_document_from_text() {
+        let text = "INTRODUCTION\n\nThis is a paragraph with multiple sentences. It continues on.\n\n• First bullet\n• Second bullet\n\n1. Ordered item\n2. Another ordered\n\nConclusion text here.";
+        let doc = StructuredDocument::from_text(text);
+        assert!(!doc.elements.is_empty());
+        assert!(matches!(doc.elements[0], DocElement::Heading { level: 1, .. }));
+    }
+
+    #[test]
+    fn test_markdown_output() {
+        let text = "INTRODUCTION\n\nThis is a paragraph.\n\n• Bullet item\n\n1. Numbered item\n\nSUBSECTION\n\nMore text.";
+        let doc = StructuredDocument::from_text(text);
+        let md = doc.to_markdown();
+        assert!(md.contains("# INTRODUCTION"));
+        assert!(md.contains("- Bullet item"));
+        assert!(md.contains("1. Numbered item"));
+        assert!(md.contains("# SUBSECTION"));
+    }
+
+    #[test]
+    fn test_format_markdown_output() {
+        let mut result = create_test_result();
+        result.text = "HEADING\n\nBody text here.".to_string();
+        let md = format_markdown(&result).unwrap();
+        assert!(md.contains("# HEADING"));
+        assert!(md.contains("Body text here."));
+    }
+
+    #[test]
+    fn test_format_structured_json_output() {
+        let mut result = create_test_result();
+        result.text = "INTRO\n\nParagraph.".to_string();
+        let json = format_structured_json(&result).unwrap();
+        assert!(json.contains("\"elements\""));
+        assert!(json.contains("\"Heading\""));
     }
 }

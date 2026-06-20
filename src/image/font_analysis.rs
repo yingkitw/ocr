@@ -8,7 +8,10 @@ use crate::utils::Result;
 use image::{DynamicImage, GenericImageView, GrayImage, Luma};
 
 /// Detect font attributes from a word image crop
-pub fn analyze_font_attributes(image: &DynamicImage, word: &WordResult) -> Result<(bool, bool, bool)> {
+pub fn analyze_font_attributes(
+    image: &DynamicImage,
+    word: &WordResult,
+) -> Result<(bool, bool, bool)> {
     let crop = crop_word(image, &word.bounding_box);
     let gray = crop.to_luma8();
 
@@ -38,10 +41,7 @@ fn detect_bold(gray: &GrayImage) -> bool {
     }
 
     let total_pixels = (width * height) as u32;
-    let dark_pixels: u32 = gray
-        .pixels()
-        .map(|p| if p[0] < 128 { 1 } else { 0 })
-        .sum();
+    let dark_pixels: u32 = gray.pixels().map(|p| if p[0] < 128 { 1 } else { 0 }).sum();
 
     let density = dark_pixels as f32 / total_pixels as f32;
     // Normal text density is typically ~0.15-0.25 for clean images

@@ -5,6 +5,57 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+/// Character Error Rate (CER) between two strings
+pub fn cer(predicted: &str, ground_truth: &str) -> f32 {
+    if ground_truth.is_empty() {
+        return if predicted.is_empty() { 0.0 } else { 1.0 };
+    }
+    let dist = levenshtein_distance(predicted, ground_truth);
+    dist as f32 / ground_truth.chars().count() as f32
+}
+
+/// Word Error Rate (WER) between two strings
+pub fn wer(predicted: &str, ground_truth: &str) -> f32 {
+    let pred_words: Vec<&str> = predicted.split_whitespace().collect();
+    let gt_words: Vec<&str> = ground_truth.split_whitespace().collect();
+    if gt_words.is_empty() {
+        return if pred_words.is_empty() { 0.0 } else { 1.0 };
+    }
+    let dist = levenshtein_distance(&pred_words.join(" "), &gt_words.join(" "));
+    dist as f32 / gt_words.len() as f32
+}
+
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let m = a_chars.len();
+    let n = b_chars.len();
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    let mut prev = vec![0usize; n + 1];
+    let mut curr = vec![0usize; n + 1];
+    for j in 0..=n {
+        prev[j] = j;
+    }
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+    prev[n]
+}
+
 /// Training metrics for a single epoch or batch
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrainingMetrics {
