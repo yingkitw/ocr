@@ -9,13 +9,13 @@ fn main() {
     let height = 100u32;
 
     // Create a white image buffer
-    let rgb_img = ImageBuffer::from_fn(width, height, |x, y| {
+    let rgb_img = ImageBuffer::from_fn(width, height, |_x, _y| {
         // Default to white
         Rgb([255, 255, 255])
     });
 
     // Create a DynamicImage from the buffer
-    let mut img = DynamicImage::ImageRgb8(rgb_img);
+    let img = DynamicImage::ImageRgb8(rgb_img);
 
     // Save the blank image
     img.save("test-images/blank.png").unwrap();

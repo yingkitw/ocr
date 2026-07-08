@@ -4,7 +4,7 @@
 //! useful for measuring detection recall and precision.
 
 use crate::core::text::BoundingBox;
-use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
+use image::{DynamicImage, Rgb, RgbImage};
 use imageproc::drawing::draw_text_mut;
 use rusttype::{Font, Scale};
 

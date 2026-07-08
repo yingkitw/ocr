@@ -21,7 +21,7 @@ fn generate_synthetic_text_image(text: &str, font_size: f32) -> Vec<u8> {
     for (i, ch) in chars.iter().enumerate() {
         let x = x_start + i as f32 * char_w;
         let glyph_idx = *ch as u32;
-        let scale = font_size / 14.0;
+        let _scale = font_size / 14.0;
         let gx = (x as u32).min(width - 1);
         let gy = (y_center as u32).min(height - 1);
 

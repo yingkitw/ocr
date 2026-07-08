@@ -247,7 +247,7 @@ impl AugmentationPipeline {
 
         let mut dst_points = src_points.clone();
 
-        for (i, (x, y)) in dst_points.iter_mut().enumerate() {
+        for (_i, (x, y)) in dst_points.iter_mut().enumerate() {
             let offset_x = (self.rng.r#gen::<f32>() - 0.5) * width as f32 * perspective_strength;
             let offset_y = (self.rng.r#gen::<f32>() - 0.5) * height as f32 * perspective_strength;
             *x += offset_x;

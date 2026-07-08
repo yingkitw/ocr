@@ -3,6 +3,11 @@
 //! Provides SIMD-accelerated vector, matrix, image processing, and neural network operations.
 //! Uses architecture-specific intrinsics when the `simd` feature is enabled.
 
+// On aarch64 the NEON SIMD block returns unconditionally (NEON is mandatory),
+// so the trailing scalar fallbacks are unreachable on that target. They remain
+// for x86_64 (runtime AVX2 detection) and non-`simd` builds.
+#![allow(unreachable_code)]
+
 use anyhow::Result;
 
 /// SIMD vector types for different architectures

@@ -6,6 +6,8 @@ pub mod core;
 pub mod image;
 pub mod lang;
 pub mod layout;
+#[cfg(feature = "onnx")]
+pub mod onnx;
 #[cfg(feature = "pdf")]
 pub mod pdf;
 pub mod recognition;

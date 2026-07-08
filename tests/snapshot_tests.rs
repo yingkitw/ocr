@@ -42,7 +42,7 @@ pub enum ReadingOrder {
 /// Test CJK character detection snapshots
 #[test]
 fn test_cjk_character_detection_snapshot() {
-    let processor = LangCJKProcessor::new();
+    let _processor = LangCJKProcessor::new();
 
     let test_cases = vec![
         ('中', "Chinese character"),
@@ -133,7 +133,7 @@ fn test_cjk_text_segmentation_snapshot() {
     for (text, language) in test_cases {
         let result = processor.segment_text(text, language).unwrap();
 
-        let mut segment_strings: Vec<String> = result
+        let segment_strings: Vec<String> = result
             .segments
             .iter()
             .map(|seg| {

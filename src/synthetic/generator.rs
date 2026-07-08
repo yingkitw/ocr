@@ -1,9 +1,8 @@
 //! Text-line image generator for synthetic OCR training data
 
-use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
+use image::{DynamicImage, GrayImage, Luma};
 use imageproc::drawing::draw_text_mut;
 use rusttype::{Font, Scale};
-use std::collections::HashMap;
 
 /// A single synthetic training sample
 #[derive(Debug, Clone)]

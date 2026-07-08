@@ -5,7 +5,6 @@ use image::GenericImageView;
 use tracing::info;
 
 use ocr::api::Ocr;
-use ocr::core::output::to_json_output;
 
 use super::helpers::write_output;
 

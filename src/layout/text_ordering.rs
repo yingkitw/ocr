@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_text_ordering_creation() {
-        let ordering = TextOrdering::new(20, 300);
+        let _ordering = TextOrdering::new(20, 300);
         // Should not panic
     }
 

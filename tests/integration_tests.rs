@@ -2,12 +2,10 @@
 //!
 //! These tests verify the complete OCR pipeline and use insta for snapshot testing.
 
-use insta::assert_snapshot;
 use ocr::core::*;
 use ocr::lang::cjk::{CJKLanguage, CJKProcessor as LangCJKProcessor};
 use ocr::recognition::RecognitionEngine;
 use ocr::recognition::*;
-use std::path::Path;
 
 /// Test basic OCR functionality
 #[test]

@@ -127,6 +127,15 @@ Infrastructure for learning models from data:
 - `metrics.rs` — Character Error Rate (CER), Word Error Rate (WER)
 - `checkpoint.rs` — Save/load model weights
 - `crnn_trainer.rs` — `CrnnTrainer`: synthetic batch training, checkpoint saving/loading
+- `quantization.rs` — `QuantizedTensor`, `quantize_array2`, `quantized_matmul`: INT8 symmetric quantization for edge deployment
+
+### ONNX Import (`src/onnx/`)
+
+- `mod.rs` — `OnnxLoader`: parse ONNX files via `onnx-rs`, extract weight tensors as ndarrays, inspect node types (Conv, Gemm, LSTM); enabled via `onnx` feature flag
+
+### Recognition (`src/recognition/`)
+
+- `font_attributes.rs` — `FontAttributeDetector`: bold (stroke thickness), italic (slant angle), monospace (width CV)
 
 ## Data Flow (Detailed)
 

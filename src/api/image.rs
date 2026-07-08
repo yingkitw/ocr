@@ -54,7 +54,7 @@ impl ImageProcessor {
     }
 
     /// Enhance image contrast
-    pub fn enhance_contrast(img: &OcrImage, factor: f32) -> ApiResult<OcrImage> {
+    pub fn enhance_contrast(img: &OcrImage, _factor: f32) -> ApiResult<OcrImage> {
         // TODO: Implement contrast enhancement
         Ok(img.clone())
     }

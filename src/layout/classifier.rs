@@ -4,8 +4,9 @@
 //! heading, body, caption, footer, page_number, etc.
 
 use crate::core::layout::{Block, BlockType, TextRegion};
-use crate::core::text::BoundingBox;
 use crate::utils::Result;
+#[cfg(test)]
+use crate::core::text::BoundingBox;
 
 /// Semantic type of a text region
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

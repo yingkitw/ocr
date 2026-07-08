@@ -157,7 +157,7 @@ fn extract_features_from_outline(
     outline: &ChainOutline,
     center: &FCoord,
     second_moments: &FCoord,
-    nonlinear_norm: bool,
+    _nonlinear_norm: bool,
     bl_features: &mut Vec<IntFeature>,
     cn_features: &mut Vec<IntFeature>,
 ) -> Result<()> {

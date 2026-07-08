@@ -47,7 +47,7 @@ impl NGramModel {
 
     /// Load character-level N-grams from text
     fn load_char_ngrams(&mut self, text: &str, max_n: usize) {
-        let chars: Vec<char> = text.chars().collect();
+        let _chars: Vec<char> = text.chars().collect();
         let text_lower: String = text.chars().flat_map(|c| c.to_lowercase()).collect();
 
         for n in 1..=max_n {
@@ -126,7 +126,7 @@ impl NGramModel {
         let mut count = 0;
 
         // Use bigrams and trigrams if available
-        if let Some(trigrams) = self.char_ngrams.get(&3) {
+        if let Some(_trigrams) = self.char_ngrams.get(&3) {
             // Score using trigrams
             for i in 0..text_lower.len().saturating_sub(2) {
                 let trigram: String = text_lower.chars().skip(i).take(3).collect();
@@ -134,7 +134,7 @@ impl NGramModel {
                 log_prob_sum += prob.ln();
                 count += 1;
             }
-        } else if let Some(bigrams) = self.char_ngrams.get(&2) {
+        } else if let Some(_bigrams) = self.char_ngrams.get(&2) {
             // Score using bigrams
             for i in 0..text_lower.len().saturating_sub(1) {
                 let bigram: String = text_lower.chars().skip(i).take(2).collect();
@@ -161,7 +161,7 @@ impl NGramModel {
     /// context_words: (previous_word, next_word)
     pub fn suggest_word_corrections(
         &self,
-        word: &str,
+        _word: &str,
         context_words: Option<(&str, &str)>,
         suggestions: &[&str],
         max_results: usize,

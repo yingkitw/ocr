@@ -3,11 +3,7 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Result};
 use tracing::info;
 
-use ocr::api::{Ocr, TextProcessor};
-use ocr::core::config::{OcrConfig, PageSegMode, RecognitionEngine};
-use ocr::core::output::{format_alto, format_box, format_hocr, format_tsv, to_json_output};
-use ocr::core::text::TextResult;
-use ocr::lang::dictionary::Dictionary;
+use ocr::api::Ocr;
 
 use super::helpers::{
     apply_dictionary_correction, build_config, format_result, generate_searchable_pdf,
@@ -51,24 +47,15 @@ pub async fn handle_extract(
         .to_lowercase();
 
     if ext == "pdf" {
-        #[cfg(feature = "pdf")]
-        {
-            return super::pdf::handle_pdf_extraction(
-                &ocr,
-                &image_path,
-                output,
-                format,
-                lang,
-                dict_correct,
-            )
-            .await;
-        }
-        #[cfg(not(feature = "pdf"))]
-        {
-            return Err(anyhow!(
-                "PDF support is not enabled. Rebuild with: cargo build --features pdf"
-            ));
-        }
+        return super::pdf::handle_pdf_extraction(
+            &ocr,
+            &image_path,
+            output,
+            format,
+            lang,
+            dict_correct,
+        )
+        .await;
     }
 
     let mut result = ocr

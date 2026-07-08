@@ -3,6 +3,11 @@
 //! Provides optimized vector operations using SIMD intrinsics when the
 //! `simd` feature is enabled, with scalar fallbacks otherwise.
 
+// On aarch64 the NEON SIMD block returns unconditionally (NEON is mandatory),
+// so the trailing scalar fallbacks are unreachable on that target. They remain
+// for x86_64 (runtime AVX2 detection) and non-`simd` builds.
+#![allow(unreachable_code)]
+
 /// SIMD-enabled vector operations for performance-critical code
 pub struct SimdOps;
 

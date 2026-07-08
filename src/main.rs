@@ -2,7 +2,6 @@ mod cli;
 
 use anyhow::Result;
 use cli::{commands::*, parse, Commands};
-use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -80,6 +79,20 @@ async fn main() -> Result<()> {
         }
         Commands::Validate { config_file } => {
             handle_validate(config_file).await?;
+        }
+        Commands::Train {
+            epochs,
+            batch_size,
+            learning_rate,
+            engine,
+            checkpoint_dir,
+            distortion,
+        } => {
+            handle_train(epochs, batch_size, learning_rate, engine, checkpoint_dir, distortion)
+                .await?;
+        }
+        Commands::Benchmark { samples, distortion } => {
+            handle_benchmark(samples, distortion).await?;
         }
         #[cfg(feature = "web-api")]
         Commands::Serve {

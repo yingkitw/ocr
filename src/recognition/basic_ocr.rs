@@ -12,12 +12,11 @@ use crate::core::recognition::{
 };
 use crate::core::text::BoundingBox;
 use crate::recognition::tesseract_blob::{
-    extract_outlines, outlines_to_blobs, ChainOutline, TBlob,
+    extract_outlines, outlines_to_blobs,
 };
 use crate::recognition::tesseract_features::extract_features;
 use crate::utils::Result;
 use image::GrayImage;
-use std::collections::HashMap;
 
 /// Basic OCR engine following Tesseract's approach
 pub struct BasicOcrEngine {
@@ -31,6 +30,7 @@ pub struct BasicOcrEngine {
 
 /// Character template for pattern matching
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // template metadata; matching currently compares the `template` bitmap only
 struct CharacterTemplate {
     /// Character this template represents
     character: char,
@@ -106,7 +106,7 @@ impl BasicOcrEngine {
         let mut all_words: Vec<WordRecognition> = Vec::new();
         let mut all_characters: Vec<CharacterRecognition> = Vec::new();
         let mut full_text = String::new();
-        let mut all_lines: Vec<LineRecognition> = Vec::new();
+        let _all_lines: Vec<LineRecognition> = Vec::new();
 
         for line_blobs in &lines {
             let line_result = self.recognize_line(&binary_image, line_blobs)?;
@@ -456,7 +456,7 @@ impl BasicOcrEngine {
 
     /// Estimate stroke width of a blob (simplified method)
     fn estimate_stroke_width(
-        image: &GrayImage,
+        _image: &GrayImage,
         min_x: u32,
         min_y: u32,
         max_x: u32,
@@ -500,7 +500,7 @@ impl BasicOcrEngine {
         }
 
         // Build vertical projection profile (like Tesseract's TextlineProjection)
-        let max_right = blobs
+        let _max_right = blobs
             .iter()
             .map(|b| b.bounding_box.right)
             .max()

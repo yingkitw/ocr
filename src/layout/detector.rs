@@ -8,7 +8,7 @@ use crate::core::layout::*;
 use crate::core::text::BoundingBox;
 use crate::image::thresholder::{ImageThresholder, ThresholdMethod};
 use crate::utils::Result;
-use image::{GenericImageView, Luma};
+use image::Luma;
 use imageproc::distance_transform::Norm;
 use imageproc::morphology::dilate;
 use imageproc::region_labelling::{connected_components, Connectivity};

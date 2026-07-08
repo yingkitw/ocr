@@ -4,7 +4,7 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 
 ## Current State
 
-**Compiles and passes 357+ tests.** The full pipeline works end-to-end for printed text on clean images, with a modular architecture supporting both classical and learned recognition:
+**Compiles and passes 373+ tests.** The full pipeline works end-to-end for printed text on clean images, with a modular architecture supporting both classical and learned recognition:
 
 - **Image preprocessing**: deskew, binarization (Otsu, Sauvola), noise reduction, contrast enhancement, auto-rotate (0°/90°/180°/270°)
 - **Layout analysis**: Union-Find CCL, column/line detection, reading-order resolution, table detection, form field extraction
@@ -13,7 +13,12 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 - **Multi-language**: Unicode script detection (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari), dictionaries for 25+ languages, per-script CRNN vocabularies
 - **Post-processing**: Dictionary-based spell correction, document structure classification (headings, lists, paragraphs), hierarchical Markdown/JSON output
 - **Output formats**: text, JSON, hOCR, TSV, ALTO XML, box files, **searchable PDF** (invisible text overlay), **Markdown**, **structured JSON**
-- **CLI**: `extract`, `batch`, `layout`, `list-languages`, `check`, `info`, `validate`
+- **CLI**: `extract`, `batch`, `layout`, `list-languages`, `check`, `info`, `validate`, `train`, `benchmark`
+- **Training**: `CrnnTrainer` with FC-layer backprop on synthetic data + checkpoint saving
+- **Benchmarking**: Per-script CER/WER evaluation across all supported scripts
+- **Font attributes**: Bold/italic/monospace detection from stroke analysis (`FontAttributeDetector`)
+- **Quantization**: INT8 per-tensor symmetric quantization for FC layer (4x memory reduction)
+- **ONNX import** (feature `onnx`): Load pre-trained PaddleOCR/EasyOCR weights via `OnnxLoader`
 - **Web API** (feature `web-api`): HTTP server with multipart upload
 - **PDF input** (feature `pdf`)
 
@@ -44,7 +49,7 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with extract, batch, layout, list-languages
-- [x] 357+ tests passing
+- [x] 373+ tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback
@@ -82,6 +87,9 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 - [x] Searchable PDF generation with invisible text overlay
 
 ### Next Steps (requires training execution)
+- [x] Training CLI wired up (`ocr train --engine lstm --epochs 10`)
+- [x] Benchmark CLI wired up (`ocr benchmark --samples 10`)
+- [x] CRNN inference optimized (rayon-parallel convolutions, ndarray FC layer)
 - [ ] Train CRNN to CER < 5% on clean synthetic test
 - [ ] Train CRNN to CER < 15% on distorted synthetic test
 - [ ] Evaluate per-language accuracy on synthetic benchmarks
@@ -128,6 +136,12 @@ ocr list-languages
 
 # Analyze image layout
 ocr layout document.png -o layout.json
+
+# Train CRNN on synthetic data
+ocr train --engine lstm --epochs 10 --batch-size 8 --learning-rate 0.001
+
+# Benchmark per-script recognition accuracy
+ocr benchmark --samples 10 --distortion clean
 ```
 
 ### Library

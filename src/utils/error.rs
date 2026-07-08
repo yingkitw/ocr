@@ -37,6 +37,9 @@ pub enum OcrError {
 
     #[error("Model not found: {0}")]
     ModelNotFound(String),
+
+    #[error("Model load error: {0}")]
+    ModelLoad(String),
 }
 
 /// Result type alias for OCR operations
@@ -60,5 +63,13 @@ impl From<tokio::sync::AcquireError> for OcrError {
 impl From<image::ImageError> for OcrError {
     fn from(err: image::ImageError) -> Self {
         OcrError::ImageProcessing(err.to_string())
+    }
+}
+
+#[cfg(feature = "opencl")]
+/// Convert ocl::Error to OcrError
+impl From<ocl::Error> for OcrError {
+    fn from(err: ocl::Error) -> Self {
+        OcrError::Internal(format!("OpenCL error: {}", err))
     }
 }

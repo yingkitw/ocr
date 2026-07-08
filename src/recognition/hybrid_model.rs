@@ -3,6 +3,9 @@
 //! This module provides hybrid models that combine different neural network
 //! architectures for optimal OCR performance.
 
+// Experimental alternative architecture; not yet wired into `OcrEngine`.
+#![allow(dead_code)]
+
 use super::engine::*;
 use crate::core::ModelType;
 use crate::utils::{OcrError, Result};
@@ -456,7 +459,7 @@ impl FusionLayer {
         let mut total_processing_time = 0;
 
         for output in outputs {
-            let weight = output.confidence / total_weight;
+            let _weight = output.confidence / total_weight;
             if !weighted_text.is_empty() {
                 weighted_text.push(' ');
             }

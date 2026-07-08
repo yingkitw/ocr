@@ -17,6 +17,7 @@ pub struct ColumnDetector {
     /// Grid size estimate (text size in pixels)
     grid_size: u32,
     /// Image resolution
+    #[allow(dead_code)] // populated from config; not yet consumed by column analysis
     resolution: u32,
     /// Whether CJK script is being processed
     cjk_script: bool,
@@ -116,7 +117,7 @@ impl ColumnDetector {
     fn detect_column_boundaries(
         &self,
         image: &OcrImage,
-        region_groups: &HashMap<u32, Vec<usize>>,
+        _region_groups: &HashMap<u32, Vec<usize>>,
     ) -> Result<Vec<u32>> {
         let mut boundaries = Vec::new();
 

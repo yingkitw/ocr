@@ -19,7 +19,7 @@ async fn test_ocr_with_sample_image() -> Result<()> {
     println!("Testing OCR with image: {:?}", test_image);
 
     // Create OCR instance
-    let mut ocr = Ocr::new()?;
+    let ocr = Ocr::new()?;
 
     // Initialize
     ocr.initialize().await?;

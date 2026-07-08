@@ -192,6 +192,7 @@ pub struct BlobNBox {
     /// Area
     area: f32,
     /// Perimeter
+    #[allow(dead_code)] // cached blob feature; stroke_width is derived from it locally
     perimeter: f32,
     /// Stroke width (estimated)
     stroke_width: f32,

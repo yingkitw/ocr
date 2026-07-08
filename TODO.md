@@ -2,7 +2,7 @@
 
 ## Completed
 
-All five phases of the OCR roadmap are implemented and tested (357+ tests passing).
+All five phases of the OCR roadmap are implemented and tested (373+ tests passing).
 
 - **Phase 0 — Baseline**: End-to-end pipeline, pattern matching, layout analysis, CLI, Web API, PDF input
 - **Phase 1 — Synthetic Training**: Font rendering, distortion pipeline, CER/WER benchmarks, `TemplateTrainer` for pattern-matching templates
@@ -10,24 +10,41 @@ All five phases of the OCR roadmap are implemented and tested (357+ tests passin
 - **Phase 3 — CRNN Recognition**: 5-layer CNN extractor, 2-layer BiLSTM, CTC decoder/loss, `CrnnTrainer`, checkpointing, `--engine lstm`, model < 5MB
 - **Phase 4 — Multi-Language**: Script detection (8 scripts), 25+ dictionaries, `ScriptLineGenerator`, `ScriptModelRegistry` for per-script CRNN
 - **Phase 5 — Layout & Structure**: Table detection with span inference, form field extraction, document classification, Markdown/structured JSON output, searchable PDF
+- **Hygiene pass**: fixed PDF command wiring redundancy (`handle_pdf_extraction` dead code), synced doc drift (test counts 357→373, CLI version now derived from `Cargo.toml`), and drove the whole crate to a **zero-warning build** (267 → 0 across `cargo build`, tests, and examples): annotated experimental/unwired model modules + SIMD fallbacks, removed dead imports/fields, fixed a `CheckpointInfo` visibility bug, and cleaned redundant match arms in script detection
 
 ## Next Steps
 
-These require **training execution**, not additional code:
+These are **blocked on execution or hardware**, not additional code:
 
-- [ ] **Train CRNN to target accuracy**
+- [x] **Training CLI wired up** (`ocr train --engine lstm --epochs 10 --batch-size 8`)
+- [x] **Benchmark CLI wired up** (`ocr benchmark --samples 10`)
+- [x] **FC-layer backprop implemented** in `CrnnTrainer::train_batch` (CNN/BiLSTM frozen)
+- [x] **CRNN inference optimized** (rayon-parallel convolutions, ndarray FC layer)
+- [ ] **Train CRNN to target accuracy** — *blocked: requires multi-hour `--release` training run*
   - CER < 5% on clean synthetic test
   - CER < 15% on distorted synthetic test
-  - Use `cargo run --release -- train --engine crnn --epochs 100` (or equivalent CLI)
-- [ ] **Evaluate per-language accuracy**
-  - Generate synthetic test sets per script via `ScriptLineGenerator`
-  - Run `CrnnModel` with `ScriptModelRegistry` and measure CER/WER
+  - Run `cargo run --release -- train --epochs 100` (debug is ~4s/forward, use --release)
+- [ ] **Evaluate per-language accuracy** — *blocked: requires trained checkpoints*
+  - Run `cargo run --release -- benchmark --samples 50` to measure per-script CER/WER
 
 ## Backlog / Ideas
 
-- ONNX runtime integration for importing PaddleOCR/EasyOCR pre-trained models
-- GPU acceleration for CNN inference (CUDA via `cudarc`, OpenCL via `ocl`)
-- SIMD optimization for convolutions (AVX2, NEON)
-- Quantization (INT8) for edge deployment
-- Font attribute detection (bold, italic, monospace) from stroke analysis
-- Handwriting recognition (separate model, likely transformer-based)
+- [x] **Font attribute detection** (`FontAttributeDetector`: bold via stroke thickness, italic via slant, monospace via width CV)
+- [x] **INT8 quantization** (`QuantizedTensor`, `quantize_array2`, `quantized_matmul`: 4x memory reduction for FC layer)
+- [x] **ONNX weight loader** (`OnnxLoader` with `onnx-rs`: parse ONNX, extract weights as ndarrays, `load_crnn_weights` maps Conv/Gemm/LSTM into `CrnnModel` by graph topology)
+- [~] **GPU acceleration** (`ComputeBackend` wired into `CnnFeatureExtractor`; OpenCL kernels implemented; CUDA path still falls back to CPU — *blocked: needs NVIDIA hardware to validate real `cudarc` kernels*)
+- [ ] Handwriting recognition (separate model, likely transformer-based)
+- [x] **Zero-warning build** — annotated stub/future-work modules (`end_to_end`, `vit`, `cnn`, `hybrid`, `transformer` models, SIMD scalar fallbacks), removed dead imports/fields/functions, fixed `CheckpointInfo` visibility, cleaned script-detection match arms
+
+## Brainstorming (competitive intelligence)
+
+Gaps observed vs. Tesseract / PaddleOCR / EasyOCR / RapidOCR / docTR / surya. Prioritized by accuracy/UX impact, lowest-cost first:
+
+- [x] **Wire batch concurrency** — `--max-concurrent` CLI flag exists but was unused; `handle_batch` now processes images concurrently via `tokio::spawn` + a `Semaphore` (recognition holds only a read-lock, so tasks run in parallel). Verified with a CLI integration test.
+- [ ] **CTC beam search + dictionary/LM rescoring** — greedy decode is wired; beam search exists in `CtcDecoder` but the CRNN path uses greedy. Tesseract's biggest accuracy lever after the model.
+- [ ] **Confidence calibration** — expose calibrated per-word/per-char confidence for downstream filtering (all mature engines do).
+- [ ] **Curved-line / perspective dewarp** — PaddleOCR rectifies curved document text before recognition; we only deskew (affine).
+- [ ] **Arbitrary-angle text detection** — auto-rotate covers 0/90/180/270°; scene text at e.g. 23° is missed (CRAFT/DB detectors are rotation-invariant).
+- [ ] **Super-resolution upscaling for tiny text** — PaddleOCR upscales low-DPI input.
+- [ ] **Publish to crates.io** — package is docs.rs-ready (`documentation = "https://docs.rs/ocr"`) but unpublished; a published crate is table-stakes for adoption vs. Tesseract bindings.
+- [ ] **makebox-style box export from real images** — `--format box` outputs recognition boxes; a training-box generator (like `tesseract img out makebox`) would close the real-data training loop.

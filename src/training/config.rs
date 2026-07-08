@@ -423,7 +423,7 @@ impl TrainingConfig {
     }
 
     /// Get learning rate for given epoch and step
-    pub fn get_learning_rate(&self, epoch: usize, step: usize) -> f32 {
+    pub fn get_learning_rate(&self, _epoch: usize, step: usize) -> f32 {
         match self.scheduler.scheduler_type.as_str() {
             "StepLR" => {
                 let step_size = self

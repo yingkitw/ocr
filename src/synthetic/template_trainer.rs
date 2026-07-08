@@ -5,9 +5,8 @@
 //! box, and normalized to a fixed size.  Multiple fonts can be averaged
 //! for robustness.
 
-use crate::core::image::OcrImage;
 use crate::synthetic::generator::TextLineGenerator;
-use image::{DynamicImage, GrayImage, Luma};
+use image::{GrayImage, Luma};
 use std::collections::HashMap;
 
 /// A trained character template (normalized binary image)

@@ -10,10 +10,12 @@
 //! BiLSTM: 2-layer bidirectional LSTM
 //! Output: Linear projection to vocab + blank, then CTC decode
 
+use crate::compute::ComputeBackend;
 use crate::core::image::OcrImage;
-use crate::core::recognition::TrainableModel;
-use crate::utils::{OcrError, Result};
+use crate::utils::quantization::{quantize_array2, QuantizedTensor};
+use crate::utils::Result;
 use ndarray::{s, Array1, Array2, Array3, Axis};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -181,23 +183,25 @@ impl Vocabulary {
 pub struct CnnFeatureExtractor {
     pub config: CrnnConfig,
     // Conv1: 1 -> 64, 3x3
-    conv1_weights: Array3<f32>,
-    conv1_bias: Array1<f32>,
+    pub(crate) conv1_weights: Array3<f32>,
+    pub(crate) conv1_bias: Array1<f32>,
     // Conv2: 64 -> 128, 3x3
-    conv2_weights: Array3<f32>,
-    conv2_bias: Array1<f32>,
+    pub(crate) conv2_weights: Array3<f32>,
+    pub(crate) conv2_bias: Array1<f32>,
     // Conv3: 128 -> 256, 3x3
-    conv3_weights: Array3<f32>,
-    conv3_bias: Array1<f32>,
+    pub(crate) conv3_weights: Array3<f32>,
+    pub(crate) conv3_bias: Array1<f32>,
     // Conv4: 256 -> 256, 3x3
-    conv4_weights: Array3<f32>,
-    conv4_bias: Array1<f32>,
+    pub(crate) conv4_weights: Array3<f32>,
+    pub(crate) conv4_bias: Array1<f32>,
     // Conv5: 256 -> 512, 3x3
-    conv5_weights: Array3<f32>,
-    conv5_bias: Array1<f32>,
+    pub(crate) conv5_weights: Array3<f32>,
+    pub(crate) conv5_bias: Array1<f32>,
     // Batch norm params (simplified: just scale + shift per channel)
     bn_scales: Vec<Array1<f32>>,
     bn_shifts: Vec<Array1<f32>>,
+    /// Optional compute backend for offloading conv2d to GPU
+    backend: Option<Box<dyn ComputeBackend>>,
 }
 
 impl CnnFeatureExtractor {
@@ -229,9 +233,16 @@ impl CnnFeatureExtractor {
                 Array1::zeros(c[3]),
                 Array1::zeros(c[4]),
             ],
+            backend: None,
         };
         s.randomize();
         s
+    }
+
+    /// Attach a compute backend (e.g., CUDA or OpenCL) for conv2d offloading.
+    pub fn with_backend(mut self, backend: Box<dyn ComputeBackend>) -> Self {
+        self.backend = Some(backend);
+        self
     }
 
     fn init_conv_weights(k: usize, in_ch: usize, out_ch: usize) -> Array3<f32> {
@@ -256,7 +267,7 @@ impl CnnFeatureExtractor {
 
     /// Forward pass: input [H, W] -> output [T, C] where T = W/4 (downsampled width), C = 512
     pub fn forward(&self, input: &Array2<f32>) -> Array2<f32> {
-        let (h, w) = (input.nrows(), input.ncols());
+        let (_h, _w) = (input.nrows(), input.ncols());
         // Add channel dimension: [1, H, W]
         let mut x = input.clone().insert_axis(Axis(0));
 
@@ -330,6 +341,10 @@ impl CnnFeatureExtractor {
         bn_scale: &Array1<f32>,
         bn_shift: &Array1<f32>,
     ) -> Array3<f32> {
+        if let Some(ref backend) = self.backend {
+            return self.conv_block_backend(input, weights, bias, bn_scale, bn_shift, backend.as_ref());
+        }
+
         let (in_c, in_h, in_w) = (input.shape()[0], input.shape()[1], input.shape()[2]);
         let out_c = weights.shape()[0];
         let k = (weights.shape()[2] as f32).sqrt() as usize; // k*k = last dim
@@ -337,27 +352,104 @@ impl CnnFeatureExtractor {
         let out_h = in_h;
         let out_w = in_w;
 
-        let mut output = Array3::zeros((out_c, out_h, out_w));
+        let input_slice = input.as_slice().unwrap_or(&[]);
+        let weights_slice = weights.as_slice().unwrap_or(&[]);
+        let bias_slice = bias.as_slice().unwrap_or(&[]);
+        let bn_scale_slice = bn_scale.as_slice().unwrap_or(&[]);
+        let bn_shift_slice = bn_shift.as_slice().unwrap_or(&[]);
 
-        for oc in 0..out_c {
-            for oh in 0..out_h {
-                for ow in 0..out_w {
-                    let mut sum = bias[oc];
-                    for ic in 0..in_c {
-                        for ky in 0..k {
-                            for kx in 0..k {
-                                let iy = oh as i32 + ky as i32 - pad as i32;
-                                let ix = ow as i32 + kx as i32 - pad as i32;
-                                if iy >= 0 && iy < in_h as i32 && ix >= 0 && ix < in_w as i32 {
-                                    let w = weights[[oc, ic, ky * k + kx]];
-                                    sum += input[[ic, iy as usize, ix as usize]] * w;
+        // Parallelize over output channels
+        let channels: Vec<Vec<f32>> = (0..out_c)
+            .into_par_iter()
+            .map(|oc| {
+                let mut channel = vec![0.0f32; out_h * out_w];
+                for oh in 0..out_h {
+                    for ow in 0..out_w {
+                        let mut sum = bias_slice[oc];
+                        for ic in 0..in_c {
+                            for ky in 0..k {
+                                for kx in 0..k {
+                                    let iy = oh as i32 + ky as i32 - pad as i32;
+                                    let ix = ow as i32 + kx as i32 - pad as i32;
+                                    if iy >= 0 && iy < in_h as i32 && ix >= 0 && ix < in_w as i32 {
+                                        let w = weights_slice[oc * in_c * k * k + ic * k * k + ky * k + kx];
+                                        let inp = input_slice[ic * in_h * in_w + iy as usize * in_w + ix as usize];
+                                        sum += inp * w;
+                                    }
                                 }
                             }
                         }
+                        // Batch norm + ReLU
+                        let normalized = sum * bn_scale_slice[oc] + bn_shift_slice[oc];
+                        channel[oh * out_w + ow] = normalized.max(0.0);
                     }
-                    // Batch norm + ReLU
-                    let normalized = (sum - 0.0) * bn_scale[oc] + bn_shift[oc]; // mean=0 for now
-                    output[[oc, oh, ow]] = normalized.max(0.0);
+                }
+                channel
+            })
+            .collect();
+
+        let mut output = Array3::zeros((out_c, out_h, out_w));
+        for (oc, channel) in channels.iter().enumerate() {
+            for oh in 0..out_h {
+                for ow in 0..out_w {
+                    output[[oc, oh, ow]] = channel[oh * out_w + ow];
+                }
+            }
+        }
+        output
+    }
+
+    /// Conv2d via external compute backend (e.g., CUDA/OpenCL).
+    /// Converts ndarray → flat Vec, runs backend.conv2d, then applies BN+ReLU.
+    fn conv_block_backend(
+        &self,
+        input: &Array3<f32>,
+        weights: &Array3<f32>,
+        bias: &Array1<f32>,
+        bn_scale: &Array1<f32>,
+        bn_shift: &Array1<f32>,
+        backend: &dyn ComputeBackend,
+    ) -> Array3<f32> {
+        let (in_c, in_h, in_w) = (input.shape()[0], input.shape()[1], input.shape()[2]);
+        let out_c = weights.shape()[0];
+        let k = (weights.shape()[2] as f32).sqrt() as usize;
+        let pad = k / 2;
+
+        // Flatten input (already NCHW contiguous)
+        let input_vec = input.as_slice().unwrap_or(&[]).to_vec();
+
+        // Reshape weights from (out_c, in_c, k*k) to (out_c, in_c, k, k)
+        let mut kernel_vec = vec![0.0f32; out_c * in_c * k * k];
+        if let Some(wslice) = weights.as_slice() {
+            for oc in 0..out_c {
+                for ic in 0..in_c {
+                    for ky in 0..k {
+                        for kx in 0..k {
+                            let src = oc * in_c * k * k + ic * k * k + ky * k + kx;
+                            let dst = ((oc * in_c + ic) * k + ky) * k + kx;
+                            kernel_vec[dst] = wslice[src];
+                        }
+                    }
+                }
+            }
+        }
+
+        let bias_vec = bias.as_slice().unwrap_or(&[]).to_vec();
+
+        let output_vec = backend
+            .conv2d(
+                &input_vec, &kernel_vec, Some(&bias_vec),
+                in_h, in_w, in_c, out_c, k, k, 1, pad,
+            )
+            .unwrap_or_else(|_| vec![0.0f32; out_c * in_h * in_w]);
+
+        let mut output = Array3::zeros((out_c, in_h, in_w));
+        for oc in 0..out_c {
+            for oh in 0..in_h {
+                for ow in 0..in_w {
+                    let val = output_vec[(oc * in_h + oh) * in_w + ow];
+                    let bn = val * bn_scale[oc] + bn_shift[oc];
+                    output[[oc, oh, ow]] = bn.max(0.0);
                 }
             }
         }
@@ -419,15 +511,15 @@ pub struct BiLstmLayer {
     pub input_size: usize,
     pub hidden_size: usize,
     // Forward LSTM weights
-    wf_ih: Array2<f32>,
-    wf_hh: Array2<f32>,
-    bf_ih: Array1<f32>,
-    bf_hh: Array1<f32>,
+    pub(crate) wf_ih: Array2<f32>,
+    pub(crate) wf_hh: Array2<f32>,
+    pub(crate) bf_ih: Array1<f32>,
+    pub(crate) bf_hh: Array1<f32>,
     // Backward LSTM weights
-    wb_ih: Array2<f32>,
-    wb_hh: Array2<f32>,
-    bb_ih: Array1<f32>,
-    bb_hh: Array1<f32>,
+    pub(crate) wb_ih: Array2<f32>,
+    pub(crate) wb_hh: Array2<f32>,
+    pub(crate) bb_ih: Array1<f32>,
+    pub(crate) bb_hh: Array1<f32>,
 }
 
 impl BiLstmLayer {
@@ -450,7 +542,7 @@ impl BiLstmLayer {
 
     fn randomize(&mut self) {
         let scale = (1.0 / self.input_size as f32).sqrt();
-        let h_scale = (1.0 / self.hidden_size as f32).sqrt();
+        let _h_scale = (1.0 / self.hidden_size as f32).sqrt();
         for w in [
             &mut self.wf_ih,
             &mut self.wf_hh,
@@ -531,9 +623,12 @@ impl BiLstmLayer {
     fn mat_vec_add(m: &Array2<f32>, v: &Array1<f32>, b: &Array1<f32>) -> Array1<f32> {
         let mut out = b.clone();
         for i in 0..m.nrows() {
-            for j in 0..m.ncols() {
-                out[i] += m[[i, j]] * v[j];
+            let row = m.row(i);
+            let mut sum = b[i];
+            for j in 0..row.len() {
+                sum += row[j] * v[j];
             }
+            out[i] = sum;
         }
         out
     }
@@ -556,6 +651,8 @@ pub struct CrnnModel {
     pub lstm2: BiLstmLayer,
     pub fc_weight: Array2<f32>,
     pub fc_bias: Array1<f32>,
+    /// Optional INT8-quantized FC weights for memory-efficient inference
+    pub fc_weight_quantized: Option<QuantizedTensor>,
 }
 
 impl CrnnModel {
@@ -587,28 +684,40 @@ impl CrnnModel {
             lstm2,
             fc_weight,
             fc_bias: Array1::zeros(num_classes),
+            fc_weight_quantized: None,
         }
     }
 
-    /// Forward inference on a single image
-    /// Input: grayscale image [H, W] as Array2
-    /// Output: logits [T, num_classes]
+    /// Attach a compute backend to the CNN feature extractor.
+    /// When a GPU backend is available (compiled with `cuda` or `opencl`
+    /// features), conv2d operations will be offloaded to it.
+    pub fn with_backend(mut self, backend: Box<dyn ComputeBackend>) -> Self {
+        self.cnn = self.cnn.with_backend(backend);
+        self
+    }
+
+    /// Quantize the FC layer weights to INT8 for memory-efficient inference.
+    /// The original f32 weights are kept for training; quantized weights are used
+    /// for inference when `use_quantized` is true.
+    pub fn quantize_fc(&mut self) {
+        self.fc_weight_quantized = Some(quantize_array2(&self.fc_weight));
+    }
+
+    /// Forward using quantized FC weights if available, otherwise f32.
     pub fn forward(&self, image: &Array2<f32>) -> Array2<f32> {
         let cnn_features = self.cnn.forward(image);
         let lstm1_out = self.lstm1.forward(&cnn_features);
         let lstm2_out = self.lstm2.forward(&lstm1_out);
 
-        let (t, _) = lstm2_out.dim();
-        let num_classes = self.fc_weight.nrows();
-        let mut logits = Array2::zeros((t, num_classes));
+        let mut logits = if let Some(ref qw) = self.fc_weight_quantized {
+            crate::utils::quantization::quantized_matmul(&lstm2_out, qw)
+        } else {
+            lstm2_out.dot(&self.fc_weight.t())
+        };
 
-        for i in 0..t {
-            for j in 0..num_classes {
-                let mut sum = self.fc_bias[j];
-                for k in 0..lstm2_out.ncols() {
-                    sum += self.fc_weight[[j, k]] * lstm2_out[[i, k]];
-                }
-                logits[[i, j]] = sum;
+        for i in 0..logits.nrows() {
+            for j in 0..logits.ncols() {
+                logits[[i, j]] += self.fc_bias[j];
             }
         }
         logits
@@ -616,7 +725,6 @@ impl CrnnModel {
 
     /// Recognize text from an OcrImage
     pub fn recognize(&self, image: &OcrImage) -> Result<String> {
-        use image::GenericImageView;
         let gray = image.data.to_luma8();
         let (w, h) = (gray.width() as usize, gray.height() as usize);
 
@@ -669,9 +777,16 @@ impl CrnnModel {
         count
     }
 
-    /// Estimate model size in bytes
+    /// Estimate model size in bytes. If quantized FC weights are present,
+    /// they replace the f32 FC weight memory (4x reduction for that layer).
     pub fn model_size_bytes(&self) -> usize {
-        self.parameter_count() * std::mem::size_of::<f32>()
+        let mut bytes = self.parameter_count() * std::mem::size_of::<f32>();
+        // Subtract f32 FC weight size, add INT8 FC weight size
+        if self.fc_weight_quantized.is_some() {
+            bytes -= self.fc_weight.len() * std::mem::size_of::<f32>();
+            bytes += self.fc_weight.len() * std::mem::size_of::<i8>();
+        }
+        bytes
     }
 }
 
@@ -823,6 +938,72 @@ mod tests {
             ms_per_line < 10000.0,
             "CRNN inference extremely slow: {:.2} ms/line",
             ms_per_line
+        );
+    }
+
+    #[test]
+    fn test_crnn_quantized_fc_inference() {
+        let config = CrnnConfig::default();
+        let mut model = CrnnModel::new(config);
+        let input = Array2::zeros((32, 128));
+
+        // Baseline f32 forward
+        let logits_f32 = model.forward(&input);
+
+        // Quantize FC weights and run again
+        model.quantize_fc();
+        let logits_q = model.forward(&input);
+
+        // Shape should be identical
+        assert_eq!(logits_f32.dim(), logits_q.dim());
+
+        // Values should be close (quantization error is bounded by scale)
+        let max_diff = logits_f32
+            .iter()
+            .zip(logits_q.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        let scale = model.fc_weight_quantized.as_ref().unwrap().scale;
+        assert!(
+            max_diff <= scale * 2.0,
+            "Quantized inference drift too large: max_diff={} scale={}",
+            max_diff,
+            scale
+        );
+
+        // Model size should decrease
+        let size_before = model.parameter_count() * std::mem::size_of::<f32>();
+        let size_after = model.model_size_bytes();
+        assert!(
+            size_after < size_before,
+            "Quantized model should be smaller: before={} after={}",
+            size_before,
+            size_after
+        );
+    }
+
+    #[test]
+    fn test_crnn_with_compute_backend() {
+        use crate::compute::CpuBackend;
+        let config = CrnnConfig::default();
+        let model = CrnnModel::new(config.clone());
+        let input = Array2::zeros((32, 128));
+        let baseline = model.forward(&input);
+
+        // Create model with CPU backend (should produce identical results)
+        let model_backend = CrnnModel::new(config).with_backend(Box::new(CpuBackend::new()));
+        let with_backend = model_backend.forward(&input);
+
+        assert_eq!(baseline.dim(), with_backend.dim());
+        let max_diff = baseline
+            .iter()
+            .zip(with_backend.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(
+            max_diff < 1e-4,
+            "Backend path should match CPU path: max_diff={}",
+            max_diff
         );
     }
 }

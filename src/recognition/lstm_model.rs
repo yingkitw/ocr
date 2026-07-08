@@ -285,7 +285,7 @@ impl LstmModel {
         self.model_path = path_str;
         self.is_loaded = true;
 
-        let (h, w, c) = self.config.input_shape;
+        let (h, _w, c) = self.config.input_shape;
         let feature_dim = h * c;
         let mut network = LstmNetwork::new(feature_dim, 256, 2, 100);
         network.randomize();
@@ -306,7 +306,7 @@ impl LstmModel {
 }
 
 impl OcrModel for LstmModel {
-    fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
+    fn predict(&self, _input: &[u8]) -> Result<RecognitionResult> {
         if !self.is_loaded {
             return Err(OcrError::ModelNotFound("LSTM model not loaded".to_string()).into());
         }

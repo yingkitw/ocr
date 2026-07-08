@@ -3,6 +3,9 @@
 //! This module provides a Vision Transformer model specifically designed
 //! for optical character recognition tasks.
 
+// Experimental alternative architecture; not yet wired into `OcrEngine`.
+#![allow(dead_code)]
+
 use super::engine::*;
 use crate::core::image::OcrImage;
 use crate::core::ModelType;
@@ -282,10 +285,10 @@ impl ViTModel {
     }
 
     /// Preprocess image for ViT input
-    fn preprocess_image(&self, image: &OcrImage) -> Result<Vec<f32>> {
+    fn preprocess_image(&self, _image: &OcrImage) -> Result<Vec<f32>> {
         // Convert image to patches
-        let (height, width, channels) = self.config.input_shape;
-        let (patch_height, patch_width) = self.config.patch_size;
+        let (_height, _width, _channels) = self.config.input_shape;
+        let (_patch_height, _patch_width) = self.config.patch_size;
 
         let num_patches =
             Self::calculate_num_patches(self.config.input_shape, self.config.patch_size);
@@ -357,7 +360,7 @@ impl OcrModel for ViTModel {
         todo!("Implement proper config storage")
     }
 
-    fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
+    fn predict(&self, _input: &[u8]) -> Result<RecognitionResult> {
         if !self.model_loaded {
             return Err(OcrError::ModelNotFound("Model not loaded".to_string()).into());
         }
@@ -555,12 +558,12 @@ impl MultiHeadSelfAttention {
         self.output.forward(&output_reshaped)
     }
 
-    fn reshape_for_heads(&self, input: &[f32], seq_len: usize) -> Result<Vec<f32>> {
+    fn reshape_for_heads(&self, input: &[f32], _seq_len: usize) -> Result<Vec<f32>> {
         // Simplified reshaping - in practice, this would be more complex
         Ok(input.to_vec())
     }
 
-    fn reshape_from_heads(&self, input: &[f32], seq_len: usize) -> Result<Vec<f32>> {
+    fn reshape_from_heads(&self, input: &[f32], _seq_len: usize) -> Result<Vec<f32>> {
         // Simplified reshaping - in practice, this would be more complex
         Ok(input.to_vec())
     }

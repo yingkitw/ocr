@@ -6,6 +6,7 @@ pub mod crnn;
 pub mod ctc_decoder;
 pub mod end_to_end_model;
 pub mod engine;
+pub mod font_attributes;
 pub mod hybrid_model;
 pub mod lstm;
 pub mod lstm_model;

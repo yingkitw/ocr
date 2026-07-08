@@ -4,8 +4,7 @@
 //! Generates a per-pixel text-probability heatmap, which is then
 //! thresholded and post-processed into bounding boxes.
 
-use crate::utils::Result;
-use ndarray::{Array2, Array3, Array4, ArrayView2, Axis};
+use ndarray::{Array2, Array3, Array4};
 
 /// Small CNN for text region detection
 pub struct TextDetectionCNN {

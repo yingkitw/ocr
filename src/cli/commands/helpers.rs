@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use anyhow::Result;
 use tracing::info;
 
-use ocr::api::Ocr;
 use ocr::core::text::TextResult;
 use ocr::lang::dictionary::DictionaryHandler;
 
@@ -36,7 +35,7 @@ pub fn apply_dictionary_correction(result: &mut TextResult, lang: &str) {
     }
 }
 
-fn parse_engine(s: &str) -> ocr::core::config::RecognitionEngine {
+pub fn parse_engine(s: &str) -> ocr::core::config::RecognitionEngine {
     match s.to_lowercase().as_str() {
         "lstm" => ocr::core::config::RecognitionEngine::LSTM,
         "hybrid" => ocr::core::config::RecognitionEngine::Hybrid,

@@ -31,11 +31,11 @@ pub struct CheckpointManager {
 }
 
 #[derive(Debug, Clone)]
-struct CheckpointInfo {
-    path: PathBuf,
-    epoch: usize,
-    metrics: Option<TrainingMetrics>,
-    created_at: chrono::DateTime<chrono::Utc>,
+pub struct CheckpointInfo {
+    pub path: PathBuf,
+    pub epoch: usize,
+    pub metrics: Option<TrainingMetrics>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 impl CheckpointManager {
@@ -342,7 +342,7 @@ impl CheckpointBackup {
         let backups = self.list_backups().await?;
 
         if backups.len() > self.max_backups {
-            let to_remove = backups.len() - self.max_backups;
+            let _to_remove = backups.len() - self.max_backups;
 
             for backup in backups.into_iter().skip(self.max_backups) {
                 fs::remove_file(&backup).await?;

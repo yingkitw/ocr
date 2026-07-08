@@ -96,7 +96,7 @@ impl Script {
             // Devanagari
             0x0900..=0x097F | 0xA8E0..=0xA8FF => Script::Devanagari,
             // Common (digits, punctuation, symbols)
-            0x0020..=0x0040 | 0x005B..=0x0060 | 0x007B..=0x007E | 0x0030..=0x0039 => {
+            0x0020..=0x0040 | 0x007B..=0x007E => {
                 Script::Latin // Default to Latin for common chars
             }
             _ => Script::Other,

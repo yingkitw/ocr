@@ -3,6 +3,9 @@
 //! This module provides end-to-end OCR models that perform both text detection
 //! and recognition in a single unified architecture.
 
+// Experimental alternative architecture; not yet wired into `OcrEngine`.
+#![allow(dead_code)]
+
 use super::engine::*;
 use crate::core::geometry::TBox;
 use crate::core::ModelType;
@@ -528,7 +531,7 @@ impl OcrModel for EndToEndModel {
         todo!("Implement proper config storage")
     }
 
-    fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
+    fn predict(&self, _input: &[u8]) -> Result<RecognitionResult> {
         if !self.model_loaded {
             return Err(OcrError::ModelNotFound("Model not loaded".to_string()).into());
         }
@@ -865,7 +868,7 @@ impl DetectionHead {
         }
     }
 
-    fn forward(&self, features: &[FeatureMap]) -> Result<Vec<TextDetection>> {
+    fn forward(&self, _features: &[FeatureMap]) -> Result<Vec<TextDetection>> {
         // Simplified detection - return placeholder results
         Ok(vec![TextDetection {
             bounding_box: TBox::new(0, 0, 100, 50),
@@ -900,8 +903,8 @@ impl RecognitionHead {
 
     fn forward(
         &self,
-        features: &[FeatureMap],
-        detections: &[TextDetection],
+        _features: &[FeatureMap],
+        _detections: &[TextDetection],
     ) -> Result<Vec<TextRecognition>> {
         // Simplified recognition - return placeholder results
         Ok(vec![TextRecognition {

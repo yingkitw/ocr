@@ -249,7 +249,7 @@ impl Ocr {
 
     /// Check if engine is initialized
     pub async fn is_initialized(&self) -> bool {
-        let engine = self.engine.read().await;
+        let _engine = self.engine.read().await;
         // TODO: Add is_initialized method to OcrEngine
         true
     }

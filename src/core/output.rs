@@ -506,18 +506,6 @@ fn xml_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// Escape a single character for HTML content
-fn html_escape_char(c: char) -> String {
-    match c {
-        '<' => "&lt;".to_string(),
-        '>' => "&gt;".to_string(),
-        '&' => "&amp;".to_string(),
-        '"' => "&quot;".to_string(),
-        '\'' => "&#x27;".to_string(),
-        _ => c.to_string(),
-    }
-}
-
 /// Document element type for structured output
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DocElement {

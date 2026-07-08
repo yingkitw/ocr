@@ -3,6 +3,9 @@
 //! This module provides a TrOCR (Transformer-based OCR) model implementation
 //! that can handle both text detection and recognition using transformer architectures.
 
+// Experimental alternative architecture; not yet wired into `OcrEngine`.
+#![allow(dead_code)]
+
 use super::engine::*;
 use crate::core::image::OcrImage;
 use crate::core::ModelType;
@@ -256,7 +259,7 @@ impl TransformerModel {
     }
 
     /// Preprocess image for transformer input
-    fn preprocess_image(&self, image: &OcrImage) -> Result<Vec<f32>> {
+    fn preprocess_image(&self, _image: &OcrImage) -> Result<Vec<f32>> {
         // Convert image to the expected input format
         let (height, width, channels) = self.config.input_shape;
 
@@ -300,7 +303,7 @@ impl OcrModel for TransformerModel {
         todo!("Implement proper config storage")
     }
 
-    fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
+    fn predict(&self, _input: &[u8]) -> Result<RecognitionResult> {
         if !self.model_loaded {
             return Err(OcrError::ModelNotFound("Model not loaded".to_string()).into());
         }
@@ -718,7 +721,7 @@ impl EmbeddingLayer {
     fn forward(&self, input: &[f32]) -> Result<Vec<f32>> {
         // Simplified embedding lookup
         let mut output = vec![0.0; self.hidden_size];
-        for (i, &value) in input.iter().enumerate() {
+        for (_i, &value) in input.iter().enumerate() {
             let idx = (value as usize) % self.embeddings.len();
             for j in 0..self.hidden_size {
                 if j < self.embeddings[idx].len() {

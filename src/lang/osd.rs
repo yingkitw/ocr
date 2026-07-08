@@ -294,7 +294,7 @@ impl OsdDetector {
         // Count connected component characteristics
         let mut horizontal_runs = 0u32;
         let mut vertical_runs = 0u32;
-        let mut dense_regions = 0u32;
+        let _dense_regions = 0u32;
 
         for y in 0..h {
             let mut in_run = false;

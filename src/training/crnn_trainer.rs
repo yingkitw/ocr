@@ -2,11 +2,12 @@
 //!
 //! Trains the CRNN model on synthetic text-line images using CTC loss.
 
-use crate::recognition::crnn::{CrnnConfig, CrnnModel};
+use crate::recognition::crnn::CrnnModel;
 use crate::synthetic::{DistortionConfig, SyntheticSample, TextLineGenerator};
-use crate::training::metrics::{cer, wer};
 use crate::utils::Result;
-use ndarray::{Array1, Array2};
+use ndarray::Array2;
+#[cfg(test)]
+use crate::recognition::crnn::CrnnConfig;
 
 /// Training metrics per epoch
 #[derive(Debug, Clone, Default)]
@@ -151,16 +152,115 @@ impl CrnnTrainer {
         samples
     }
 
-    fn train_batch(&mut self, _samples: &[SyntheticSample]) -> f32 {
-        // Simplified training: for now return a dummy loss
-        // Full backpropagation through the CRNN would require:
-        // 1. Forward pass for each sample
-        // 2. CTC loss computation
-        // 3. Backward pass to compute gradients
-        // 4. Adam/SGD parameter update
-        // This is a placeholder that would be filled with real backprop
-        // once the gradient computation is fully implemented.
-        0.5f32
+    /// Train on a batch using FC-layer backprop with frame-level cross-entropy.
+    /// CNN and BiLSTM feature extractors are kept frozen; only the readout layer is updated.
+    fn train_batch(&mut self, samples: &[SyntheticSample]) -> f32 {
+        let mut total_loss = 0.0f32;
+        let mut total_timesteps = 0usize;
+
+        for sample in samples {
+            let gray = sample.image.to_luma8();
+            let (w, h) = (gray.width() as usize, gray.height() as usize);
+            let mut arr = Array2::zeros((h, w));
+            for y in 0..h {
+                for x in 0..w {
+                    arr[[y, x]] = gray.get_pixel(x as u32, y as u32).0[0] as f32 / 255.0;
+                }
+            }
+
+            let target_h = self.model.config.input_height;
+            if h != target_h {
+                arr = CrnnModel::resize_array2_height(&arr, target_h);
+            }
+
+            // Forward through frozen feature extractors
+            let cnn_features = self.model.cnn.forward(&arr);
+            let lstm1_out = self.model.lstm1.forward(&cnn_features);
+            let lstm2_out = self.model.lstm2.forward(&lstm1_out);
+            let (t, lstm_dim) = lstm2_out.dim();
+            let num_classes = self.model.fc_weight.nrows();
+
+            // Compute logits
+            let mut logits = Array2::zeros((t, num_classes));
+            for i in 0..t {
+                for j in 0..num_classes {
+                    let mut sum = self.model.fc_bias[j];
+                    for k in 0..lstm_dim {
+                        sum += self.model.fc_weight[[j, k]] * lstm2_out[[i, k]];
+                    }
+                    logits[[i, j]] = sum;
+                }
+            }
+
+            // Frame-level target: spread ground truth chars evenly across timesteps
+            let gt = &sample.ground_truth;
+            let gt_indices: Vec<usize> = gt
+                .chars()
+                .map(|ch| self.model.vocab.char_to_idx.get(&ch).copied().unwrap_or(0))
+                .collect();
+            let n_chars = gt_indices.len().max(1);
+            let mut targets = vec![0usize; t]; // blank = 0
+            for timestep in 0..t {
+                let slot = (timestep * n_chars) / t;
+                if slot < n_chars {
+                    targets[timestep] = gt_indices[slot];
+                }
+            }
+
+            // Softmax and cross-entropy loss
+            let mut dlogits = Array2::zeros((t, num_classes));
+            for timestep in 0..t {
+                // softmax
+                let max_logit = (0..num_classes)
+                    .map(|j| logits[[timestep, j]])
+                    .fold(f32::NEG_INFINITY, f32::max);
+                let mut exp_sum = 0.0f32;
+                let mut probs = vec![0.0f32; num_classes];
+                for j in 0..num_classes {
+                    probs[j] = (logits[[timestep, j]] - max_logit).exp();
+                    exp_sum += probs[j];
+                }
+                for j in 0..num_classes {
+                    probs[j] /= exp_sum;
+                }
+
+                // cross-entropy loss for this timestep
+                let target_idx = targets[timestep];
+                let p = probs[target_idx].max(1e-8);
+                total_loss += -p.ln();
+                total_timesteps += 1;
+
+                // gradient: softmax - one_hot
+                for j in 0..num_classes {
+                    dlogits[[timestep, j]] = probs[j] - if j == target_idx { 1.0 } else { 0.0 };
+                }
+            }
+
+            // Backprop through FC layer: dW = lstm2_out.T @ dlogits
+            // Note: dlogits shape is [T, num_classes], lstm2_out is [T, lstm_dim]
+            // We want dW[j, k] = sum_t(dlogits[t, j] * lstm2_out[t, k])
+            let scale = self.learning_rate / samples.len() as f32;
+            for j in 0..num_classes {
+                for k in 0..lstm_dim {
+                    let mut grad = 0.0f32;
+                    for timestep in 0..t {
+                        grad += dlogits[[timestep, j]] * lstm2_out[[timestep, k]];
+                    }
+                    self.model.fc_weight[[j, k]] -= scale * grad;
+                }
+                let mut bias_grad = 0.0f32;
+                for timestep in 0..t {
+                    bias_grad += dlogits[[timestep, j]];
+                }
+                self.model.fc_bias[j] -= scale * bias_grad;
+            }
+        }
+
+        if total_timesteps > 0 {
+            total_loss / total_timesteps as f32
+        } else {
+            0.0
+        }
     }
 
     /// Save model checkpoint
@@ -184,7 +284,6 @@ impl CrnnTrainer {
 /// Extend CrnnModel with recognition from SyntheticSample
 impl CrnnModel {
     pub fn recognize_from_sample(&self, sample: &SyntheticSample) -> String {
-        use image::GenericImageView;
         let gray = sample.image.to_luma8();
         let (w, h) = (gray.width() as usize, gray.height() as usize);
 
@@ -206,7 +305,7 @@ impl CrnnModel {
     }
 }
 
-fn levenshtein_distance(a: &str, b: &str) -> usize {
+pub fn levenshtein_distance(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
     let m = a_chars.len();
@@ -239,7 +338,7 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     prev[n]
 }
 
-fn word_error_distance(a: &str, b: &str) -> usize {
+pub fn word_error_distance(a: &str, b: &str) -> usize {
     let a_words: Vec<&str> = a.split_whitespace().collect();
     let b_words: Vec<&str> = b.split_whitespace().collect();
     levenshtein_distance(&a_words.join(" "), &b_words.join(" "))

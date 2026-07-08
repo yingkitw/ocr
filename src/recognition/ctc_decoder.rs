@@ -3,13 +3,13 @@
 //! Decodes LSTM output logits into text using CTC best-path decoding
 //! and optional beam search. Compatible with Tesseract's CTC approach.
 
-use crate::utils::Result;
 use ndarray::Array2;
 
 const BLANK_LABEL: usize = 0;
 
 pub struct CtcDecoder {
     beam_width: usize,
+    #[allow(dead_code)] // reserved for beam-search pruning (not yet applied during decode)
     prune_threshold: f32,
 }
 

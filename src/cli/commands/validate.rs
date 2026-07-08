@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Result};
-use tracing::error;
+use anyhow::Result;
 
 use ocr::core::config::OcrConfig;
 

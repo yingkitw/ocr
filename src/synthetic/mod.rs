@@ -28,4 +28,3 @@ pub use generator::*;
 pub use multi_script::*;
 pub use template_trainer::*;
 
-use crate::utils::{OcrError, Result};

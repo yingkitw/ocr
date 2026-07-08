@@ -507,7 +507,6 @@ impl OcrEngine {
 
     /// Detect background brightness by sampling corner pixels
     fn detect_background_brightness(&self, image: &OcrImage) -> Result<f32> {
-        use image::GenericImageView;
 
         let sample_size = 10u32;
         let mut total_brightness = 0u32;
@@ -684,9 +683,9 @@ impl OcrEngine {
         let model = CrnnModel::new(config);
 
         let mut full_text = String::new();
-        let mut all_characters = Vec::new();
-        let mut all_words = Vec::new();
-        let mut all_lines = Vec::new();
+        let all_characters = Vec::new();
+        let all_words = Vec::new();
+        let all_lines = Vec::new();
         let mut conf_sum = 0.0f32;
         let mut conf_count = 0u32;
 

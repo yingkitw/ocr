@@ -106,7 +106,6 @@ impl ImageQualityAssessor {
     /// This works for printed text where stroke width correlates with DPI.
     /// Typical printed text has stroke widths of 1-2 pixels at 300 DPI.
     fn estimate_dpi_from_stroke_width(img: &OcrImage) -> Option<DpiEstimate> {
-        use image::GenericImageView;
 
         // Convert to grayscale if needed
         let gray = if img.format == crate::core::image::ImageFormat::Grayscale {
@@ -223,7 +222,6 @@ impl ImageQualityAssessor {
     /// At 300 DPI, 1pt = 300/72 = 4.17 pixels
     /// So 12pt font = ~50 pixels tall
     fn estimate_dpi_from_font_size(img: &OcrImage) -> Option<DpiEstimate> {
-        use image::GenericImageView;
 
         // Convert to grayscale if needed
         let gray = if img.format == crate::core::image::ImageFormat::Grayscale {
@@ -232,7 +230,7 @@ impl ImageQualityAssessor {
             img.data.to_luma8()
         };
 
-        let (width, height) = gray.dimensions();
+        let (_width, _height) = gray.dimensions();
 
         // Use ImageThresholder and Union-Find CCL to find character heights
         use crate::image::ImageThresholder;

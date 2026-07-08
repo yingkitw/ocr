@@ -3,6 +3,9 @@
 //! This module provides CNN-based models for optical character recognition,
 //! including traditional CNN architectures and modern CNN variants.
 
+// Experimental alternative architecture; not yet wired into `OcrEngine`.
+#![allow(dead_code)]
+
 use super::engine::*;
 use crate::core::image::OcrImage;
 use crate::core::ModelType;
@@ -261,7 +264,7 @@ impl CNNModel {
     }
 
     /// Preprocess image for CNN input
-    fn preprocess_image(&self, image: &OcrImage) -> Result<Vec<f32>> {
+    fn preprocess_image(&self, _image: &OcrImage) -> Result<Vec<f32>> {
         // Convert image to the expected input format
         let (height, width, channels) = self.config.input_shape;
         let input_size = (height * width * channels) as usize;
@@ -304,7 +307,7 @@ impl OcrModel for CNNModel {
         todo!("Implement proper config storage")
     }
 
-    fn predict(&self, input: &[u8]) -> Result<RecognitionResult> {
+    fn predict(&self, _input: &[u8]) -> Result<RecognitionResult> {
         if !self.model_loaded {
             return Err(OcrError::ModelNotFound("Model not loaded".to_string()).into());
         }
@@ -674,7 +677,7 @@ impl CNNClassifier {
 }
 
 impl FeatureExtractor {
-    fn new(input_shape: (u32, u32, u32)) -> Self {
+    fn new(_input_shape: (u32, u32, u32)) -> Self {
         let layers = Vec::new(); // Placeholder
         Self {
             layers,

@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
     println!("\nInitializing OCR engine...");
 
     // Create OCR instance
-    let mut ocr = match Ocr::new() {
+    let ocr = match Ocr::new() {
         Ok(ocr) => ocr,
         Err(e) => {
             eprintln!("Error creating OCR engine: {}", e);

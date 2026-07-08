@@ -4,7 +4,6 @@
 //! Enabled via the `cuda` and `opencl` feature flags.
 
 use crate::utils::Result;
-use rayon;
 use serde::{Deserialize, Serialize};
 
 /// Supported compute backends
@@ -95,15 +94,11 @@ pub trait ComputeBackend: Send + Sync {
 
 // ── CPU Backend ──────────────────────────────────────────────────────────
 
-pub struct CpuBackend {
-    num_threads: usize,
-}
+pub struct CpuBackend;
 
 impl CpuBackend {
     pub fn new() -> Self {
-        Self {
-            num_threads: rayon::current_num_threads(),
-        }
+        Self
     }
 }
 
@@ -326,27 +321,123 @@ impl ComputeBackend for CudaBackend {
 // ── OpenCL Backend ───────────────────────────────────────────────────────
 
 #[cfg(feature = "opencl")]
+const OPENCL_KERNEL_SRC: &str = r#"
+__kernel void matmul(
+    __global const float* a,
+    __global const float* b,
+    __global float* c,
+    int m, int k, int n
+) {
+    int row = get_global_id(0);
+    int col = get_global_id(1);
+    if (row < m && col < n) {
+        float sum = 0.0f;
+        for (int p = 0; p < k; p++) {
+            sum += a[row * k + p] * b[p * n + col];
+        }
+        c[row * n + col] = sum;
+    }
+}
+
+__kernel void conv2d(
+    __global const float* input,
+    __global const float* kernel,
+    __global const float* bias,
+    __global float* output,
+    int in_h, int in_w, int in_c,
+    int out_c, int k_h, int k_w,
+    int stride, int padding, int has_bias
+) {
+    int oc = get_global_id(0);
+    int oh = get_global_id(1);
+    int ow = get_global_id(2);
+    int out_h = (in_h + 2 * padding - k_h) / stride + 1;
+    int out_w = (in_w + 2 * padding - k_w) / stride + 1;
+    if (oc >= out_c || oh >= out_h || ow >= out_w) return;
+
+    float sum = 0.0f;
+    for (int ic = 0; ic < in_c; ic++) {
+        for (int kh = 0; kh < k_h; kh++) {
+            for (int kw = 0; kw < k_w; kw++) {
+                int ih = oh * stride + kh - padding;
+                int iw = ow * stride + kw - padding;
+                if (ih >= 0 && ih < in_h && iw >= 0 && iw < in_w) {
+                    int iidx = (ic * in_h + ih) * in_w + iw;
+                    int kidx = ((oc * in_c + ic) * k_h + kh) * k_w + kw;
+                    sum += input[iidx] * kernel[kidx];
+                }
+            }
+        }
+    }
+    if (has_bias) sum += bias[oc];
+    output[(oc * out_h + oh) * out_w + ow] = sum;
+}
+
+__kernel void add(__global const float* a, __global const float* b, __global float* c, int n) {
+    int i = get_global_id(0);
+    if (i < n) c[i] = a[i] + b[i];
+}
+
+__kernel void mul(__global const float* a, __global const float* b, __global float* c, int n) {
+    int i = get_global_id(0);
+    if (i < n) c[i] = a[i] * b[i];
+}
+
+__kernel void relu(__global const float* x, __global float* y, int n) {
+    int i = get_global_id(0);
+    if (i < n) y[i] = x[i] > 0.0f ? x[i] : 0.0f;
+}
+
+__kernel void sigmoid(__global const float* x, __global float* y, int n) {
+    int i = get_global_id(0);
+    if (i < n) y[i] = 1.0f / (1.0f + exp(-x[i]));
+}
+
+__kernel void tanh_kernel(__global const float* x, __global float* y, int n) {
+    int i = get_global_id(0);
+    if (i < n) y[i] = tanh(x[i]);
+}
+
+__kernel void add_bias(__global float* x, __global const float* bias, int rows, int cols) {
+    int r = get_global_id(0);
+    int c = get_global_id(1);
+    if (r < rows && c < cols) x[r * cols + c] += bias[c];
+}
+"#;
+
+#[cfg(feature = "opencl")]
 pub struct OpenClBackend {
     device_name: String,
     total_memory: usize,
+    proque: Option<ocl::ProQue>,
 }
 
 #[cfg(feature = "opencl")]
 impl OpenClBackend {
     pub fn is_available() -> bool {
-        // Check if OpenCL is available
-        cfg!(any(
-            target_os = "macos",
-            target_os = "linux",
-            target_os = "windows"
-        ))
+        cfg!(any(target_os = "macos", target_os = "linux", target_os = "windows"))
     }
 
     pub fn new() -> Result<Self> {
-        Ok(Self {
-            device_name: "OpenCL GPU".to_string(),
-            total_memory: 0,
-        })
+        match ocl::ProQue::builder().src(OPENCL_KERNEL_SRC).dims(1).build() {
+            Ok(proque) => {
+                let device = proque.device();
+                let name = device.name().unwrap_or_else(|_| "OpenCL".to_string());
+                Ok(Self {
+                    device_name: name,
+                    total_memory: 0,
+                    proque: Some(proque),
+                })
+            }
+            Err(e) => {
+                eprintln!("OpenCL init failed ({}), using CPU fallback.", e);
+                Ok(Self {
+                    device_name: "OpenCL (CPU fallback)".to_string(),
+                    total_memory: 0,
+                    proque: None,
+                })
+            }
+        }
     }
 }
 
@@ -365,7 +456,39 @@ impl ComputeBackend for OpenClBackend {
     }
 
     fn matmul(&self, a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Result<Vec<f32>> {
-        CpuBackend::new().matmul(a, b, m, k, n)
+        let pq = match &self.proque {
+            Some(pq) => pq,
+            None => return CpuBackend::new().matmul(a, b, m, k, n),
+        };
+
+        let buf_a = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(a.len())
+            .copy_host_slice(a)
+            .build()?;
+        let buf_b = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(b.len())
+            .copy_host_slice(b)
+            .build()?;
+        let buf_c = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(m * n)
+            .build()?;
+
+        let kernel = pq.kernel_builder("matmul")
+            .arg(&buf_a)
+            .arg(&buf_b)
+            .arg(&buf_c)
+            .arg(&(m as i32))
+            .arg(&(k as i32))
+            .arg(&(n as i32))
+            .build()?;
+        unsafe { kernel.enq()?; }
+
+        let mut c = vec![0.0f32; m * n];
+        buf_c.read(&mut c).enq()?;
+        Ok(c)
     }
 
     fn conv2d(
@@ -382,37 +505,201 @@ impl ComputeBackend for OpenClBackend {
         stride: usize,
         padding: usize,
     ) -> Result<Vec<f32>> {
-        CpuBackend::new().conv2d(
-            input, kernel, bias, in_h, in_w, in_c, out_c, k_h, k_w, stride, padding,
-        )
+        let pq = match &self.proque {
+            Some(pq) => pq,
+            None => return CpuBackend::new().conv2d(
+                input, kernel, bias, in_h, in_w, in_c, out_c, k_h, k_w, stride, padding,
+            ),
+        };
+
+        let out_h = (in_h + 2 * padding - k_h) / stride + 1;
+        let out_w = (in_w + 2 * padding - k_w) / stride + 1;
+
+        let buf_in = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(input.len())
+            .copy_host_slice(input)
+            .build()?;
+        let buf_k = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(kernel.len())
+            .copy_host_slice(kernel)
+            .build()?;
+        let buf_b = match bias {
+            Some(b) => ocl::Buffer::<f32>::builder()
+                .queue(pq.queue().clone())
+                .len(b.len())
+                .copy_host_slice(b)
+                .build()?,
+            None => ocl::Buffer::<f32>::builder()
+                .queue(pq.queue().clone())
+                .len(1)
+                .build()?,
+        };
+        let buf_out = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(out_c * out_h * out_w)
+            .build()?;
+
+        let kernel = pq.kernel_builder("conv2d")
+            .arg(&buf_in)
+            .arg(&buf_k)
+            .arg(&buf_b)
+            .arg(&buf_out)
+            .arg(&(in_h as i32))
+            .arg(&(in_w as i32))
+            .arg(&(in_c as i32))
+            .arg(&(out_c as i32))
+            .arg(&(k_h as i32))
+            .arg(&(k_w as i32))
+            .arg(&(stride as i32))
+            .arg(&(padding as i32))
+            .arg(&(if bias.is_some() { 1 } else { 0 }))
+            .build()?;
+        unsafe {
+            kernel.cmd().global_work_size((out_c, out_h, out_w)).enq()?;
+        }
+
+        let mut output = vec![0.0f32; out_c * out_h * out_w];
+        buf_out.read(&mut output).enq()?;
+        Ok(output)
     }
 
     fn add(&self, a: &[f32], b: &[f32]) -> Result<Vec<f32>> {
-        CpuBackend::new().add(a, b)
+        self.run_elementwise("add", a, b)
     }
 
     fn mul(&self, a: &[f32], b: &[f32]) -> Result<Vec<f32>> {
-        CpuBackend::new().mul(a, b)
+        self.run_elementwise("mul", a, b)
     }
 
     fn relu(&self, x: &[f32]) -> Result<Vec<f32>> {
-        CpuBackend::new().relu(x)
+        self.run_unary("relu", x)
     }
 
     fn sigmoid(&self, x: &[f32]) -> Result<Vec<f32>> {
-        CpuBackend::new().sigmoid(x)
+        self.run_unary("sigmoid", x)
     }
 
     fn tanh(&self, x: &[f32]) -> Result<Vec<f32>> {
-        CpuBackend::new().tanh(x)
+        self.run_unary("tanh_kernel", x)
     }
 
     fn softmax(&self, x: &[f32], rows: usize, cols: usize) -> Result<Vec<f32>> {
+        // Softmax is tricky in OpenCL; use CPU for now
         CpuBackend::new().softmax(x, rows, cols)
     }
 
     fn add_bias(&self, x: &[f32], bias: &[f32], rows: usize, cols: usize) -> Result<Vec<f32>> {
-        CpuBackend::new().add_bias(x, bias, rows, cols)
+        let pq = match &self.proque {
+            Some(pq) => pq,
+            None => return CpuBackend::new().add_bias(x, bias, rows, cols),
+        };
+
+        let mut buf_x = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(x.len())
+            .copy_host_slice(x)
+            .build()?;
+        let buf_b = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(bias.len())
+            .copy_host_slice(bias)
+            .build()?;
+
+        let kernel = pq.kernel_builder("add_bias")
+            .arg(&buf_x)
+            .arg(&buf_b)
+            .arg(&(rows as i32))
+            .arg(&(cols as i32))
+            .build()?;
+        unsafe {
+            kernel.cmd().global_work_size((rows, cols)).enq()?;
+        }
+
+        let mut result = vec![0.0f32; x.len()];
+        buf_x.read(&mut result).enq()?;
+        Ok(result)
+    }
+}
+
+#[cfg(feature = "opencl")]
+impl OpenClBackend {
+    fn run_elementwise(&self, name: &str, a: &[f32], b: &[f32]) -> Result<Vec<f32>> {
+        let pq = match &self.proque {
+            Some(pq) => pq,
+            None => {
+                let cpu = CpuBackend::new();
+                return match name {
+                    "add" => cpu.add(a, b),
+                    "mul" => cpu.mul(a, b),
+                    _ => cpu.add(a, b),
+                };
+            }
+        };
+
+        let buf_a = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(a.len())
+            .copy_host_slice(a)
+            .build()?;
+        let buf_b = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(b.len())
+            .copy_host_slice(b)
+            .build()?;
+        let buf_c = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(a.len())
+            .build()?;
+
+        let kernel = pq.kernel_builder(name)
+            .arg(&buf_a)
+            .arg(&buf_b)
+            .arg(&buf_c)
+            .arg(&(a.len() as i32))
+            .build()?;
+        unsafe { kernel.enq()?; }
+
+        let mut c = vec![0.0f32; a.len()];
+        buf_c.read(&mut c).enq()?;
+        Ok(c)
+    }
+
+    fn run_unary(&self, name: &str, x: &[f32]) -> Result<Vec<f32>> {
+        let pq = match &self.proque {
+            Some(pq) => pq,
+            None => {
+                let cpu = CpuBackend::new();
+                return match name {
+                    "relu" => cpu.relu(x),
+                    "sigmoid" => cpu.sigmoid(x),
+                    "tanh_kernel" => cpu.tanh(x),
+                    _ => cpu.relu(x),
+                };
+            }
+        };
+
+        let buf_x = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(x.len())
+            .copy_host_slice(x)
+            .build()?;
+        let buf_y = ocl::Buffer::<f32>::builder()
+            .queue(pq.queue().clone())
+            .len(x.len())
+            .build()?;
+
+        let kernel = pq.kernel_builder(name)
+            .arg(&buf_x)
+            .arg(&buf_y)
+            .arg(&(x.len() as i32))
+            .build()?;
+        unsafe { kernel.enq()?; }
+
+        let mut y = vec![0.0f32; x.len()];
+        buf_y.read(&mut y).enq()?;
+        Ok(y)
     }
 }
 

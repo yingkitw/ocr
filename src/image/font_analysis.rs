@@ -5,7 +5,7 @@
 
 use crate::core::{BoundingBox, WordResult};
 use crate::utils::Result;
-use image::{DynamicImage, GenericImageView, GrayImage, Luma};
+use image::{DynamicImage, GrayImage};
 
 /// Detect font attributes from a word image crop
 pub fn analyze_font_attributes(

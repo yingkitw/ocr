@@ -206,3 +206,39 @@ fn test_cli_validate_command() {
     cmd.args(&["validate", "nonexistent.json"]);
     cmd.assert().failure();
 }
+
+#[test]
+fn test_cli_batch_processes_all_images() {
+    use std::fs;
+    use tempfile::TempDir;
+
+    let input_dir = TempDir::new().unwrap();
+    let output_dir = TempDir::new().unwrap();
+
+    // Write three small images into the input directory.
+    for name in &["a.png", "b.png", "c.png"] {
+        let path = input_dir.path().join(name);
+        let img: ImageBuffer<Luma<u8>, Vec<u8>> =
+            ImageBuffer::from_pixel(200, 50, Luma([255u8]));
+        img.save(&path).unwrap();
+    }
+
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&[
+        "batch",
+        "-i",
+        input_dir.path().to_str().unwrap(),
+        "-o",
+        output_dir.path().to_str().unwrap(),
+        "--max-concurrent",
+        "2",
+    ]);
+    cmd.assert().success();
+
+    // Every input image must produce a .txt output, regardless of concurrency.
+    for stem in &["a", "b", "c"] {
+        let out = output_dir.path().join(format!("{}.txt", stem));
+        assert!(fs::metadata(&out).map(|m| m.is_file()).unwrap_or(false),
+                "missing batch output for {}", stem);
+    }
+}

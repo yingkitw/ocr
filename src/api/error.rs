@@ -95,6 +95,7 @@ impl From<OcrError> for ApiError {
                 ApiError::Internal(format!("Semaphore acquire failed: {}", msg))
             }
             OcrError::ModelNotFound(msg) => ApiError::Internal(format!("Model not found: {}", msg)),
+            OcrError::ModelLoad(msg) => ApiError::Internal(format!("Model load error: {}", msg)),
         }
     }
 }

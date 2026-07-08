@@ -7,7 +7,9 @@
 //! - Line height estimation
 
 use crate::core::text::BoundingBox;
-use image::{GrayImage, Luma};
+use image::GrayImage;
+#[cfg(test)]
+use image::Luma;
 
 /// Features extracted from a text line
 #[derive(Debug, Clone)]
@@ -192,7 +194,7 @@ fn fit_linear_baseline(points: &[(f32, f32)]) -> (f32, f32) {
 pub fn estimate_x_height(
     binary_image: &GrayImage,
     line_bbox: &BoundingBox,
-    baseline: &BaselineEstimate,
+    _baseline: &BaselineEstimate,
 ) -> (f32, f32) {
     let left = line_bbox.left as usize;
     let top = line_bbox.top as usize;
@@ -288,9 +290,9 @@ pub fn estimate_ascender_descender(
     baseline: &BaselineEstimate,
     x_height: f32,
 ) -> (f32, f32) {
-    let left = line_bbox.left as usize;
-    let top = line_bbox.top as usize;
-    let height = line_bbox.height() as usize;
+    let _left = line_bbox.left as usize;
+    let _top = line_bbox.top as usize;
+    let _height = line_bbox.height() as usize;
 
     // Get baseline y-position at the center of the line
     let center_x = (line_bbox.left + line_bbox.right) as f32 / 2.0;
@@ -348,9 +350,9 @@ pub fn estimate_ascender_descender(
 
 /// Estimate cap height (height of uppercase letters)
 pub fn estimate_cap_height(
-    binary_image: &GrayImage,
-    line_bbox: &BoundingBox,
-    baseline: &BaselineEstimate,
+    _binary_image: &GrayImage,
+    _line_bbox: &BoundingBox,
+    _baseline: &BaselineEstimate,
     x_height: f32,
     ascender_height: f32,
 ) -> f32 {

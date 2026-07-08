@@ -7,7 +7,7 @@ pub struct LanguageDetector;
 
 impl LanguageDetector {
     /// Detect language from text
-    pub fn detect_language(text: &str) -> Result<String> {
+    pub fn detect_language(_text: &str) -> Result<String> {
         // TODO: Implement language detection
         Ok("en".to_string())
     }

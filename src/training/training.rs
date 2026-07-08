@@ -376,6 +376,7 @@ impl TrainingPipeline {
     }
 
     /// Preprocess image for model input
+    #[allow(dead_code)] // preprocessing hook; current training pipeline preprocesses via the data loader
     fn preprocess_image(&self, image: &OcrImage) -> Result<Vec<u8>> {
         // Convert image to raw bytes
         // This is a simplified implementation
@@ -395,6 +396,7 @@ impl TrainingPipeline {
     }
 
     /// Convert model result to prediction vector
+    #[allow(dead_code)] // reserved for metric computation; not yet wired into the training loop
     fn result_to_vector(
         &self,
         result: &crate::core::recognition::RecognitionResult,
@@ -430,18 +432,18 @@ impl TrainingPipeline {
 
     /// Update learning rate
     async fn update_learning_rate(&mut self, epoch: usize) -> Result<()> {
-        let new_lr = self.config.get_learning_rate(epoch, 0);
+        let _new_lr = self.config.get_learning_rate(epoch, 0);
 
         // Update optimizer learning rate
         match self.optimizer.name() {
             "SGD" => {
-                if let Some(sgd) = self.optimizer.as_any().downcast_ref::<SGD>() {
+                if let Some(_sgd) = self.optimizer.as_any().downcast_ref::<SGD>() {
                     // Update learning rate
                     // Note: This would need to be implemented in the optimizer trait
                 }
             }
             "Adam" => {
-                if let Some(adam) = self.optimizer.as_any().downcast_ref::<Adam>() {
+                if let Some(_adam) = self.optimizer.as_any().downcast_ref::<Adam>() {
                     // Update learning rate
                 }
             }
@@ -452,7 +454,7 @@ impl TrainingPipeline {
     }
 
     /// Check if early stopping should be triggered
-    async fn should_early_stop(&self, val_metrics: &TrainingMetrics) -> Result<bool> {
+    async fn should_early_stop(&self, _val_metrics: &TrainingMetrics) -> Result<bool> {
         // Simple early stopping based on validation loss
         // In practice, you would track the best validation loss over time
         Ok(false) // Placeholder
@@ -526,7 +528,7 @@ impl TrainingPipeline {
 
     /// Create loss function from config
     fn create_loss_function(
-        config: &TrainingConfig,
+        _config: &TrainingConfig,
     ) -> Result<Box<dyn LossFunction + Send + Sync>> {
         // For now, use Cross-Entropy loss
         // In practice, you would choose based on the model type and task

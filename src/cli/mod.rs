@@ -6,7 +6,7 @@ pub mod commands;
 #[derive(Parser)]
 #[command(name = "ocr")]
 #[command(about = "A pure Rust CLI OCR tool for printed text extraction")]
-#[command(version = "0.1.0")]
+#[command(version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -121,6 +121,44 @@ pub enum Commands {
         /// Configuration file to validate
         #[arg(value_name = "FILE")]
         config_file: PathBuf,
+    },
+
+    /// Train a recognition model on synthetic data
+    Train {
+        /// Number of training epochs
+        #[arg(short, long, default_value_t = 10)]
+        epochs: usize,
+
+        /// Batch size per training step
+        #[arg(short, long, default_value_t = 8)]
+        batch_size: usize,
+
+        /// Learning rate
+        #[arg(short, long, default_value = "0.001")]
+        learning_rate: f32,
+
+        /// Recognition engine to train: lstm
+        #[arg(long, default_value = "lstm")]
+        engine: String,
+
+        /// Directory to save model checkpoints
+        #[arg(short, long, value_name = "DIR")]
+        checkpoint_dir: Option<PathBuf>,
+
+        /// Distortion level: clean, mild, heavy
+        #[arg(long, default_value = "mild")]
+        distortion: String,
+    },
+
+    /// Benchmark per-script recognition accuracy on synthetic data
+    Benchmark {
+        /// Number of synthetic samples per script
+        #[arg(short, long, default_value_t = 10)]
+        samples: usize,
+
+        /// Distortion level: clean, mild, heavy
+        #[arg(long, default_value = "clean")]
+        distortion: String,
     },
 
     /// Start HTTP API server for OCR

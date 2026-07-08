@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+#[cfg(feature = "pdf")]
 use tracing::info;
 
 use ocr::api::Ocr;
-use ocr::core::text::TextResult;
 
+#[cfg(feature = "pdf")]
 use super::helpers::{apply_dictionary_correction, write_output};
 
 #[cfg(feature = "pdf")]

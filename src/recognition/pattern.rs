@@ -23,9 +23,9 @@ impl RecognitionEngineTrait for PatternRecognitionEngine {
 
     fn recognize(
         &self,
-        image_data: &[u8],
-        width: u32,
-        height: u32,
+        _image_data: &[u8],
+        _width: u32,
+        _height: u32,
     ) -> anyhow::Result<RecognitionResult> {
         // TODO: Implement pattern matching recognition
         Ok(RecognitionResult::new("".to_string(), 0.0))
@@ -33,10 +33,10 @@ impl RecognitionEngineTrait for PatternRecognitionEngine {
 
     fn recognize_region(
         &self,
-        image_data: &[u8],
-        width: u32,
-        height: u32,
-        region: &ImageRegion,
+        _image_data: &[u8],
+        _width: u32,
+        _height: u32,
+        _region: &ImageRegion,
     ) -> anyhow::Result<RecognitionResult> {
         // TODO: Implement pattern matching region recognition
         Ok(RecognitionResult::new("".to_string(), 0.0))

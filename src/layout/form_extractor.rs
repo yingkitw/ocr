@@ -8,7 +8,6 @@
 use crate::core::layout::{LayoutResult, TextRegion};
 use crate::core::text::BoundingBox;
 use crate::utils::Result;
-use image::{GenericImageView, Luma};
 
 /// Detected form field type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

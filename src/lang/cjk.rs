@@ -78,21 +78,21 @@ impl CJKProcessor {
     }
 
     /// Load Chinese dictionary
-    pub async fn load_chinese_dictionary(&mut self, path: &str) -> Result<()> {
+    pub async fn load_chinese_dictionary(&mut self, _path: &str) -> Result<()> {
         // TODO: Implement Chinese dictionary loading
         self.chinese_dictionary = Some(ChineseDictionary::new());
         Ok(())
     }
 
     /// Load Japanese dictionary
-    pub async fn load_japanese_dictionary(&mut self, path: &str) -> Result<()> {
+    pub async fn load_japanese_dictionary(&mut self, _path: &str) -> Result<()> {
         // TODO: Implement Japanese dictionary loading
         self.japanese_dictionary = Some(JapaneseDictionary::new());
         Ok(())
     }
 
     /// Load Korean dictionary
-    pub async fn load_korean_dictionary(&mut self, path: &str) -> Result<()> {
+    pub async fn load_korean_dictionary(&mut self, _path: &str) -> Result<()> {
         // TODO: Implement Korean dictionary loading
         self.korean_dictionary = Some(KoreanDictionary::new());
         Ok(())
@@ -419,35 +419,29 @@ impl CJKProcessor {
 }
 
 /// Chinese dictionary (placeholder)
-pub struct ChineseDictionary {
-    words: Vec<String>,
-}
+pub struct ChineseDictionary;
 
 impl ChineseDictionary {
     pub fn new() -> Self {
-        Self { words: Vec::new() }
+        Self
     }
 }
 
 /// Japanese dictionary (placeholder)
-pub struct JapaneseDictionary {
-    words: Vec<String>,
-}
+pub struct JapaneseDictionary;
 
 impl JapaneseDictionary {
     pub fn new() -> Self {
-        Self { words: Vec::new() }
+        Self
     }
 }
 
 /// Korean dictionary (placeholder)
-pub struct KoreanDictionary {
-    words: Vec<String>,
-}
+pub struct KoreanDictionary;
 
 impl KoreanDictionary {
     pub fn new() -> Self {
-        Self { words: Vec::new() }
+        Self
     }
 }
 

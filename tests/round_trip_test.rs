@@ -15,7 +15,7 @@
 
 use image::{DynamicImage, GrayImage, Luma};
 use ocr::core::config::OcrConfig;
-use ocr::core::engine::{EngineStatistics, OcrEngine};
+use ocr::core::engine::OcrEngine;
 use ocr::core::image::OcrImage;
 
 const SUPPORTED_LETTERS: &[char] = &[

@@ -301,7 +301,7 @@ fn draw_text_simple_color(
     color: Rgb<u8>,
 ) {
     let char_width = size / 2;
-    let char_height = size;
+    let _char_height = size;
     let mut current_x = x;
 
     for ch in text.chars() {
@@ -317,7 +317,7 @@ fn draw_char_simple(img: &mut RgbImage, ch: char, x: u32, y: u32, size: u32) {
 fn draw_char_simple_color(img: &mut RgbImage, ch: char, x: u32, y: u32, size: u32, color: Rgb<u8>) {
     let char_width = (size / 2).max(6);
     let char_height = size;
-    let thickness = (size / 10).max(2);
+    let _thickness = (size / 10).max(2);
 
     // Simple character rendering - draw a box pattern for each character
     // This is a simplified approach; in production you'd use proper font rendering

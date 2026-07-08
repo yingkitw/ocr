@@ -3,7 +3,7 @@
 //! Applies realistic degradations to synthetic text-line images to simulate
 //! scanner noise, camera blur, uneven lighting, and page warp.
 
-use image::{DynamicImage, GrayImage, ImageBuffer, Luma, Rgba};
+use image::{DynamicImage, GrayImage, ImageBuffer, Luma};
 use imageproc::geometric_transformations::{warp, Interpolation, Projection};
 use rand::Rng;
 
@@ -41,6 +41,19 @@ impl Default for DistortionConfig {
 }
 
 impl DistortionConfig {
+    /// No distortions (perfectly clean synthetic data)
+    pub fn none() -> Self {
+        Self {
+            rotation_degrees: 0.0,
+            blur_sigma: 0.0,
+            noise_probability: 0.0,
+            contrast_factor: 1.0,
+            brightness_offset: 0,
+            perspective_shear: 0.0,
+            apply_probability: 0.0,
+        }
+    }
+
     /// Mild distortions (clean synthetic data)
     pub fn mild() -> Self {
         Self {
@@ -119,8 +132,8 @@ pub fn apply_distortions(image: &DynamicImage, config: &DistortionConfig) -> Dyn
 fn rotate_image(image: &DynamicImage, degrees: f32) -> DynamicImage {
     let radians = degrees.to_radians();
     let (w, h) = (image.width(), image.height());
-    let cx = w as f32 / 2.0;
-    let cy = h as f32 / 2.0;
+    let _cx = w as f32 / 2.0;
+    let _cy = h as f32 / 2.0;
 
     // Use imageproc rotate_about_center
     let rotated = imageproc::geometric_transformations::rotate_about_center(
