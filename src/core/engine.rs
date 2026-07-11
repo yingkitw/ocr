@@ -496,6 +496,15 @@ impl OcrEngine {
             processed = processed.invert()?;
         }
 
+        // Super-resolution for tiny / low-DPI text (before geometric corrections)
+        if self.config.image_processing.enable_super_resolution {
+            let sr = crate::image::TextSuperResolution {
+                target_dpi: self.config.image_processing.target_dpi.max(72),
+                ..Default::default()
+            };
+            processed = sr.upscale_if_needed(&processed)?.image;
+        }
+
         // Orientation detection and correction (auto-rotate 0/90/180/270)
         if self.config.layout_analysis.enable_orientation_detection {
             tracing::debug!("Running orientation detection");
@@ -531,6 +540,14 @@ impl OcrEngine {
         }
         // Detection rotated the page by +rotation_deg to find the text; undo it.
         Ok(img.rotate((-rotation_deg).to_radians())?)
+    }
+
+    /// Upscale short recognition crops so CRNN/pattern matching see enough pixels.
+    fn maybe_upscale_crop(&self, img: OcrImage) -> Result<OcrImage> {
+        if !self.config.image_processing.enable_super_resolution {
+            return Ok(img);
+        }
+        Ok(crate::image::upscale_short_crop(&img, 32)?)
     }
 
     /// Detect background brightness by sampling corner pixels
@@ -663,6 +680,7 @@ impl OcrEngine {
             let cropped = image.crop(bbox.left, bbox.top, bbox.width(), bbox.height())?;
             let cropped = Self::deskew_region_for_recognition(cropped, region.properties.rotation_deg)?;
             let cropped = self.maybe_rectify_curve(cropped)?;
+            let cropped = self.maybe_upscale_crop(cropped)?;
             let region_result = ocr_engine.recognize_sync(&cropped)?;
 
             if !region_result.text.trim().is_empty() {
@@ -738,7 +756,12 @@ impl OcrEngine {
         let mut conf_count = 0u32;
 
         let regions = if layout.text_regions.is_empty() {
-            vec![self.maybe_rectify_curve(image.clone()).unwrap_or_else(|_| image.clone())]
+            let img = self
+                .maybe_rectify_curve(image.clone())
+                .unwrap_or_else(|_| image.clone());
+            vec![self
+                .maybe_upscale_crop(img)
+                .unwrap_or_else(|_| image.clone())]
         } else {
             layout
                 .text_regions
@@ -757,7 +780,10 @@ impl OcrEngine {
                         r.properties.rotation_deg,
                     )
                     .unwrap_or_else(|_| image.clone());
-                    self.maybe_rectify_curve(cropped)
+                    let cropped = self
+                        .maybe_rectify_curve(cropped)
+                        .unwrap_or_else(|_| image.clone());
+                    self.maybe_upscale_crop(cropped)
                         .unwrap_or_else(|_| image.clone())
                 })
                 .collect()

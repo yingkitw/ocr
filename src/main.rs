@@ -94,6 +94,15 @@ async fn main() -> Result<()> {
         Commands::Benchmark { samples, distortion } => {
             handle_benchmark(samples, distortion).await?;
         }
+        Commands::Makebox {
+            image_path,
+            output,
+            lang,
+            engine,
+            preprocess,
+        } => {
+            handle_makebox(image_path, output, &lang, &engine, preprocess).await?;
+        }
         #[cfg(feature = "web-api")]
         Commands::Serve {
             host,

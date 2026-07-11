@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested. 398+ tests passing, 0 failures.**
+**Current status: All five phases implemented and tested. 408+ tests passing, 0 failures.**
 
 ---
 
@@ -13,11 +13,11 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero failures (398+ tests)
+- [x] `cargo test` passes with zero failures (408+ tests)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
-- [x] CLI covers: extract, batch, layout, list-languages, check, info, validate, train, benchmark
+- [x] CLI covers: extract, batch, layout, list-languages, check, info, validate, train, benchmark, makebox
 
 ### CLI Specification
 
@@ -32,6 +32,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | `validate` | Validate a config file | `CONFIG_FILE` | — |
 | `train` | Train a recognition model | — | `-e, --epochs`, `-b, --batch-size`, `-l, --learning-rate`, `--engine`, `-c, --checkpoint-dir`, `--distortion` |
 | `benchmark` | Benchmark per-script accuracy | — | `-s, --samples`, `--distortion` |
+| `makebox` | Generate Tesseract `.box` training file | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--engine`, `--preprocess` |
 
 ### Extract Flags
 
@@ -139,6 +140,8 @@ pub struct TemplateTrainer {
 - [x] Auto-rotate 0°/90°/180°/270° via projection-variance orientation detection
 - [x] Perspective document dewarp (`PerspectiveDewarp`) + curved-line rectification (`CurveRectifier`)
 - [x] Arbitrary-angle text detection (`OrientedCclDetector`, ±45° sweep with NMS)
+- [x] Super-resolution upscaling (`TextSuperResolution`) for tiny / low-DPI input
+- [x] `format_makebox` + `ocr makebox` CLI for Tesseract-compatible training boxes
 
 ### Detection API
 

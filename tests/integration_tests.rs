@@ -508,9 +508,18 @@ fn test_oriented_angle_detection_integration() {
     use ocr::core::image::OcrImage;
     use ocr::layout::{LayoutAnalyzer, OrientedCclDetector, TextDetector};
 
-    assert!(OcrConfig::default()
+    assert!(!OcrConfig::default()
         .layout_analysis
         .enable_arbitrary_angle_detection);
+    assert!(OcrConfig {
+        layout_analysis: ocr::core::config::LayoutAnalysisConfig {
+            enable_arbitrary_angle_detection: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+    .layout_analysis
+    .enable_arbitrary_angle_detection);
 
     let mut img = GrayImage::from_pixel(100, 100, Luma([255]));
     for x in 15..85 {
@@ -529,4 +538,31 @@ fn test_oriented_angle_detection_integration() {
     let layout = LayoutAnalyzer::analyze_layout_with_options(&rotated, true)
         .expect("layout with oriented detection");
     assert!(!layout.text_regions.is_empty());
+}
+
+/// Super-resolution upscales tiny / low-DPI text during preprocess
+#[test]
+fn test_super_resolution_integration() {
+    use ::image::{DynamicImage, GrayImage, Luma};
+    use ocr::core::config::OcrConfig;
+    use ocr::core::image::OcrImage;
+    use ocr::image::{TextSuperResolution, UpscaleReason};
+
+    assert!(OcrConfig::default().image_processing.enable_super_resolution);
+    assert_eq!(OcrConfig::default().image_processing.target_dpi, 300);
+
+    let mut g = GrayImage::from_pixel(48, 14, Luma([255]));
+    for x in 5..43 {
+        g.put_pixel(x, 6, Luma([0]));
+        g.put_pixel(x, 7, Luma([0]));
+    }
+    let mut img = OcrImage::new(DynamicImage::ImageLuma8(g), 72);
+    img.dpi = 72;
+
+    let result = TextSuperResolution::default()
+        .upscale_if_needed(&img)
+        .expect("upscale");
+    assert!(result.scale > 1.0);
+    assert_ne!(result.reason, UpscaleReason::NotNeeded);
+    assert!(result.image.width > img.width);
 }

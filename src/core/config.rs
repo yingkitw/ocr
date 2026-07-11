@@ -103,6 +103,10 @@ pub struct ImageProcessingConfig {
     pub enable_perspective_dewarp: bool,
     /// Enable curved-line baseline rectification on text regions
     pub enable_curve_rectification: bool,
+    /// Enable super-resolution upscaling for tiny / low-DPI text
+    pub enable_super_resolution: bool,
+    /// Target DPI for super-resolution upscaling
+    pub target_dpi: u32,
     /// Enable binarization
     pub enable_binarization: bool,
     /// Binarization threshold
@@ -124,6 +128,8 @@ impl Default for ImageProcessingConfig {
             enable_deskewing: true,
             enable_perspective_dewarp: true,
             enable_curve_rectification: true,
+            enable_super_resolution: true,
+            target_dpi: 300,
             enable_binarization: true,
             binarization_threshold: 0.5,
             binarization_method: BinarizationMethod::Otsu,
@@ -184,7 +190,8 @@ impl Default for LayoutAnalysisConfig {
             enable_reading_order_detection: true,
             enable_orientation_detection: true,
             enable_vertical_text_detection: true,
-            enable_arbitrary_angle_detection: true,
+            // Opt-in: multi-angle CCL is ~7× costlier; enable for scene text / rotated lines
+            enable_arbitrary_angle_detection: false,
             page_seg_mode: PageSegMode::Auto,
             min_text_region_size: (10, 10),
             max_text_region_size: (10000, 10000),

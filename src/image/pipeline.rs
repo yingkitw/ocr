@@ -21,6 +21,7 @@ pub struct ImageEnhancementConfig {
     pub deskewing_threshold: f32,
     pub enable_perspective_dewarp: bool,
     pub enable_curve_rectification: bool,
+    pub enable_super_resolution: bool,
     pub enable_speckle_removal: bool,
     pub max_speckle_area: u32,
     pub enable_border_removal: bool,
@@ -40,6 +41,7 @@ impl Default for ImageEnhancementConfig {
             deskewing_threshold: 0.1,
             enable_perspective_dewarp: true,
             enable_curve_rectification: true,
+            enable_super_resolution: true,
             enable_speckle_removal: true,
             max_speckle_area: 8,
             enable_border_removal: true,
@@ -76,6 +78,11 @@ impl ImagePreprocessingPipeline {
                 &processed,
                 self.config.contrast_factor,
             )?;
+        }
+
+        if self.config.enable_super_resolution {
+            let sr = crate::image::super_resolution::TextSuperResolution::default();
+            processed = sr.upscale_if_needed(&processed)?.image;
         }
 
         if self.config.enable_noise_reduction {

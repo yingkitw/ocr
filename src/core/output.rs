@@ -498,6 +498,111 @@ pub fn format_box(result: &TextResult) -> Result<String> {
     Ok(output)
 }
 
+/// Generate a Tesseract-compatible `.box` file (makebox format).
+///
+/// Each line: `char left bottom right top page`
+/// Coordinates use a **bottom-left** origin (Tesseract convention), so
+/// `image_height` is required to convert from the OCR top-left boxes.
+///
+/// When per-character boxes are missing, character widths are estimated by
+/// equally subdividing the parent word box — enough to bootstrap training.
+pub fn format_makebox(result: &TextResult, image_height: u32) -> Result<String> {
+    let mut output = String::new();
+    let page = 0u32;
+    let h = image_height.max(1);
+
+    for line in &result.lines {
+        for word in &line.words {
+            let chars: Vec<(char, BoundingBox)> = if !word.characters.is_empty() {
+                word.characters
+                    .iter()
+                    .map(|c| (c.character, c.bounding_box.clone()))
+                    .collect()
+            } else if !word.text.is_empty() {
+                subdivide_word_box(&word.text, &word.bounding_box)
+            } else {
+                Vec::new()
+            };
+
+            for (ch, bbox) in chars {
+                // Skip whitespace in classic makebox (Tesseract omits spaces);
+                // include them with a thin estimated box when present.
+                let left = bbox.left;
+                let right = bbox.right.max(left + 1);
+                let top = bbox.top;
+                let bottom = bbox.bottom.max(top + 1);
+                // Convert top-left → bottom-left origin
+                let box_bottom = h.saturating_sub(bottom);
+                let box_top = h.saturating_sub(top);
+                output.push_str(&format!(
+                    "{} {} {} {} {} {}\n",
+                    escape_box_char(ch),
+                    left,
+                    box_bottom,
+                    right,
+                    box_top,
+                    page
+                ));
+            }
+        }
+    }
+
+    // Fallback: no structured lines — emit from top-level characters / text
+    if output.is_empty() && !result.characters.is_empty() {
+        for ch in &result.characters {
+            let bbox = &ch.bounding_box;
+            let box_bottom = h.saturating_sub(bbox.bottom);
+            let box_top = h.saturating_sub(bbox.top);
+            output.push_str(&format!(
+                "{} {} {} {} {} {}\n",
+                escape_box_char(ch.character),
+                bbox.left,
+                box_bottom,
+                bbox.right.max(bbox.left + 1),
+                box_top,
+                page
+            ));
+        }
+    }
+
+    Ok(output)
+}
+
+fn escape_box_char(ch: char) -> String {
+    match ch {
+        ' ' => " ".to_string(),
+        '\t' => "\\t".to_string(),
+        '\n' => "\\n".to_string(),
+        _ => ch.to_string(),
+    }
+}
+
+fn subdivide_word_box(text: &str, bbox: &BoundingBox) -> Vec<(char, BoundingBox)> {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.is_empty() {
+        return Vec::new();
+    }
+    let n = chars.len() as u32;
+    let width = bbox.width().max(n);
+    let cell = width / n;
+    chars
+        .into_iter()
+        .enumerate()
+        .map(|(i, ch)| {
+            let left = bbox.left + i as u32 * cell;
+            let right = if i as u32 + 1 == n {
+                bbox.right
+            } else {
+                left + cell
+            };
+            (
+                ch,
+                BoundingBox::new(left, bbox.top, right.max(left + 1), bbox.bottom),
+            )
+        })
+        .collect()
+}
+
 /// Escape text for XML attribute
 fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -825,6 +930,35 @@ mod tests {
         // Should have tab-separated values
         assert!(tsv.contains('\t'));
         assert!(tsv.chars().filter(|&c| c == '\n').count() > 0);
+    }
+
+    #[test]
+    fn test_format_makebox_bottom_left_origin() {
+        let result = create_test_result();
+        let image_height = 50u32;
+        let box_out = format_makebox(&result, image_height).unwrap();
+        assert!(!box_out.is_empty());
+        // First char of "Hello" at top-left y=0..20 → bottom-left bottom=30, top=50
+        let first = box_out.lines().next().unwrap();
+        let parts: Vec<&str> = first.split_whitespace().collect();
+        assert!(parts.len() >= 6);
+        assert_eq!(parts[0], "H");
+        // page index
+        assert_eq!(parts[5], "0");
+        let bottom: u32 = parts[2].parse().unwrap();
+        let top: u32 = parts[4].parse().unwrap();
+        assert!(top > bottom, "top should be above bottom in BL origin");
+        assert_eq!(top, image_height); // char top was 0
+    }
+
+    #[test]
+    fn test_subdivide_word_box() {
+        let bbox = BoundingBox::new(0, 0, 50, 10);
+        let parts = subdivide_word_box("Hi", &bbox);
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].0, 'H');
+        assert_eq!(parts[1].0, 'i');
+        assert!(parts[0].1.right <= parts[1].1.left || parts[0].1.right == 25);
     }
 
     #[test]

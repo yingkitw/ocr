@@ -65,6 +65,7 @@ All preprocessing is deterministic and differentiable-friendly:
 - `Thresholder` — Otsu global, Sauvola local, adaptive mean/Gaussian
 - `Enhancement` — CLAHE, unsharp mask, gamma correction, orientation detection, border removal, affine deskew
 - `dewarp.rs` — `PerspectiveDewarp` (content-corner quad → rectangle) + `CurveRectifier` (quadratic baseline flatten)
+- `super_resolution.rs` — `TextSuperResolution` Lanczos upscale for tiny / low-DPI text (noise-aware)
 - `Quality` — blur detection, contrast score, resolution check
 
 ### Layout Analysis (`src/layout/`)

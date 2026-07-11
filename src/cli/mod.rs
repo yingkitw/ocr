@@ -161,6 +161,29 @@ pub enum Commands {
         distortion: String,
     },
 
+    /// Generate a Tesseract-style .box file from an image (training makebox)
+    Makebox {
+        /// Path to the image file
+        #[arg(value_name = "IMAGE_PATH")]
+        image_path: PathBuf,
+
+        /// Output base path (writes `<base>.box`; default: image path without extension)
+        #[arg(short, long, value_name = "PATH")]
+        output: Option<PathBuf>,
+
+        /// Language code (default: en)
+        #[arg(short, long, default_value = "en")]
+        lang: String,
+
+        /// Recognition engine: pattern, lstm, hybrid
+        #[arg(long, default_value = "pattern")]
+        engine: String,
+
+        /// Preprocess image before recognition
+        #[arg(long)]
+        preprocess: bool,
+    },
+
     /// Start HTTP API server for OCR
     #[cfg(feature = "web-api")]
     Serve {

@@ -242,3 +242,24 @@ fn test_cli_batch_processes_all_images() {
                 "missing batch output for {}", stem);
     }
 }
+
+#[test]
+fn test_cli_makebox_writes_box_file() {
+    use tempfile::TempDir;
+
+    let file = create_test_image_with_rectangles();
+    let out_dir = TempDir::new().unwrap();
+    let out_base = out_dir.path().join("train");
+
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&[
+        "makebox",
+        file.path().to_str().unwrap(),
+        "-o",
+        out_base.to_str().unwrap(),
+    ]);
+    cmd.assert().success();
+
+    let box_path = out_dir.path().join("train.box");
+    assert!(box_path.exists(), "expected {}", box_path.display());
+}
