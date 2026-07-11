@@ -208,8 +208,8 @@ mod tests {
 
     #[test]
     fn test_script_generator_random_text() {
-        let gen = ScriptLineGenerator::new(Script::Cyrillic);
-        let text = gen.random_text(20);
+        let generator = ScriptLineGenerator::new(Script::Cyrillic);
+        let text = generator.random_text(20);
         assert_eq!(text.chars().count(), 20);
         // All chars should be in the Cyrillic pool
         let pool = ScriptCharPool::cyrillic();
@@ -220,37 +220,37 @@ mod tests {
 
     #[test]
     fn test_script_detection_cyrillic() {
-        let gen = ScriptLineGenerator::new(Script::Cyrillic);
-        let text = gen.random_text(30);
-        assert!(gen.verify_script(&text), "Generated text should be detected as Cyrillic");
+        let generator = ScriptLineGenerator::new(Script::Cyrillic);
+        let text = generator.random_text(30);
+        assert!(generator.verify_script(&text), "Generated text should be detected as Cyrillic");
     }
 
     #[test]
     fn test_script_detection_greek() {
-        let gen = ScriptLineGenerator::new(Script::Greek);
-        let text = gen.random_text(30);
-        assert!(gen.verify_script(&text), "Generated text should be detected as Greek");
+        let generator = ScriptLineGenerator::new(Script::Greek);
+        let text = generator.random_text(30);
+        assert!(generator.verify_script(&text), "Generated text should be detected as Greek");
     }
 
     #[test]
     fn test_script_detection_hebrew() {
-        let gen = ScriptLineGenerator::new(Script::Hebrew);
-        let text = gen.random_text(30);
-        assert!(gen.verify_script(&text), "Generated text should be detected as Hebrew");
+        let generator = ScriptLineGenerator::new(Script::Hebrew);
+        let text = generator.random_text(30);
+        assert!(generator.verify_script(&text), "Generated text should be detected as Hebrew");
     }
 
     #[test]
     fn test_script_detection_thai() {
-        let gen = ScriptLineGenerator::new(Script::Thai);
-        let text = gen.random_text(30);
-        assert!(gen.verify_script(&text), "Generated text should be detected as Thai");
+        let generator = ScriptLineGenerator::new(Script::Thai);
+        let text = generator.random_text(30);
+        assert!(generator.verify_script(&text), "Generated text should be detected as Thai");
     }
 
     #[test]
     fn test_generate_cyrillic_sample() {
-        let gen = ScriptLineGenerator::new(Script::Cyrillic);
-        let text = gen.random_text(10);
-        let sample = gen.generate(&text);
+        let generator = ScriptLineGenerator::new(Script::Cyrillic);
+        let text = generator.random_text(10);
+        let sample = generator.generate(&text);
         assert_eq!(sample.ground_truth, text);
     }
 }

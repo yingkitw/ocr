@@ -244,15 +244,15 @@ mod tests {
 
     #[test]
     fn test_generate_single_column() {
-        let gen = DocumentGenerator::default();
-        let doc = gen.generate_single_column(5);
+        let generator = DocumentGenerator::default();
+        let doc = generator.generate_single_column(5);
         assert_eq!(doc.regions.len(), 5);
     }
 
     #[test]
     fn test_generate_two_column() {
-        let gen = DocumentGenerator::default();
-        let doc = gen.generate_two_column(5);
+        let generator = DocumentGenerator::default();
+        let doc = generator.generate_two_column(5);
         assert_eq!(doc.regions.len(), 10);
     }
 

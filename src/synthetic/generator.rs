@@ -56,10 +56,10 @@ impl Default for TextLineGenerator {
 impl TextLineGenerator {
     /// Create with a specific font size and image height
     pub fn with_size(font_size: f32, image_height: u32) -> Self {
-        let mut gen = Self::default();
-        gen.font_size = font_size;
-        gen.image_height = image_height;
-        gen
+        let mut generator = Self::default();
+        generator.font_size = font_size;
+        generator.image_height = image_height;
+        generator
     }
 
     /// Add a font from raw TTF/OTF bytes
@@ -299,8 +299,8 @@ mod tests {
 
     #[test]
     fn test_generate_simple_text() {
-        let gen = TextLineGenerator::default();
-        let sample = gen.generate("Hello");
+        let generator = TextLineGenerator::default();
+        let sample = generator.generate("Hello");
         assert_eq!(sample.ground_truth, "Hello");
         assert!(sample.image.width() > 0);
         assert!(sample.image.height() > 0);
@@ -308,13 +308,13 @@ mod tests {
 
     #[test]
     fn test_generate_batch() {
-        let gen = TextLineGenerator::default();
+        let generator = TextLineGenerator::default();
         let texts = vec![
             "Hello".to_string(),
             "World".to_string(),
             "Test123".to_string(),
         ];
-        let samples = gen.generate_batch(&texts);
+        let samples = generator.generate_batch(&texts);
         assert_eq!(samples.len(), 3);
         for (i, sample) in samples.iter().enumerate() {
             assert_eq!(sample.ground_truth, texts[i]);
@@ -323,8 +323,8 @@ mod tests {
 
     #[test]
     fn test_generate_random_texts() {
-        let gen = TextLineGenerator::default();
-        let texts = gen.generate_random_texts(10, 20);
+        let generator = TextLineGenerator::default();
+        let texts = generator.generate_random_texts(10, 20);
         assert_eq!(texts.len(), 10);
         for text in &texts {
             assert_eq!(text.len(), 20);
@@ -333,8 +333,8 @@ mod tests {
 
     #[test]
     fn test_character_generator() {
-        let gen = CharacterGenerator::new((28, 28));
-        let sample = gen.generate('A', 0);
+        let generator = CharacterGenerator::new((28, 28));
+        let sample = generator.generate('A', 0);
         assert_eq!(sample.character, 'A');
         assert_eq!(sample.image.width(), 28);
         assert_eq!(sample.image.height(), 28);

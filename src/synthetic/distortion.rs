@@ -87,13 +87,13 @@ pub fn apply_distortions(image: &DynamicImage, config: &DistortionConfig) -> Dyn
     let mut result = image.clone();
 
     // Rotation
-    if rng.gen::<f32>() < config.apply_probability {
+    if rng.r#gen::<f32>() < config.apply_probability {
         let angle = rng.gen_range(-config.rotation_degrees..=config.rotation_degrees);
         result = rotate_image(&result, angle);
     }
 
     // Gaussian blur
-    if rng.gen::<f32>() < config.apply_probability {
+    if rng.r#gen::<f32>() < config.apply_probability {
         let sigma = rng.gen_range(0.0..=config.blur_sigma);
         if sigma > 0.1 {
             result = blur_image(&result, sigma);
@@ -101,24 +101,24 @@ pub fn apply_distortions(image: &DynamicImage, config: &DistortionConfig) -> Dyn
     }
 
     // Salt & pepper noise
-    if rng.gen::<f32>() < config.apply_probability {
+    if rng.r#gen::<f32>() < config.apply_probability {
         result = add_noise(&result, config.noise_probability);
     }
 
     // Contrast adjustment
-    if rng.gen::<f32>() < config.apply_probability {
+    if rng.r#gen::<f32>() < config.apply_probability {
         let factor = rng.gen_range(1.0 / config.contrast_factor..=config.contrast_factor);
         result = adjust_contrast(&result, factor);
     }
 
     // Brightness offset
-    if rng.gen::<f32>() < config.apply_probability {
+    if rng.r#gen::<f32>() < config.apply_probability {
         let offset = rng.gen_range(-config.brightness_offset..=config.brightness_offset);
         result = adjust_brightness(&result, offset);
     }
 
     // Perspective shear
-    if rng.gen::<f32>() < config.apply_probability {
+    if rng.r#gen::<f32>() < config.apply_probability {
         let shear = rng.gen_range(-config.perspective_shear..=config.perspective_shear);
         if shear.abs() > 0.001 {
             result = apply_shear(&result, shear);
@@ -158,7 +158,7 @@ fn add_noise(image: &DynamicImage, probability: f32) -> DynamicImage {
     let mut img = image.to_luma8();
 
     for pixel in img.pixels_mut() {
-        let roll: f32 = rng.gen();
+        let roll: f32 = rng.r#gen();
         if roll < probability / 2.0 {
             pixel.0[0] = 0; // pepper (black)
         } else if roll < probability {
@@ -246,8 +246,8 @@ mod tests {
 
     #[test]
     fn test_distortions_dont_panic() {
-        let gen = TextLineGenerator::default();
-        let sample = gen.generate("Test");
+        let generator = TextLineGenerator::default();
+        let sample = generator.generate("Test");
 
         let configs = [
             DistortionConfig::mild(),
