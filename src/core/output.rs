@@ -183,7 +183,7 @@ pub fn format_json(result: &TextResult) -> Result<String> {
 /// Generate hOCR (HTML OCR format) output
 ///
 /// hOCR is an HTML-based format for representing OCR output with spatial information.
-/// It follows the hOCR 4.1 specification from http://kba.cloud/hocr-spec/
+/// It follows the hOCR 4.1 specification from <http://kba.cloud/hocr-spec/>
 pub fn format_hocr(result: &TextResult) -> Result<String> {
     let mut html = String::new();
 

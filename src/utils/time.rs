@@ -191,7 +191,7 @@ pub fn current_unix_timestamp() -> i64 {
     Utc::now().timestamp()
 }
 
-/// Convert a SystemTime to a DateTime<Utc>
+/// Convert a SystemTime to a `DateTime<Utc>`
 pub fn system_time_to_datetime(time: SystemTime) -> DateTime<Utc> {
     DateTime::from(time)
 }
