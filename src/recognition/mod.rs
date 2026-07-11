@@ -2,6 +2,7 @@
 
 pub mod basic_ocr;
 pub mod cnn_model;
+pub mod confidence;
 pub mod crnn;
 pub mod ctc_decoder;
 pub mod end_to_end_model;
@@ -19,6 +20,7 @@ pub mod transformer_model;
 pub mod vit_model;
 
 pub use cnn_model::*;
+pub use confidence::*;
 pub use crnn::*;
 pub use end_to_end_model::*;
 pub use engine::*;

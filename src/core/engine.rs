@@ -677,14 +677,29 @@ impl OcrEngine {
         image: &OcrImage,
         layout: &LayoutResult,
     ) -> Result<RecognitionResult> {
+        use crate::lang::dictionary::DictionaryHandler;
+        use crate::lang::load_english_ngram_model;
         use crate::recognition::crnn::{CrnnConfig, CrnnModel};
 
         let config = CrnnConfig::default();
         let model = CrnnModel::new(config);
 
+        let dict_handler = if self.config.recognition.enable_dictionary_correction {
+            Some(DictionaryHandler::new_for_language(
+                &self.config.recognition.language,
+            ))
+        } else {
+            None
+        };
+        let ngram = if self.config.recognition.enable_language_model {
+            Some(load_english_ngram_model())
+        } else {
+            None
+        };
+
         let mut full_text = String::new();
-        let all_characters = Vec::new();
-        let all_words = Vec::new();
+        let mut all_characters = Vec::new();
+        let mut all_words = Vec::new();
         let all_lines = Vec::new();
         let mut conf_sum = 0.0f32;
         let mut conf_count = 0u32;
@@ -709,15 +724,34 @@ impl OcrEngine {
         };
 
         for region_img in &regions {
-            let text = model.recognize(region_img).unwrap_or_default();
-            if !text.trim().is_empty() {
+            let detailed = model
+                .recognize_detailed(
+                    region_img,
+                    dict_handler.as_ref().map(|h| h.dictionary()),
+                    ngram.as_ref(),
+                )
+                .unwrap_or_else(|_| crate::recognition::crnn::CrnnRecognition {
+                    text: String::new(),
+                    confidence: 0.0,
+                    char_confidences: Vec::new(),
+                });
+            if !detailed.text.trim().is_empty() {
                 if !full_text.is_empty() {
                     full_text.push('\n');
                 }
-                full_text.push_str(text.trim());
+                full_text.push_str(detailed.text.trim());
             }
-            // Approximate confidence for CRNN output
-            conf_sum += 0.7;
+
+            for ch in &detailed.char_confidences {
+                all_characters.push(
+                    crate::core::recognition::CharacterRecognition::new(ch.character, ch.confidence),
+                );
+            }
+            for (word, wconf) in detailed.word_confidences() {
+                all_words.push(crate::core::recognition::WordRecognition::new(word, wconf));
+            }
+
+            conf_sum += detailed.confidence;
             conf_count += 1;
         }
 
@@ -730,15 +764,15 @@ impl OcrEngine {
         Ok(RecognitionResult {
             text: full_text,
             confidence,
-            characters: all_characters,
-            words: all_words,
+            characters: all_characters.clone(),
+            words: all_words.clone(),
             lines: all_lines,
             metadata: Default::default(),
             model_type: Some(crate::core::recognition::ModelType::LSTM),
             processing_time_ms: None,
             language: Some(self.config.recognition.language.clone()),
-            character_results: Vec::new(),
-            word_results: Vec::new(),
+            character_results: all_characters,
+            word_results: all_words,
             line_results: Vec::new(),
         })
     }

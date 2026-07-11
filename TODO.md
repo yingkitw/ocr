@@ -2,7 +2,7 @@
 
 ## Completed
 
-All five phases of the OCR roadmap are implemented and tested (373+ tests passing).
+All five phases of the OCR roadmap are implemented and tested (387+ tests passing).
 
 - **Phase 0 — Baseline**: End-to-end pipeline, pattern matching, layout analysis, CLI, Web API, PDF input
 - **Phase 1 — Synthetic Training**: Font rendering, distortion pipeline, CER/WER benchmarks, `TemplateTrainer` for pattern-matching templates
@@ -41,8 +41,8 @@ These are **blocked on execution or hardware**, not additional code:
 Gaps observed vs. Tesseract / PaddleOCR / EasyOCR / RapidOCR / docTR / surya. Prioritized by accuracy/UX impact, lowest-cost first:
 
 - [x] **Wire batch concurrency** — `--max-concurrent` CLI flag exists but was unused; `handle_batch` now processes images concurrently via `tokio::spawn` + a `Semaphore` (recognition holds only a read-lock, so tasks run in parallel). Verified with a CLI integration test.
-- [ ] **CTC beam search + dictionary/LM rescoring** — greedy decode is wired; beam search exists in `CtcDecoder` but the CRNN path uses greedy. Tesseract's biggest accuracy lever after the model.
-- [ ] **Confidence calibration** — expose calibrated per-word/per-char confidence for downstream filtering (all mature engines do).
+- [x] **CTC beam search + dictionary/LM rescoring** — CRNN inference defaults to beam search (`CrnnConfig::use_beam_search`); `CtcDecoder::beam_search_nbest` + `DictLmRescorer` rescore hypotheses with dictionary hits and n-gram LM; wired in `OcrEngine::recognize_with_crnn` when `--dict-correct` / language-model flags are on
+- [x] **Confidence calibration** — `ConfidenceCalibrator` (temperature-scaled softmax) extracts per-char/word confidence from CTC logits; `CrnnModel::recognize_detailed` + engine fill `CharacterRecognition` / `WordRecognition` instead of a hardcoded 0.7
 - [ ] **Curved-line / perspective dewarp** — PaddleOCR rectifies curved document text before recognition; we only deskew (affine).
 - [ ] **Arbitrary-angle text detection** — auto-rotate covers 0/90/180/270°; scene text at e.g. 23° is missed (CRAFT/DB detectors are rotation-invariant).
 - [ ] **Super-resolution upscaling for tiny text** — PaddleOCR upscales low-DPI input.

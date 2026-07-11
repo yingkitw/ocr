@@ -1,15 +1,81 @@
 //! CTC (Connectionist Temporal Classification) decoder
 //!
 //! Decodes LSTM output logits into text using CTC best-path decoding
-//! and optional beam search. Compatible with Tesseract's CTC approach.
+//! and optional beam search with dictionary / LM rescoring.
+//! Compatible with Tesseract's CTC approach.
 
+use crate::lang::dictionary::Dictionary;
+use crate::lang::NGramModel;
 use ndarray::Array2;
 
 const BLANK_LABEL: usize = 0;
 
+/// A single CTC beam hypothesis after decoding.
+#[derive(Debug, Clone)]
+pub struct DecodeHypothesis {
+    pub text: String,
+    pub acoustic_log_prob: f32,
+}
+
+/// Scores beam hypotheses with dictionary hits and/or an n-gram LM.
+#[derive(Clone)]
+pub struct DictLmRescorer<'a> {
+    pub dictionary: Option<&'a Dictionary>,
+    pub ngram: Option<&'a NGramModel>,
+    pub dict_weight: f32,
+    pub lm_weight: f32,
+}
+
+impl<'a> DictLmRescorer<'a> {
+    pub fn new(
+        dictionary: Option<&'a Dictionary>,
+        ngram: Option<&'a NGramModel>,
+        dict_weight: f32,
+        lm_weight: f32,
+    ) -> Self {
+        Self {
+            dictionary,
+            ngram,
+            dict_weight,
+            lm_weight,
+        }
+    }
+
+    /// Additive log-space bonus for a hypothesis text.
+    pub fn bonus(&self, text: &str) -> f32 {
+        let mut bonus = 0.0f32;
+        if let Some(dict) = self.dictionary {
+            bonus += self.dict_weight * dictionary_log_bonus(dict, text);
+        }
+        if let Some(ngram) = self.ngram {
+            bonus += self.lm_weight * (ngram.score_text(text) as f32);
+        }
+        bonus
+    }
+}
+
+fn dictionary_log_bonus(dict: &Dictionary, text: &str) -> f32 {
+    let words: Vec<&str> = text
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.is_empty() {
+        return 0.0;
+    }
+    let mut score = 0.0f32;
+    for word in &words {
+        if dict.contains(word) {
+            score += 1.0;
+        } else {
+            score -= 0.5;
+        }
+    }
+    score / words.len() as f32
+}
+
 pub struct CtcDecoder {
     beam_width: usize,
-    #[allow(dead_code)] // reserved for beam-search pruning (not yet applied during decode)
+    /// Logit gap from the max at each timestep beyond which labels are pruned.
     prune_threshold: f32,
 }
 
@@ -17,15 +83,24 @@ impl CtcDecoder {
     pub fn new() -> Self {
         Self {
             beam_width: 10,
-            prune_threshold: 1e-5,
+            prune_threshold: 20.0,
         }
     }
 
     pub fn with_beam_width(beam_width: usize) -> Self {
         Self {
             beam_width: beam_width.max(1),
-            prune_threshold: 1e-5,
+            prune_threshold: 20.0,
         }
+    }
+
+    pub fn with_prune_threshold(mut self, prune_threshold: f32) -> Self {
+        self.prune_threshold = prune_threshold.max(0.0);
+        self
+    }
+
+    pub fn beam_width(&self) -> usize {
+        self.beam_width
     }
 
     pub fn greedy_decode(&self, logits: &Array2<f32>, vocab: &[char]) -> String {
@@ -53,10 +128,47 @@ impl CtcDecoder {
         output.into_iter().collect()
     }
 
+    /// Beam search decoding; returns the top acoustic hypothesis.
     pub fn beam_search_decode(&self, logits: &Array2<f32>, vocab: &[char]) -> String {
+        self.beam_search_nbest(logits, vocab)
+            .into_iter()
+            .next()
+            .map(|h| h.text)
+            .unwrap_or_default()
+    }
+
+    /// Beam search with dictionary / LM rescoring.
+    ///
+    /// Final score = acoustic_log_prob + rescorer.bonus(text).
+    pub fn beam_search_decode_rescored(
+        &self,
+        logits: &Array2<f32>,
+        vocab: &[char],
+        rescorer: &DictLmRescorer<'_>,
+    ) -> String {
+        let mut nbest = self.beam_search_nbest(logits, vocab);
+        if nbest.is_empty() {
+            return String::new();
+        }
+        nbest.sort_by(|a, b| {
+            let score_a = a.acoustic_log_prob + rescorer.bonus(&a.text);
+            let score_b = b.acoustic_log_prob + rescorer.bonus(&b.text);
+            score_b
+                .partial_cmp(&score_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        nbest.into_iter().next().map(|h| h.text).unwrap_or_default()
+    }
+
+    /// Return up to `beam_width` unique hypotheses, best acoustic score first.
+    pub fn beam_search_nbest(
+        &self,
+        logits: &Array2<f32>,
+        vocab: &[char],
+    ) -> Vec<DecodeHypothesis> {
         let (seq_len, num_classes) = logits.dim();
         if seq_len == 0 {
-            return String::new();
+            return Vec::new();
         }
 
         let mut beam = vec![CtcBeam::new(num_classes)];
@@ -71,7 +183,7 @@ impl CtcDecoder {
                 let mut pruned = Vec::new();
                 for c in 0..num_classes {
                     let log_prob = logits[[t, c]];
-                    if max_logit - log_prob > 20.0 {
+                    if max_logit - log_prob > self.prune_threshold {
                         continue;
                     }
                     pruned.push((c, log_prob));
@@ -121,30 +233,50 @@ impl CtcDecoder {
             beam = Self::merge_beams(new_beam, num_classes, self.beam_width);
         }
 
-        if beam.is_empty() {
-            return String::new();
-        }
+        let mut hypotheses: Vec<DecodeHypothesis> = beam
+            .into_iter()
+            .map(|b| {
+                let text: String = b
+                    .labels
+                    .iter()
+                    .filter_map(|&label| {
+                        if label > 0 && label - 1 < vocab.len() {
+                            Some(vocab[label - 1])
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                DecodeHypothesis {
+                    text,
+                    acoustic_log_prob: b.total_log_prob(),
+                }
+            })
+            .collect();
 
-        let best = beam.into_iter().max_by(|a, b| {
-            a.total_log_prob()
-                .partial_cmp(&b.total_log_prob())
+        // Deduplicate identical texts, keeping the best acoustic score.
+        let mut best_by_text: std::collections::HashMap<String, f32> =
+            std::collections::HashMap::new();
+        for h in hypotheses {
+            best_by_text
+                .entry(h.text)
+                .and_modify(|p| *p = (*p).max(h.acoustic_log_prob))
+                .or_insert(h.acoustic_log_prob);
+        }
+        hypotheses = best_by_text
+            .into_iter()
+            .map(|(text, acoustic_log_prob)| DecodeHypothesis {
+                text,
+                acoustic_log_prob,
+            })
+            .collect();
+        hypotheses.sort_by(|a, b| {
+            b.acoustic_log_prob
+                .partial_cmp(&a.acoustic_log_prob)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-
-        match best {
-            Some(b) => b
-                .labels
-                .iter()
-                .filter_map(|&label| {
-                    if label > 0 && label - 1 < vocab.len() {
-                        Some(vocab[label - 1])
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            None => String::new(),
-        }
+        hypotheses.truncate(self.beam_width);
+        hypotheses
     }
 
     fn merge_beams(beams: Vec<CtcBeam>, num_classes: usize, beam_width: usize) -> Vec<CtcBeam> {
@@ -336,6 +468,59 @@ mod tests {
 
         let result = decoder.beam_search_decode(&logits, &vocab);
         assert_eq!(result, "ab");
+    }
+
+    #[test]
+    fn test_beam_search_nbest_returns_ranked() {
+        let vocab = vec!['a', 'b'];
+        let decoder = CtcDecoder::with_beam_width(5);
+        let logits = Array2::from_shape_vec(
+            (3, 3),
+            vec![
+                -10.0, 10.0, -10.0, -10.0, -10.0, 10.0, 10.0, -10.0, -10.0,
+            ],
+        )
+        .unwrap();
+
+        let nbest = decoder.beam_search_nbest(&logits, &vocab);
+        assert!(!nbest.is_empty());
+        assert_eq!(nbest[0].text, "ab");
+        for window in nbest.windows(2) {
+            assert!(window[0].acoustic_log_prob >= window[1].acoustic_log_prob);
+        }
+    }
+
+    #[test]
+    fn test_beam_search_dictionary_rescoring_prefers_known_word() {
+        // Vocab: blank + t,h,e  → classes 0,1,2,3
+        let vocab = vec!['t', 'h', 'e'];
+        let decoder = CtcDecoder::with_beam_width(8);
+
+        // Ambiguous sequence: "the" vs "teh" with "teh" slightly preferred acoustically.
+        // Timesteps emit: t, h/e ambiguous, e/h ambiguous, blank
+        // Shape (4, 4): blank, t, h, e
+        let logits = Array2::from_shape_vec(
+            (4, 4),
+            vec![
+                // t=0: strong 't'
+                -10.0, 8.0, -10.0, -10.0, // t=1: 'e' slightly ahead of 'h' ( favors "te...")
+                -10.0, -10.0, 5.0, 5.5, // t=2: 'h' slightly ahead of 'e' ( favors "...eh" → "teh")
+                -10.0, -10.0, 5.5, 5.0, // t=3: blank
+                8.0, -10.0, -10.0, -10.0,
+            ],
+        )
+        .unwrap();
+
+        let acoustic = decoder.beam_search_decode(&logits, &vocab);
+        // Acoustic-only may prefer "teh"; either way rescoring must pick "the".
+        let mut dict = Dictionary::new();
+        dict.load_words(&["the"]);
+        let rescorer = DictLmRescorer::new(Some(&dict), None, 5.0, 0.0);
+        let rescored = decoder.beam_search_decode_rescored(&logits, &vocab, &rescorer);
+        assert_eq!(
+            rescored, "the",
+            "dictionary rescoring should prefer 'the' (acoustic was '{acoustic}')"
+        );
     }
 
     #[test]

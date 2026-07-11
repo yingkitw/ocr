@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested. 373+ tests passing, 0 failures.**
+**Current status: All five phases implemented and tested. 387+ tests passing, 0 failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero failures (373+ tests)
+- [x] `cargo test` passes with zero failures (387+ tests)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -159,7 +159,8 @@ pub struct CnnDetector;          // 3-layer CNN with heuristic edge-detector wei
 ### Acceptance Criteria
 - [x] CNN feature extractor (5 conv layers + maxpool) in ndarray
 - [x] 2-layer BiLSTM (64 hidden) with forward/backward pass
-- [x] CTC decoder: greedy + beam search
+- [x] CTC decoder: greedy + beam search + dictionary/LM rescoring (n-best)
+- [x] Confidence calibration: temperature-scaled CTC softmax → per-char/word scores
 - [x] CTC loss with forward-backward algorithm
 - [x] `CrnnTrainer` with synthetic data generation + checkpoint saving/loading
 - [x] Wired into `OcrEngine` via `--engine lstm`
@@ -187,8 +188,10 @@ BiLSTM(64) → BiLSTM(64)
   ↓
 Linear(128 → num_classes + 1)
   ↓
-CTC Greedy Decode → text string
+CTC Beam Search (+ optional dictionary / n-gram LM rescoring) → text string
 ```
+
+`CrnnConfig` defaults: `use_beam_search = true`, `beam_width = 10`. Set `use_beam_search = false` for greedy decode. When dictionary correction / language model are enabled in `RecognitionConfig`, `OcrEngine` rescored beam hypotheses via `DictLmRescorer`.
 
 ### Training API
 

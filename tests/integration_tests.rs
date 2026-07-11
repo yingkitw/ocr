@@ -363,3 +363,87 @@ fn test_quantization_types() {
         assert_eq!(config.quantization, Some(qt));
     }
 }
+
+/// CTC beam search + dictionary/LM rescoring end-to-end on synthetic logits
+#[test]
+fn test_ctc_beam_rescoring_integration() {
+    use ocr::lang::dictionary::Dictionary;
+    use ocr::lang::load_english_ngram_model;
+    use ocr::recognition::ctc_decoder::{CtcDecoder, DictLmRescorer};
+    use ndarray::Array2;
+
+    let vocab = vec!['t', 'h', 'e'];
+    let decoder = CtcDecoder::with_beam_width(8);
+    let logits = Array2::from_shape_vec(
+        (4, 4),
+        vec![
+            -10.0, 8.0, -10.0, -10.0, -10.0, -10.0, 5.0, 5.5, -10.0, -10.0, 5.5, 5.0, 8.0, -10.0,
+            -10.0, -10.0,
+        ],
+    )
+    .unwrap();
+
+    let nbest = decoder.beam_search_nbest(&logits, &vocab);
+    assert!(
+        nbest.len() >= 2,
+        "beam should retain multiple hypotheses, got {}",
+        nbest.len()
+    );
+
+    let mut dict = Dictionary::new();
+    dict.load_words(&["the"]);
+    let ngram = load_english_ngram_model();
+    let rescorer = DictLmRescorer::new(Some(&dict), Some(&ngram), 5.0, 0.5);
+    let text = decoder.beam_search_decode_rescored(&logits, &vocab, &rescorer);
+    assert_eq!(text, "the");
+}
+
+/// CRNN path uses beam search by default and accepts rescoring hooks
+#[test]
+fn test_crnn_beam_decode_wiring() {
+    use ocr::lang::dictionary::Dictionary;
+    use ocr::recognition::crnn::{CrnnConfig, CrnnModel};
+    use ndarray::Array2;
+
+    let config = CrnnConfig::default();
+    assert!(config.use_beam_search);
+    assert!(config.beam_width >= 1);
+
+    let model = CrnnModel::new(config);
+    let logits = Array2::zeros((6, model.vocab.size()));
+    let mut dict = Dictionary::new();
+    dict.load_words(&["hello", "world"]);
+    let decoded = model
+        .decode_logits(&logits, Some(&dict), None)
+        .expect("decode should succeed");
+    let _ = decoded; // untrained model — just verify the path runs
+}
+
+/// CRNN path exposes calibrated per-character and word confidence
+#[test]
+fn test_crnn_confidence_calibration_wiring() {
+    use ::image::{DynamicImage, GrayImage, Luma};
+    use ocr::core::image::OcrImage;
+    use ocr::recognition::confidence::ConfidenceCalibrator;
+    use ocr::recognition::crnn::{CrnnConfig, CrnnModel};
+
+    let cal = ConfidenceCalibrator::new(1.5);
+    assert!((0.0..=1.0).contains(&cal.calibrate_prob(0.8)));
+
+    let model = CrnnModel::new(CrnnConfig::default());
+    let mut g = GrayImage::new(64, 32);
+    for p in g.pixels_mut() {
+        *p = Luma([255]);
+    }
+    let img = OcrImage::new(DynamicImage::ImageLuma8(g), 72);
+    let detailed = model
+        .recognize_detailed(&img, None, None)
+        .expect("recognize_detailed should succeed");
+    assert!((0.0..=1.0).contains(&detailed.confidence));
+    for ch in &detailed.char_confidences {
+        assert!((0.0..=1.0).contains(&ch.confidence));
+    }
+    for (_, wconf) in detailed.word_confidences() {
+        assert!((0.0..=1.0).contains(&wconf));
+    }
+}

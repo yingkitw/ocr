@@ -88,7 +88,7 @@ Multiple engines behind a unified trait:
 |--------|--------|-------------|-------|
 | `PatternModel` | **Working** | Bitmap template matching (L1 distance) | 37 glyphs, 5×7 bitmaps. Baseline. |
 | `BasicOcrEngine` | **Working** | Tesseract-inspired: CCL → lines → pattern match | More robust segmentation. Trainable via `TemplateTrainer`. |
-| `CrnnModel` | **Working** | 5-layer CNN + 2-layer BiLSTM + CTC decoder | Pure Rust ndarray. Model size < 5MB. Selectable via `--engine lstm`. |
+| `CrnnModel` | **Working** | 5-layer CNN + 2-layer BiLSTM + CTC beam decode | Pure Rust ndarray. Model size < 5MB. Beam search + dict/LM rescoring + calibrated confidence. Selectable via `--engine lstm`. |
 | `ScriptModelRegistry` | **Working** | HashMap of per-script CRNN models | Routes to Latin/CJK/Arabic/Cyrillic/etc. vocabularies. |
 | `LstmModel` | Working (internal) | Manual LSTM cell (ndarray) | Used inside `CrnnModel` BiLSTM layers. |
 | `TransformerModel` | Stub | Self-attention encoder (ndarray) | Future work. |
@@ -101,7 +101,8 @@ Multiple engines behind a unified trait:
 
 ### Language Support (`src/lang/`)
 
-- `dictionary.rs` — Edit-distance spell correction with per-language dictionaries for 25+ languages
+- `dictionary.rs` — Edit-distance spell correction with per-language dictionaries for 25+ languages; also used for CTC beam rescoring
+- `ngram.rs` — Character/word n-gram LM for beam hypothesis rescoring
 - `detector.rs` — N-gram based language identification
 - `cjk.rs` — CJK character segmentation and vertical text handling
 - `unicode.rs` — Unicode block classification for script routing (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)
@@ -164,7 +165,7 @@ Infrastructure for learning models from data:
    a. Normalize line height
    b. Script detection → route to appropriate engine
    c. PatternModel: L1 similarity against templates
-   d. CRNN: CNN features → BiLSTM → CTC decode
+   d. CRNN: CNN features → BiLSTM → CTC beam decode (+ dict/LM rescoring)
    e. Build WordRecognition → LineRecognition → TextResult
 8. Post-processing:
    a. Document structure classification (headings, lists, paragraphs)

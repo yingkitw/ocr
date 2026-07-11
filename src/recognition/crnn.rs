@@ -32,6 +32,16 @@ pub struct CrnnConfig {
     pub num_lstm_layers: usize,
     pub cnn_channels: Vec<usize>,
     pub dropout: f32,
+    /// Use CTC beam search (vs greedy) at inference time
+    pub use_beam_search: bool,
+    /// Beam width for CTC beam search
+    pub beam_width: usize,
+    /// Weight for dictionary bonus when rescoring beam hypotheses
+    pub dict_weight: f32,
+    /// Weight for n-gram LM score when rescoring beam hypotheses
+    pub lm_weight: f32,
+    /// Softmax temperature for confidence calibration (`T > 1` = more conservative)
+    pub confidence_temperature: f32,
 }
 
 impl CrnnConfig {
@@ -54,6 +64,11 @@ impl CrnnConfig {
             num_lstm_layers: 2,
             cnn_channels: vec![16, 32, 64, 64, 128],
             dropout: 0.0,
+            use_beam_search: true,
+            beam_width: 10,
+            dict_weight: 1.0,
+            lm_weight: 0.5,
+            confidence_temperature: 1.0,
         }
     }
 }
@@ -68,6 +83,11 @@ impl Default for CrnnConfig {
             num_lstm_layers: 2,
             cnn_channels: vec![16, 32, 64, 64, 128],
             dropout: 0.0,
+            use_beam_search: true,
+            beam_width: 10,
+            dict_weight: 1.0,
+            lm_weight: 0.5,
+            confidence_temperature: 1.0,
         }
     }
 }
@@ -722,13 +742,53 @@ impl CrnnModel {
         }
         logits
     }
+}
 
+/// Recognition output with calibrated confidence scores.
+#[derive(Debug, Clone)]
+pub struct CrnnRecognition {
+    pub text: String,
+    pub confidence: f32,
+    pub char_confidences: Vec<crate::recognition::confidence::CharConfidence>,
+}
+
+impl CrnnRecognition {
+    /// Aggregate calibrated character scores into word-level confidences.
+    pub fn word_confidences(&self) -> Vec<(String, f32)> {
+        crate::recognition::confidence::DecodeConfidence {
+            chars: self.char_confidences.clone(),
+            overall: self.confidence,
+        }
+        .word_confidences()
+    }
+}
+
+impl CrnnModel {
     /// Recognize text from an OcrImage
     pub fn recognize(&self, image: &OcrImage) -> Result<String> {
+        Ok(self.recognize_detailed(image, None, None)?.text)
+    }
+
+    /// Recognize with optional dictionary / n-gram LM beam rescoring.
+    pub fn recognize_with_rescoring(
+        &self,
+        image: &OcrImage,
+        dictionary: Option<&crate::lang::dictionary::Dictionary>,
+        ngram: Option<&crate::lang::NGramModel>,
+    ) -> Result<String> {
+        Ok(self.recognize_detailed(image, dictionary, ngram)?.text)
+    }
+
+    /// Recognize and return calibrated per-character / overall confidence.
+    pub fn recognize_detailed(
+        &self,
+        image: &OcrImage,
+        dictionary: Option<&crate::lang::dictionary::Dictionary>,
+        ngram: Option<&crate::lang::NGramModel>,
+    ) -> Result<CrnnRecognition> {
         let gray = image.data.to_luma8();
         let (w, h) = (gray.width() as usize, gray.height() as usize);
 
-        // Normalize to [0, 1] and resize to target height
         let mut arr = Array2::zeros((h, w));
         for y in 0..h {
             for x in 0..w {
@@ -736,15 +796,69 @@ impl CrnnModel {
             }
         }
 
-        // Resize to target height if needed
         let target_h = self.config.input_height;
         if h != target_h {
             arr = Self::resize_array2_height(&arr, target_h);
         }
 
         let logits = self.forward(&arr);
-        let decoder = crate::recognition::ctc_decoder::CtcDecoder::new();
-        Ok(decoder.greedy_decode(&logits, &self.vocab.chars))
+        let text = self.decode_logits(&logits, dictionary, ngram)?;
+        let calibrator = crate::recognition::confidence::ConfidenceCalibrator::new(
+            self.config.confidence_temperature,
+        );
+
+        let conf = if !self.config.use_beam_search {
+            let path =
+                crate::recognition::confidence::greedy_path_confidence(
+                    &logits,
+                    &self.vocab.chars,
+                    &calibrator,
+                );
+            // Fall back if greedy path text diverges from decode (shouldn't normally).
+            let path_text: String = path.chars.iter().map(|c| c.character).collect();
+            if path_text == text {
+                path
+            } else {
+                crate::recognition::confidence::hypothesis_confidence(
+                    &logits, &text, &calibrator,
+                )
+            }
+        } else {
+            crate::recognition::confidence::hypothesis_confidence(&logits, &text, &calibrator)
+        };
+
+        Ok(CrnnRecognition {
+            text,
+            confidence: conf.overall,
+            char_confidences: conf.chars,
+        })
+    }
+
+    /// Decode CTC logits using greedy or beam search (+ optional rescoring).
+    pub fn decode_logits(
+        &self,
+        logits: &Array2<f32>,
+        dictionary: Option<&crate::lang::dictionary::Dictionary>,
+        ngram: Option<&crate::lang::NGramModel>,
+    ) -> Result<String> {
+        use crate::recognition::ctc_decoder::{CtcDecoder, DictLmRescorer};
+
+        let decoder = CtcDecoder::with_beam_width(self.config.beam_width);
+        if !self.config.use_beam_search {
+            return Ok(decoder.greedy_decode(logits, &self.vocab.chars));
+        }
+
+        if dictionary.is_some() || ngram.is_some() {
+            let rescorer = DictLmRescorer::new(
+                dictionary,
+                ngram,
+                self.config.dict_weight,
+                self.config.lm_weight,
+            );
+            Ok(decoder.beam_search_decode_rescored(logits, &self.vocab.chars, &rescorer))
+        } else {
+            Ok(decoder.beam_search_decode(logits, &self.vocab.chars))
+        }
     }
 
     pub fn resize_array2_height(arr: &Array2<f32>, target_h: usize) -> Array2<f32> {
@@ -1005,5 +1119,34 @@ mod tests {
             "Backend path should match CPU path: max_diff={}",
             max_diff
         );
+    }
+
+    #[test]
+    fn test_crnn_decode_logits_beam_search() {
+        let mut config = CrnnConfig::default();
+        config.use_beam_search = true;
+        config.beam_width = 5;
+        let model = CrnnModel::new(config);
+        let logits = Array2::zeros((8, model.vocab.size()));
+        let text = model.decode_logits(&logits, None, None).unwrap();
+        // Random-zero logits should decode without panic (often empty or blanks)
+        let _ = text;
+    }
+
+    #[test]
+    fn test_crnn_decode_logits_greedy_toggle() {
+        let mut config = CrnnConfig::default();
+        config.use_beam_search = false;
+        let model = CrnnModel::new(config);
+        let logits = Array2::zeros((4, model.vocab.size()));
+        let greedy = model.decode_logits(&logits, None, None).unwrap();
+
+        let mut config_beam = CrnnConfig::default();
+        config_beam.use_beam_search = true;
+        let model_beam = CrnnModel::new(config_beam);
+        // Same vocab size — zeros logits; both paths must succeed (outputs may differ on ties).
+        let beam = model_beam.decode_logits(&logits, None, None).unwrap();
+        assert!(greedy.len() <= 4);
+        assert!(beam.len() <= 4);
     }
 }

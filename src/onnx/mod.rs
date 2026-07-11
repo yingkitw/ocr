@@ -564,6 +564,7 @@ mod tests {
             num_lstm_layers: 2,
             cnn_channels: vec![16, 32, 64, 64, 128],
             dropout: 0.0,
+            ..Default::default()
         };
         let mut crnn = CrnnModel::new(config);
 
