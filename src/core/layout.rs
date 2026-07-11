@@ -262,6 +262,8 @@ pub struct TextRegionProperties {
     pub letter_spacing: f32,
     /// Word spacing
     pub word_spacing: f32,
+    /// Detected text rotation in degrees (0 = upright; used for arbitrary-angle crops)
+    pub rotation_deg: f32,
 }
 
 impl Default for TextRegionProperties {
@@ -276,6 +278,7 @@ impl Default for TextRegionProperties {
             line_height: 1.0,
             letter_spacing: 0.0,
             word_spacing: 0.0,
+            rotation_deg: 0.0,
         }
     }
 }

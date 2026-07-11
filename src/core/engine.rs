@@ -502,7 +502,35 @@ impl OcrEngine {
             processed = crate::image::ImageEnhancer::correct_orientation(&processed)?;
         }
 
+        // Affine deskew (small-angle projection variance search)
+        if self.config.image_processing.enable_deskewing {
+            processed = crate::image::ImageEnhancer::deskew(&processed)?;
+        }
+
+        // Perspective document dewarp (quadrilateral → rectangle)
+        if self.config.image_processing.enable_perspective_dewarp {
+            processed = crate::image::PerspectiveDewarp::default().dewarp(&processed)?;
+        }
+
         Ok(processed)
+    }
+
+    /// Optionally flatten curved text-line crops before recognition.
+    fn maybe_rectify_curve(&self, img: OcrImage) -> Result<OcrImage> {
+        if self.config.image_processing.enable_curve_rectification {
+            Ok(crate::image::CurveRectifier::default().rectify(&img)?)
+        } else {
+            Ok(img)
+        }
+    }
+
+    /// Rotate a region crop upright when multi-angle detection found a non-zero angle.
+    fn deskew_region_for_recognition(img: OcrImage, rotation_deg: f32) -> Result<OcrImage> {
+        if rotation_deg.abs() < 0.5 {
+            return Ok(img);
+        }
+        // Detection rotated the page by +rotation_deg to find the text; undo it.
+        Ok(img.rotate((-rotation_deg).to_radians())?)
     }
 
     /// Detect background brightness by sampling corner pixels
@@ -588,7 +616,10 @@ impl OcrEngine {
                 return Ok(result);
             }
             PageSegMode::SparseText | PageSegMode::SparseTextWithOsd | PageSegMode::Auto => {
-                Ok(crate::layout::LayoutAnalyzer::analyze_layout(image)?)
+                Ok(crate::layout::LayoutAnalyzer::analyze_layout_with_options(
+                    image,
+                    self.config.layout_analysis.enable_arbitrary_angle_detection,
+                )?)
             }
         }
     }
@@ -630,6 +661,8 @@ impl OcrEngine {
         for region in &layout.text_regions {
             let bbox = &region.bounding_box;
             let cropped = image.crop(bbox.left, bbox.top, bbox.width(), bbox.height())?;
+            let cropped = Self::deskew_region_for_recognition(cropped, region.properties.rotation_deg)?;
+            let cropped = self.maybe_rectify_curve(cropped)?;
             let region_result = ocr_engine.recognize_sync(&cropped)?;
 
             if !region_result.text.trim().is_empty() {
@@ -705,19 +738,26 @@ impl OcrEngine {
         let mut conf_count = 0u32;
 
         let regions = if layout.text_regions.is_empty() {
-            vec![image.clone()]
+            vec![self.maybe_rectify_curve(image.clone()).unwrap_or_else(|_| image.clone())]
         } else {
             layout
                 .text_regions
                 .iter()
                 .map(|r| {
-                    image
+                    let cropped = image
                         .crop(
                             r.bounding_box.left,
                             r.bounding_box.top,
                             r.bounding_box.width(),
                             r.bounding_box.height(),
                         )
+                        .unwrap_or_else(|_| image.clone());
+                    let cropped = Self::deskew_region_for_recognition(
+                        cropped,
+                        r.properties.rotation_deg,
+                    )
+                    .unwrap_or_else(|_| image.clone());
+                    self.maybe_rectify_curve(cropped)
                         .unwrap_or_else(|_| image.clone())
                 })
                 .collect()

@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested. 387+ tests passing, 0 failures.**
+**Current status: All five phases implemented and tested. 398+ tests passing, 0 failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero failures (387+ tests)
+- [x] `cargo test` passes with zero failures (398+ tests)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -137,6 +137,8 @@ pub struct TemplateTrainer {
 - [x] `DocumentGenerator` creates synthetic multi-column layouts with ground-truth bboxes
 - [x] IoU-based evaluation harness computes recall/precision
 - [x] Auto-rotate 0°/90°/180°/270° via projection-variance orientation detection
+- [x] Perspective document dewarp (`PerspectiveDewarp`) + curved-line rectification (`CurveRectifier`)
+- [x] Arbitrary-angle text detection (`OrientedCclDetector`, ±45° sweep with NMS)
 
 ### Detection API
 

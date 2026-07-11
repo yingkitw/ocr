@@ -63,7 +63,8 @@ All preprocessing is deterministic and differentiable-friendly:
 - `Processor` — high-level interface: `preprocess_for_ocr(image) -> OcrImage`
 - `Pipeline` — composable chain of operations
 - `Thresholder` — Otsu global, Sauvola local, adaptive mean/Gaussian
-- `Enhancement` — CLAHE, unsharp mask, gamma correction, orientation detection, border removal
+- `Enhancement` — CLAHE, unsharp mask, gamma correction, orientation detection, border removal, affine deskew
+- `dewarp.rs` — `PerspectiveDewarp` (content-corner quad → rectangle) + `CurveRectifier` (quadratic baseline flatten)
 - `Quality` — blur detection, contrast score, resolution check
 
 ### Layout Analysis (`src/layout/`)
@@ -77,7 +78,7 @@ Inspired by Tesseract's layout analyzer but written in pure Rust:
 - `text_ordering.rs` — Reading-order resolution (top-to-bottom, left-to-right, CJK vertical)
 - `classifier.rs` — Region type classification (Heading, SubHeading, Body, ListItem, Caption, Footer, PageNumber, Header)
 - `detection_cnn.rs` — Lightweight 3-layer CNN for text region heatmaps (conv1→conv2→conv3, sigmoid output)
-- `detector.rs` — `TextDetector` trait with `CclDetector` and `CnnDetector` implementations, `TableDetector` with span inference
+- `detector.rs` — `TextDetector` trait (`CclDetector`, `CnnDetector`, `OrientedCclDetector`), `TableDetector` with span inference
 - `form_extractor.rs` — Form field detection: checkboxes, key-value pairs, underline fields
 
 ### Recognition (`src/recognition/`)
@@ -150,7 +151,7 @@ Infrastructure for learning models from data:
 4. Image loaded via image::open() → converted to OcrImage (Grayscale, 300 DPI)
 5. Preprocessing (if enabled):
    a. Auto-rotate via projection-variance orientation detection
-   b. Deskew (Hough transform for angle estimation)
+   b. Deskew (projection-variance angle search) + perspective dewarp
    c. Binarization (Sauvola for variable backgrounds)
    d. Noise reduction (median filter)
    e. Border removal
@@ -162,11 +163,12 @@ Infrastructure for learning models from data:
    e. Form field extraction (checkboxes, key-value pairs)
    f. Reading order resolution
 7. Recognition (per text line):
-   a. Normalize line height
-   b. Script detection → route to appropriate engine
-   c. PatternModel: L1 similarity against templates
-   d. CRNN: CNN features → BiLSTM → CTC beam decode (+ dict/LM rescoring)
-   e. Build WordRecognition → LineRecognition → TextResult
+   a. Curved-line rectification on region crops (if enabled)
+   b. Normalize line height
+   c. Script detection → route to appropriate engine
+   d. PatternModel: L1 similarity against templates
+   e. CRNN: CNN features → BiLSTM → CTC beam decode (+ dict/LM rescoring)
+   f. Build WordRecognition → LineRecognition → TextResult
 8. Post-processing:
    a. Document structure classification (headings, lists, paragraphs)
    b. Dictionary correction (if enabled)

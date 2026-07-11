@@ -35,24 +35,33 @@ impl ImageEnhancer {
         Ok(OcrImage::new(sharpened, img.dpi))
     }
 
-    /// Deskew image
+    /// Deskew image by searching ±15° (handles typical scanner skew including ~10–15°).
+    ///
+    /// Coarse search at 1° steps, then refine ±1° at 0.1° around the best.
+    /// Larger in-page rotations are handled by `OrientedCclDetector`.
     pub fn deskew(img: &OcrImage) -> Result<OcrImage> {
         let gray = img.to_grayscale();
         let binary = gray.threshold(200);
 
-        let mut best_angle = 0.0;
-        let mut max_variance = 0.0;
+        let mut best_angle = 0.0f32;
+        let mut max_variance = 0.0f64;
 
-        let range = 20;
-
-        for i in -range..=range {
-            let angle_deg = i as f32 * 0.1;
-            let angle_rad = angle_deg.to_radians();
-
+        for i in -15..=15 {
+            let angle_rad = (i as f32).to_radians();
             let rotated = binary.rotate(angle_rad)?;
-
             let variance = Self::calculate_projection_variance(&rotated);
+            if variance > max_variance {
+                max_variance = variance;
+                best_angle = angle_rad;
+            }
+        }
 
+        let best_deg = best_angle.to_degrees();
+        for i in -10..=10 {
+            let angle_deg = best_deg + i as f32 * 0.1;
+            let angle_rad = angle_deg.to_radians();
+            let rotated = binary.rotate(angle_rad)?;
+            let variance = Self::calculate_projection_variance(&rotated);
             if variance > max_variance {
                 max_variance = variance;
                 best_angle = angle_rad;

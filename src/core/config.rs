@@ -99,6 +99,10 @@ pub struct ImageProcessingConfig {
     pub enable_sharpening: bool,
     /// Enable deskewing
     pub enable_deskewing: bool,
+    /// Enable perspective (quadrilateral) document dewarp
+    pub enable_perspective_dewarp: bool,
+    /// Enable curved-line baseline rectification on text regions
+    pub enable_curve_rectification: bool,
     /// Enable binarization
     pub enable_binarization: bool,
     /// Binarization threshold
@@ -118,6 +122,8 @@ impl Default for ImageProcessingConfig {
             enable_contrast_enhancement: true,
             enable_sharpening: false,
             enable_deskewing: true,
+            enable_perspective_dewarp: true,
+            enable_curve_rectification: true,
             enable_binarization: true,
             binarization_threshold: 0.5,
             binarization_method: BinarizationMethod::Otsu,
@@ -156,6 +162,8 @@ pub struct LayoutAnalysisConfig {
     pub enable_orientation_detection: bool,
     /// Enable vertical text detection (CJK)
     pub enable_vertical_text_detection: bool,
+    /// Enable multi-angle text detection (finds text at e.g. 23°, not only axis-aligned)
+    pub enable_arbitrary_angle_detection: bool,
     /// Page segmentation mode (Tesseract PSM)
     pub page_seg_mode: PageSegMode,
     /// Minimum text region size
@@ -176,6 +184,7 @@ impl Default for LayoutAnalysisConfig {
             enable_reading_order_detection: true,
             enable_orientation_detection: true,
             enable_vertical_text_detection: true,
+            enable_arbitrary_angle_detection: true,
             page_seg_mode: PageSegMode::Auto,
             min_text_region_size: (10, 10),
             max_text_region_size: (10000, 10000),

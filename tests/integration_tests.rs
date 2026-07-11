@@ -447,3 +447,86 @@ fn test_crnn_confidence_calibration_wiring() {
         assert!((0.0..=1.0).contains(&wconf));
     }
 }
+
+/// Perspective dewarp + curve rectification are wired and runnable
+#[test]
+fn test_dewarp_pipeline_integration() {
+    use ::image::{DynamicImage, GrayImage, ImageBuffer, Luma};
+    use ocr::core::config::OcrConfig;
+    use ocr::core::image::OcrImage;
+    use ocr::image::{CurveRectifier, ImagePreprocessingPipeline, PerspectiveDewarp};
+
+    assert!(OcrConfig::default().image_processing.enable_perspective_dewarp);
+    assert!(OcrConfig::default().image_processing.enable_curve_rectification);
+
+    // Trapezoid content → perspective path
+    let mut trap: GrayImage = ImageBuffer::from_pixel(80, 60, Luma([255]));
+    for y in 8..52 {
+        let t = (y - 8) as f32 / 44.0;
+        let left = (80.0 * (0.3 - 0.12 * t)) as u32;
+        let right = (80.0 * (0.7 + 0.12 * t)) as u32;
+        for x in left..right.min(80) {
+            trap.put_pixel(x, y, Luma([0]));
+        }
+    }
+    let trap_img = OcrImage::new(DynamicImage::ImageLuma8(trap), 72);
+    let dewarped = PerspectiveDewarp::default()
+        .dewarp(&trap_img)
+        .expect("perspective dewarp");
+    assert_eq!(dewarped.width, 80);
+
+    // Curved stroke → rectify
+    let mut curve: GrayImage = ImageBuffer::from_pixel(100, 32, Luma([255]));
+    let a = 3.0 / (100.0f32).powi(2);
+    for x in 0..100u32 {
+        let y = (a * (x as f32).powi(2) + 8.0) as u32;
+        for dy in 0..3u32 {
+            if y + dy < 32 {
+                curve.put_pixel(x, y + dy, Luma([0]));
+            }
+        }
+    }
+    let curve_img = OcrImage::new(DynamicImage::ImageLuma8(curve), 72);
+    let flat = CurveRectifier {
+        min_curvature: 1.0,
+        ..Default::default()
+    }
+    .rectify(&curve_img)
+    .expect("curve rectify");
+    assert_eq!(flat.width, 100);
+
+    // Full preprocess pipeline includes dewarp flag
+    let pipeline = ImagePreprocessingPipeline::new(Default::default());
+    let _ = pipeline.process(&trap_img).expect("pipeline process");
+}
+
+/// Multi-angle oriented text detection finds regions on rotated content
+#[test]
+fn test_oriented_angle_detection_integration() {
+    use ::image::{DynamicImage, GrayImage, Luma};
+    use ocr::core::config::OcrConfig;
+    use ocr::core::image::OcrImage;
+    use ocr::layout::{LayoutAnalyzer, OrientedCclDetector, TextDetector};
+
+    assert!(OcrConfig::default()
+        .layout_analysis
+        .enable_arbitrary_angle_detection);
+
+    let mut img = GrayImage::from_pixel(100, 100, Luma([255]));
+    for x in 15..85 {
+        for y in 48..52 {
+            img.put_pixel(x, y, Luma([0]));
+        }
+    }
+    let ocr_img = OcrImage::new(DynamicImage::ImageLuma8(img), 72);
+    let rotated = ocr_img.rotate(30.0_f32.to_radians()).unwrap();
+
+    let regions = OrientedCclDetector::default()
+        .detect(&rotated)
+        .expect("oriented detect");
+    assert!(!regions.is_empty());
+
+    let layout = LayoutAnalyzer::analyze_layout_with_options(&rotated, true)
+        .expect("layout with oriented detection");
+    assert!(!layout.text_regions.is_empty());
+}

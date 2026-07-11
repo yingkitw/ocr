@@ -19,6 +19,8 @@ pub struct ImageEnhancementConfig {
     pub sharpening_strength: f32,
     pub enable_deskewing: bool,
     pub deskewing_threshold: f32,
+    pub enable_perspective_dewarp: bool,
+    pub enable_curve_rectification: bool,
     pub enable_speckle_removal: bool,
     pub max_speckle_area: u32,
     pub enable_border_removal: bool,
@@ -36,6 +38,8 @@ impl Default for ImageEnhancementConfig {
             sharpening_strength: 0.5,
             enable_deskewing: true,
             deskewing_threshold: 0.1,
+            enable_perspective_dewarp: true,
+            enable_curve_rectification: true,
             enable_speckle_removal: true,
             max_speckle_area: 8,
             enable_border_removal: true,
@@ -84,6 +88,10 @@ impl ImagePreprocessingPipeline {
 
         if self.config.enable_deskewing {
             processed = crate::image::enhancement::ImageEnhancer::deskew(&processed)?;
+        }
+
+        if self.config.enable_perspective_dewarp {
+            processed = crate::image::dewarp::PerspectiveDewarp::default().dewarp(&processed)?;
         }
 
         Ok(processed)

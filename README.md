@@ -4,10 +4,10 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 
 ## Current State
 
-**Compiles and passes 387+ tests.** The full pipeline works end-to-end for printed text on clean images, with a modular architecture supporting both classical and learned recognition:
+**Compiles and passes 398+ tests.** The full pipeline works end-to-end for printed text on clean images, with a modular architecture supporting both classical and learned recognition:
 
-- **Image preprocessing**: deskew, binarization (Otsu, Sauvola), noise reduction, contrast enhancement, auto-rotate (0°/90°/180°/270°)
-- **Layout analysis**: Union-Find CCL, column/line detection, reading-order resolution, table detection, form field extraction
+- **Image preprocessing**: deskew, perspective dewarp, curved-line rectification, binarization (Otsu, Sauvola), noise reduction, contrast enhancement, auto-rotate (0°/90°/180°/270°)
+- **Layout analysis**: Union-Find CCL, multi-angle oriented detection (±45°), column/line detection, reading-order resolution, table detection, form field extraction
 - **Text detection**: `TextDetector` trait with CCL and lightweight CNN implementations
 - **Recognition**: Pattern-matching engine (trainable from synthetic fonts) + CRNN (CNN + BiLSTM + CTC beam search with dictionary/LM rescoring and calibrated confidence) selectable via `--engine`
 - **Multi-language**: Unicode script detection (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari), dictionaries for 25+ languages, per-script CRNN vocabularies
@@ -49,7 +49,7 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with extract, batch, layout, list-languages
-- [x] 387+ tests passing
+- [x] 398+ tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback
@@ -68,6 +68,8 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 - [x] 2-layer bidirectional LSTM (64 hidden)
 - [x] CTC decoder (greedy + beam search + dictionary/LM rescoring)
 - [x] Calibrated per-character / word confidence (`ConfidenceCalibrator`)
+- [x] Perspective dewarp + curved-line rectification
+- [x] Arbitrary-angle text detection (`OrientedCclDetector`)
 - [x] CTC loss with forward-backward algorithm
 - [x] `CrnnTrainer` with synthetic data + checkpoint saving
 - [x] Wired into `OcrEngine` via `--engine lstm`

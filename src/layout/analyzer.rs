@@ -3,7 +3,7 @@
 use crate::core::layout::*;
 use crate::layout::classifier::RegionClassifier;
 use crate::layout::column_detector::ColumnDetector;
-use crate::layout::detector::{ImageRegionDetector, TableDetector, TextRegionDetector};
+use crate::layout::detector::{ImageRegionDetector, TableDetector, TextDetector, TextRegionDetector};
 use crate::utils::Result;
 
 /// Layout analyzer
@@ -12,11 +12,23 @@ pub struct LayoutAnalyzer;
 impl LayoutAnalyzer {
     /// Analyze page layout
     pub fn analyze_layout(img: &crate::core::image::OcrImage) -> Result<LayoutResult> {
+        Self::analyze_layout_with_options(img, false)
+    }
+
+    /// Analyze page layout, optionally using multi-angle text detection.
+    pub fn analyze_layout_with_options(
+        img: &crate::core::image::OcrImage,
+        arbitrary_angle: bool,
+    ) -> Result<LayoutResult> {
         let page_size = PageSize::new(img.width, img.height, img.dpi);
         let mut result = LayoutResult::new(page_size);
 
-        // Detect text regions
-        let mut text_regions = TextRegionDetector::detect_text_regions(img)?;
+        // Detect text regions (axis-aligned CCL or multi-angle oriented CCL)
+        let mut text_regions = if arbitrary_angle {
+            crate::layout::detector::OrientedCclDetector::default().detect(img)?
+        } else {
+            TextRegionDetector::detect_text_regions(img)?
+        };
 
         // Detect images
         let image_regions = ImageRegionDetector::detect_image_regions(img)?;

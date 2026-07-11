@@ -97,6 +97,179 @@ impl TextDetector for CnnDetector {
     }
 }
 
+/// Multi-angle CCL detector: finds text that is not axis-aligned.
+///
+/// Sweeps candidate rotations, runs CCL on each, maps boxes back to the
+/// original image, and keeps the highest-scoring non-overlapping set.
+pub struct OrientedCclDetector {
+    /// Angle step in degrees (e.g. 15 → tries -45,-30,…,45)
+    pub angle_step_deg: f32,
+    /// Maximum absolute angle to search
+    pub max_angle_deg: f32,
+}
+
+impl Default for OrientedCclDetector {
+    fn default() -> Self {
+        Self {
+            angle_step_deg: 15.0,
+            max_angle_deg: 45.0,
+        }
+    }
+}
+
+impl OrientedCclDetector {
+    pub fn new(angle_step_deg: f32, max_angle_deg: f32) -> Self {
+        Self {
+            angle_step_deg: angle_step_deg.max(1.0),
+            max_angle_deg: max_angle_deg.max(0.0),
+        }
+    }
+
+    fn candidate_angles(&self) -> Vec<f32> {
+        let mut angles = Vec::new();
+        let mut a = -self.max_angle_deg;
+        while a <= self.max_angle_deg + 1e-3 {
+            angles.push(a);
+            a += self.angle_step_deg;
+        }
+        if !angles.iter().any(|x| x.abs() < 1e-3) {
+            angles.push(0.0);
+        }
+        angles.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        angles.dedup_by(|a, b| (*a - *b).abs() < 1e-3);
+        angles
+    }
+}
+
+impl TextDetector for OrientedCclDetector {
+    fn detect(&self, image: &crate::core::image::OcrImage) -> Result<Vec<TextRegion>> {
+        let (ow, oh) = (image.width as f32, image.height as f32);
+        let cx = ow / 2.0;
+        let cy = oh / 2.0;
+
+        let mut candidates: Vec<(TextRegion, f32)> = Vec::new();
+
+        for angle_deg in self.candidate_angles() {
+            let angle_rad = angle_deg.to_radians();
+            let rotated = if angle_deg.abs() < 1e-3 {
+                image.clone()
+            } else {
+                image.rotate(angle_rad)?
+            };
+
+            let regions = TextRegionDetector::detect_text_regions(&rotated)?;
+            let (rw, rh) = (rotated.width as f32, rotated.height as f32);
+            let rcx = rw / 2.0;
+            let rcy = rh / 2.0;
+
+            for mut region in regions {
+                // Map axis-aligned box corners from rotated → original
+                let bbox = &region.bounding_box;
+                let corners = [
+                    (bbox.left as f32, bbox.top as f32),
+                    (bbox.right as f32, bbox.top as f32),
+                    (bbox.right as f32, bbox.bottom as f32),
+                    (bbox.left as f32, bbox.bottom as f32),
+                ];
+                let inv = -angle_rad;
+                let mapped: Vec<(f32, f32)> = corners
+                    .iter()
+                    .map(|&(x, y)| {
+                        let dx = x - rcx;
+                        let dy = y - rcy;
+                        let cos = inv.cos();
+                        let sin = inv.sin();
+                        (cx + dx * cos - dy * sin, cy + dx * sin + dy * cos)
+                    })
+                    .collect();
+
+                let min_x = mapped
+                    .iter()
+                    .map(|p| p.0)
+                    .fold(f32::INFINITY, f32::min)
+                    .clamp(0.0, ow - 1.0);
+                let max_x = mapped
+                    .iter()
+                    .map(|p| p.0)
+                    .fold(f32::NEG_INFINITY, f32::max)
+                    .clamp(0.0, ow - 1.0);
+                let min_y = mapped
+                    .iter()
+                    .map(|p| p.1)
+                    .fold(f32::INFINITY, f32::min)
+                    .clamp(0.0, oh - 1.0);
+                let max_y = mapped
+                    .iter()
+                    .map(|p| p.1)
+                    .fold(f32::NEG_INFINITY, f32::max)
+                    .clamp(0.0, oh - 1.0);
+
+                if max_x <= min_x || max_y <= min_y {
+                    continue;
+                }
+
+                let mapped_bbox = BoundingBox::new(
+                    min_x as u32,
+                    min_y as u32,
+                    max_x as u32 + 1,
+                    max_y as u32 + 1,
+                );
+                region.bounding_box = mapped_bbox;
+                region.properties.rotation_deg = angle_deg;
+                region.id = format!("orient_{}_{}", angle_deg as i32, region.id);
+
+                // Prefer wider text-like regions; penalize near-square blobs slightly
+                let w = region.bounding_box.width() as f32;
+                let h = region.bounding_box.height().max(1) as f32;
+                let aspect = w / h;
+                let score = (w * h) * aspect.clamp(0.5, 8.0);
+                candidates.push((region, score));
+            }
+        }
+
+        if candidates.is_empty() {
+            return TextRegionDetector::detect_text_regions(image);
+        }
+
+        // Sort by score descending and greedy NMS
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let mut kept: Vec<TextRegion> = Vec::new();
+        for (region, _) in candidates {
+            let overlaps = kept.iter().any(|k| {
+                bbox_iou(&k.bounding_box, &region.bounding_box) > 0.3
+            });
+            if !overlaps {
+                kept.push(region);
+            }
+        }
+
+        Ok(kept)
+    }
+
+    fn name(&self) -> &'static str {
+        "OrientedCCL"
+    }
+}
+
+fn bbox_iou(a: &BoundingBox, b: &BoundingBox) -> f32 {
+    let x1 = a.left.max(b.left);
+    let y1 = a.top.max(b.top);
+    let x2 = a.right.min(b.right);
+    let y2 = a.bottom.min(b.bottom);
+    if x2 <= x1 || y2 <= y1 {
+        return 0.0;
+    }
+    let inter = ((x2 - x1) * (y2 - y1)) as f32;
+    let area_a = a.area() as f32;
+    let area_b = b.area() as f32;
+    let union = area_a + area_b - inter;
+    if union <= 0.0 {
+        0.0
+    } else {
+        inter / union
+    }
+}
+
 /// Text region detector
 pub struct TextRegionDetector;
 
@@ -673,5 +846,55 @@ impl TableDetector {
             }
         }
         count
+    }
+}
+
+#[cfg(test)]
+mod oriented_tests {
+    use super::*;
+    use crate::core::image::OcrImage;
+    use image::{DynamicImage, GrayImage, Luma};
+
+    fn make_horizontal_bar() -> OcrImage {
+        let mut img = GrayImage::from_pixel(80, 80, Luma([255]));
+        for x in 10..70 {
+            for y in 38..42 {
+                img.put_pixel(x, y, Luma([0]));
+            }
+        }
+        OcrImage::new(DynamicImage::ImageLuma8(img), 72)
+    }
+
+    #[test]
+    fn test_oriented_detector_finds_upright_text() {
+        let img = make_horizontal_bar();
+        let det = OrientedCclDetector::new(15.0, 30.0);
+        let regions = det.detect(&img).unwrap();
+        assert!(!regions.is_empty(), "should find at least one region");
+    }
+
+    #[test]
+    fn test_oriented_detector_on_rotated_image() {
+        let img = make_horizontal_bar();
+        let rotated = img.rotate(30.0_f32.to_radians()).unwrap();
+        let det = OrientedCclDetector::new(15.0, 45.0);
+        let regions = det.detect(&rotated).unwrap();
+        assert!(!regions.is_empty());
+        assert!(regions.iter().any(|r| r.id.contains("orient_")));
+    }
+
+    #[test]
+    fn test_bbox_iou_identical() {
+        let a = BoundingBox::new(0, 0, 10, 10);
+        assert!((bbox_iou(&a, &a) - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_candidate_angles_include_zero() {
+        let det = OrientedCclDetector::new(15.0, 45.0);
+        let angles = det.candidate_angles();
+        assert!(angles.iter().any(|a| a.abs() < 1e-3));
+        assert!(*angles.first().unwrap() <= -45.0);
+        assert!(*angles.last().unwrap() >= 45.0);
     }
 }

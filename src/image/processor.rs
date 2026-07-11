@@ -49,11 +49,9 @@ impl ImageProcessor {
 
     /// Apply basic preprocessing
     fn apply_basic_preprocessing(img: &OcrImage) -> Result<OcrImage> {
-        // TODO: Implement basic preprocessing
-        // - Noise reduction
-        // - Contrast enhancement
-        // - Sharpening
-        // - Deskewing
-        Ok(img.clone())
+        let mut processed = img.clone();
+        processed = crate::image::enhancement::ImageEnhancer::deskew(&processed)?;
+        processed = crate::image::dewarp::PerspectiveDewarp::default().dewarp(&processed)?;
+        Ok(processed)
     }
 }
