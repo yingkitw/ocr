@@ -24,7 +24,7 @@ pub enum Commands {
         #[arg(short, long, value_name = "FILE")]
         output: Option<PathBuf>,
 
-        /// Language code: en, zh, ja, ko, fr, de, es, it, pt, ru, nl, pl, sv, da, fi, no, tr, el, hi, th, vi, ar, he, id, ms, uk, cs, hu, ro, bg (default: en)
+        /// Language code: en, zh, ja, ko, fr, de, es, … or `auto` to detect from text
         #[arg(short, long, default_value = "en")]
         lang: String,
 
@@ -71,7 +71,7 @@ pub enum Commands {
         #[arg(short, long, value_name = "DIR")]
         output_dir: PathBuf,
 
-        /// Language code: en, zh, ja, ko, fr, de, es, it, pt, ru, nl, pl, sv, da, fi, no, tr, el, hi, th, vi, ar, he, id, ms, uk, cs, hu, ro, bg
+        /// Language code: en, zh, ja, ko, … or `auto` to detect from text
         #[arg(short, long, default_value = "en")]
         lang: String,
 
@@ -171,7 +171,7 @@ pub enum Commands {
         #[arg(short, long, value_name = "PATH")]
         output: Option<PathBuf>,
 
-        /// Language code (default: en)
+        /// Language code: en, zh, … or `auto`
         #[arg(short, long, default_value = "en")]
         lang: String,
 

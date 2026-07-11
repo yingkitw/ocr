@@ -2,7 +2,7 @@
 
 ## Completed
 
-All five phases of the OCR roadmap are implemented and tested (408+ tests passing).
+All five phases of the OCR roadmap are implemented and tested (410+ tests passing).
 
 - **Phase 0 — Baseline**: End-to-end pipeline, pattern matching, layout analysis, CLI, Web API, PDF input
 - **Phase 1 — Synthetic Training**: Font rendering, distortion pipeline, CER/WER benchmarks, `TemplateTrainer` for pattern-matching templates
@@ -47,4 +47,11 @@ Gaps observed vs. Tesseract / PaddleOCR / EasyOCR / RapidOCR / docTR / surya. Pr
 - [x] **Arbitrary-angle text detection** — `OrientedCclDetector` sweeps ±45° (default 15° steps), maps boxes back, NMS; deskew expanded to ±15°; region crops rotated upright via `rotation_deg` (opt-in via `enable_arbitrary_angle_detection`)
 - [x] **Super-resolution upscaling for tiny text** — `TextSuperResolution` (Lanczos + stroke/DPI/line-height heuristics, noise-aware skip); page preprocess + short-crop upscale; `enable_super_resolution` / `target_dpi`
 - [x] **makebox-style box export** — `format_makebox` (Tesseract bottom-left `.box`) + `ocr makebox IMAGE [-o base]` CLI for training-data generation from real images
-- [ ] **Publish to crates.io** — package is docs.rs-ready (`documentation = "https://docs.rs/ocr"`) but unpublished; a published crate is table-stakes for adoption vs. Tesseract bindings.
+- [x] **Auto language detection (`--lang auto`)** — `LanguageDetector` (Unicode script + Latin dictionary hit-rates + CJK kana/hangul heuristics); resolves dictionary language in post-process when `lang=auto`
+- [x] **Image quality gate** — `ImageProcessingConfig::enable_quality_gate` (default on): auto-sharpen / boost contrast when `ImageQualityAssessor` metrics are poor
+- [x] **Batch progress reporting** — `ocr batch` prints `[n/total] % ETA …` per image and a final summary
+- [x] **Dependency simplification** — dropped unused `blake3`/`sha2`/`fastrand`/`nalgebra`/`num_cpus`/`futures`; trimmed `tokio`/`chrono`/`image` features; gated heavy `printpdf` behind `pdf-output` (default tree ~187 nodes vs ~537)
+- [~] **Publish to crates.io** — `Cargo.toml` has keywords/categories/readme/docs.rs URL; `cargo publish --dry-run` when disk allows; do not publish without explicit ask
+- [ ] Handwriting recognition (separate model, likely transformer-based)
+- [ ] Seal / stamp / formula / KIE extraction (document AI extras vs PaddleOCR/surya)
+- [ ] RAG-friendly chunked structured output for LLM pipelines

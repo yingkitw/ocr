@@ -79,7 +79,9 @@ impl Default for PerformanceSettings {
     fn default() -> Self {
         Self {
             max_concurrent_requests: 100,
-            max_threads: num_cpus::get(),
+            max_threads: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1),
             enable_connection_pooling: true,
             connection_pool_size: 10,
             enable_caching: true,

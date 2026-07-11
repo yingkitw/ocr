@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::Result;
 use tokio::sync::Semaphore;
@@ -58,17 +60,25 @@ pub async fn handle_batch(
         }
     }
 
-    info!("Found {} image files", image_files.len());
+    let total = image_files.len();
+    info!("Found {} image files", total);
+    if total == 0 {
+        eprintln!("No images found in {}", input_dir.display());
+        return Ok(());
+    }
 
     // Cap concurrent recognition with a semaphore. Recognition acquires only a
     // read-lock on the engine, so tasks run in parallel across runtime worker
     // threads up to `max_concurrent`.
     let semaphore = Arc::new(Semaphore::new(max_concurrent));
-    let mut handles = Vec::with_capacity(image_files.len());
+    let completed = Arc::new(AtomicUsize::new(0));
+    let start = Instant::now();
+    let mut handles = Vec::with_capacity(total);
 
     for image_path in image_files {
         let ocr = Arc::clone(&ocr);
         let semaphore = Arc::clone(&semaphore);
+        let completed = Arc::clone(&completed);
         let output_dir = output_dir.clone();
         let lang = lang.to_string();
         handles.push(tokio::spawn(async move {
@@ -82,12 +92,30 @@ pub async fn handle_batch(
             let output_path = output_dir.join(format!("{}.txt", stem));
             let res = process_one(&ocr, &image_path, &output_path, &lang, confidence, dict_correct)
                 .await;
+            let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+            let elapsed = start.elapsed().as_secs_f64();
+            let remaining = total.saturating_sub(done);
+            let eta_s = if done > 0 {
+                elapsed / done as f64 * remaining as f64
+            } else {
+                0.0
+            };
+            let pct = (done as f64 / total as f64) * 100.0;
+            let status = if res.is_ok() { "ok" } else { "fail" };
+            eprintln!(
+                "[{}/{}] {:.0}% ETA {:.1}s {} {}",
+                done,
+                total,
+                pct,
+                eta_s,
+                status,
+                image_path.display()
+            );
             (image_path, res)
         }));
     }
 
     let mut processed = 0usize;
-    let total = handles.len();
     for handle in handles {
         match handle.await {
             Ok((path, Ok(()))) => {
@@ -99,6 +127,11 @@ pub async fn handle_batch(
         }
     }
 
+    let elapsed = start.elapsed().as_secs_f64();
+    eprintln!(
+        "Batch complete: {}/{} images in {:.1}s",
+        processed, total, elapsed
+    );
     info!(
         "Batch processing completed: {}/{} images processed",
         processed, total

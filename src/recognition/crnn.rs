@@ -280,7 +280,7 @@ impl CnnFeatureExtractor {
         for (weights, in_ch) in layers {
             let scale = (2.0 / (in_ch * 9) as f32).sqrt();
             for v in weights.iter_mut() {
-                *v = (fastrand::f32() - 0.5) * 2.0 * scale;
+                *v = (rand::random::<f32>() - 0.5) * 2.0 * scale;
             }
         }
     }
@@ -572,7 +572,7 @@ impl BiLstmLayer {
         .iter_mut()
         {
             for v in w.iter_mut() {
-                *v = (fastrand::f32() - 0.5) * 2.0 * scale;
+                *v = (rand::random::<f32>() - 0.5) * 2.0 * scale;
             }
         }
         // Forget gate bias = 1.0
@@ -693,7 +693,7 @@ impl CrnnModel {
         let mut fc_weight = Array2::zeros((num_classes, 2 * config.hidden_size));
         let fc_scale = (1.0 / (2 * config.hidden_size) as f32).sqrt();
         for v in fc_weight.iter_mut() {
-            *v = (fastrand::f32() - 0.5) * 2.0 * fc_scale;
+            *v = (rand::random::<f32>() - 0.5) * 2.0 * fc_scale;
         }
 
         Self {

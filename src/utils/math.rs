@@ -1,16 +1,44 @@
 //! Mathematical utilities for OCR
 
-use nalgebra::{DMatrix, Point2, Point3, Vector2, Vector3};
 use ndarray::{Array2, Array3, ArrayView2, ArrayView3};
 
-/// 2D point type
-pub type Point2D = Point2<f32>;
+/// 2D point
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Point2D {
+    pub x: f32,
+    pub y: f32,
+}
 
-/// 3D point type
-pub type Point3D = Point3<f32>;
+impl Point2D {
+    pub fn new(x: f32, y: f32) -> Self {
+        Self { x, y }
+    }
 
-/// 2D vector type
-pub type Vector2D = Vector2<f32>;
+    pub fn dot(self, other: &Point2D) -> f32 {
+        self.x * other.x + self.y * other.y
+    }
+
+    pub fn magnitude(self) -> f32 {
+        (self.x * self.x + self.y * self.y).sqrt()
+    }
+}
+
+/// 3D point
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Point3D {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+impl Point3D {
+    pub fn new(x: f32, y: f32, z: f32) -> Self {
+        Self { x, y, z }
+    }
+}
+
+/// 2D vector (same layout as a point; used for direction math)
+pub type Vector2D = Point2D;
 
 /// Bounding box type (for mathematical operations)
 ///
@@ -65,11 +93,8 @@ impl MathBoundingBox {
 #[deprecated(note = "Use MathBoundingBox or core::text::BoundingBox instead")]
 pub type BoundingBox = MathBoundingBox;
 
-/// 3D vector type
-pub type Vector3D = Vector3<f32>;
-
-/// 2D matrix type
-pub type Matrix2D = DMatrix<f32>;
+/// 3D vector
+pub type Vector3D = Point3D;
 
 /// 2D array type
 pub type Array2D = Array2<f32>;

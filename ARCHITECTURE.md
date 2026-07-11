@@ -105,7 +105,7 @@ Multiple engines behind a unified trait:
 
 - `dictionary.rs` — Edit-distance spell correction with per-language dictionaries for 25+ languages; also used for CTC beam rescoring
 - `ngram.rs` — Character/word n-gram LM for beam hypothesis rescoring
-- `detector.rs` — N-gram based language identification
+- `detector.rs` — Script + dictionary-hit language identification (`LanguageDetector`, `--lang auto`)
 - `cjk.rs` — CJK character segmentation and vertical text handling
 - `unicode.rs` — Unicode block classification for script routing (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)
 
@@ -153,6 +153,8 @@ Infrastructure for learning models from data:
 5. Preprocessing (if enabled):
    a. Auto-rotate via projection-variance orientation detection
    b. Deskew (projection-variance angle search) + perspective dewarp
+   c. Quality gate (optional auto-sharpen / contrast boost from quality metrics)
+   d. Super-resolution for tiny/low-DPI text (noise-aware)
    c. Binarization (Sauvola for variable backgrounds)
    d. Noise reduction (median filter)
    e. Border removal

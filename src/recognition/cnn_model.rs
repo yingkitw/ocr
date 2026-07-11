@@ -548,7 +548,7 @@ impl DropoutLayer {
             Ok(input
                 .iter()
                 .map(|&x| {
-                    if fastrand::f32() < self.rate {
+                    if rand::random::<f32>() < self.rate {
                         0.0
                     } else {
                         x / (1.0 - self.rate)

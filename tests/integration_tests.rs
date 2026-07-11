@@ -500,6 +500,26 @@ fn test_dewarp_pipeline_integration() {
     let _ = pipeline.process(&trap_img).expect("pipeline process");
 }
 
+/// Auto language detection resolves script + Latin dictionary hit-rates
+#[test]
+fn test_auto_language_detection_integration() {
+    use ocr::lang::LanguageDetector;
+
+    assert_eq!(
+        LanguageDetector::detect("the cat sat on the mat").language,
+        "en"
+    );
+    assert_eq!(LanguageDetector::detect("Привет").language, "ru");
+    assert_eq!(LanguageDetector::detect("こんにちは").language, "ja");
+}
+
+/// Quality gate config is enabled by default
+#[test]
+fn test_quality_gate_config_default() {
+    use ocr::core::config::OcrConfig;
+    assert!(OcrConfig::default().image_processing.enable_quality_gate);
+}
+
 /// Multi-angle oriented text detection finds regions on rotated content
 #[test]
 fn test_oriented_angle_detection_integration() {

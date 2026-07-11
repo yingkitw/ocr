@@ -29,8 +29,7 @@ impl TextDetectionCNN {
     /// Create a new CNN with heuristic initial weights
     /// that approximate edge/gradient detection (reasonable text prior)
     pub fn new() -> Self {
-        use fastrand::f32;
-
+        
         let mut conv1 = Array3::zeros((8, 3, 3));
         let mut conv1_bias = vec![0.0f32; 8];
         for och in 0..8 {
@@ -47,7 +46,7 @@ impl TextDetectionCNN {
                     let mut k = [[0.0f32; 3]; 3];
                     for i in 0..3 {
                         for j in 0..3 {
-                            k[i][j] = f32() * 0.4 - 0.2;
+                            k[i][j] = rand::random::<f32>() * 0.4 - 0.2;
                         }
                     }
                     k
@@ -67,7 +66,7 @@ impl TextDetectionCNN {
             for ich in 0..8 {
                 for i in 0..3 {
                     for j in 0..3 {
-                        conv2[(och, ich, i, j)] = f32() * 0.3 - 0.15;
+                        conv2[(och, ich, i, j)] = rand::random::<f32>() * 0.3 - 0.15;
                     }
                 }
             }

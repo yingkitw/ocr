@@ -24,7 +24,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | Command | Description | Required Args | Optional Flags |
 |---------|-------------|---------------|--------------|
 | `extract` | Recognize text from an image | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--confidence`, `--engine`, `--dict-correct`, `--osd` |
-| `batch` | Process a directory of images | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct` |
+| `batch` | Process a directory of images (prints `[n/total] % ETA` progress) | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct`, `--max-concurrent` |
 | `layout` | Analyze page layout | `IMAGE_PATH` | `-o, --output` |
 | `list-languages` | Print supported language codes | — | — |
 | `check` | Verify system requirements | — | — |
@@ -40,7 +40,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 |------|---------|-------------|
 | `IMAGE_PATH` | required | Path to the image file |
 | `-o, --output` | stdout | Output file path |
-| `-l, --lang` | `en` | Language code (en, fr, de, es, it, pt, ru, zh, ja, ko, ...) |
+| `-l, --lang` | `en` | Language code (`en`, `fr`, `de`, `zh`, `ja`, `ko`, …) or `auto` (script + dictionary detection after recognition) |
 | `--preprocess` | false | Enable full preprocessing pipeline |
 | `-f, --format` | `text` | Output: text, json, hocr, tsv, alto, box, pdf, markdown, structured-json |
 | `--psm` | `3` | Page segmentation mode (Tesseract-compatible) |
@@ -84,7 +84,7 @@ pub struct OcrConfig {
 | `tsv` | TSV with Tesseract-compatible columns | level, page_num, block_num, par_num, line_num, word_num, left, top, width, height, conf, text |
 | `alto` | ALTO XML v4 | `<Page>`, `<TextBlock>`, `<TextLine>`, `<String>` |
 | `box` | Box file format | `char left top right bottom page` |
-| `pdf` | Searchable PDF with invisible text overlay | Original image + invisible text layer |
+| `pdf` | Searchable PDF with invisible text overlay | Requires `--features pdf-output`; original image + invisible text layer |
 | `markdown` | Markdown with headings, paragraphs, lists | `## Heading`, `- List item` |
 | `structured-json` | Hierarchical JSON with document elements | `{"elements": [{"Heading": {...}}, {"Paragraph": {...}}]}` |
 

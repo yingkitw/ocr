@@ -417,7 +417,7 @@ impl PositionEmbedding {
             // Initialize with random values (in practice, these would be learned)
             for i in 0..num_patches {
                 for j in 0..hidden_size {
-                    embeddings[i][j] = fastrand::f32() - 0.5;
+                    embeddings[i][j] = rand::random::<f32>() - 0.5;
                 }
             }
         } else {
@@ -754,7 +754,7 @@ impl Dropout {
             Ok(input
                 .iter()
                 .map(|&x| {
-                    if fastrand::f32() < self.rate {
+                    if rand::random::<f32>() < self.rate {
                         0.0
                     } else {
                         x / (1.0 - self.rate)

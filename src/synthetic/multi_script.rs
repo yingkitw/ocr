@@ -5,7 +5,7 @@
 
 use crate::lang::unicode::Script;
 use crate::synthetic::generator::TextLineGenerator;
-use fastrand;
+use rand::Rng;
 
 /// Character pools for major world scripts
 pub struct ScriptCharPool;
@@ -149,7 +149,7 @@ impl ScriptLineGenerator {
             return String::new();
         }
         (0..length)
-            .map(|_| self.pool[fastrand::usize(..self.pool.len())])
+            .map(|_| self.pool[rand::thread_rng().gen_range(0..self.pool.len())])
             .collect()
     }
 

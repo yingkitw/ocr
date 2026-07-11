@@ -233,7 +233,18 @@ fn test_cli_batch_processes_all_images() {
         "--max-concurrent",
         "2",
     ]);
-    cmd.assert().success();
+    let assert = cmd.assert().success();
+    let stderr = String::from_utf8_lossy(&assert.get_output().stderr);
+    assert!(
+        stderr.contains("Batch complete: 3/3"),
+        "expected batch progress summary, got: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("[3/3]"),
+        "expected per-image progress lines, got: {}",
+        stderr
+    );
 
     // Every input image must produce a .txt output, regardless of concurrency.
     for stem in &["a", "b", "c"] {

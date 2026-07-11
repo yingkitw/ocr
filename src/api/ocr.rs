@@ -264,7 +264,7 @@ impl Default for Ocr {
 /// Batch processing for multiple images
 pub struct BatchProcessor {
     /// OCR engine
-    ocr: Ocr,
+    ocr: std::sync::Arc<Ocr>,
     /// Batch configuration
     config: BatchConfig,
 }
@@ -293,21 +293,22 @@ impl Default for BatchConfig {
 impl BatchProcessor {
     /// Create a new batch processor
     pub fn new(ocr: Ocr, config: BatchConfig) -> Self {
-        Self { ocr, config }
+        Self {
+            ocr: std::sync::Arc::new(ocr),
+            config,
+        }
     }
 
     /// Process multiple images
     pub async fn process_images(&self, images: Vec<ImageInput>) -> ApiResult<Vec<TextResult>> {
-        use futures::stream::{FuturesUnordered, StreamExt};
-
         let semaphore =
-            std::sync::Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent));
-        let mut tasks: FuturesUnordered<_> = FuturesUnordered::new();
-        let ocr = &self.ocr;
+            std::sync::Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent.max(1)));
+        let mut handles = Vec::with_capacity(images.len());
 
         for image in images {
             let semaphore = semaphore.clone();
-            tasks.push(async move {
+            let ocr = self.ocr.clone();
+            handles.push(tokio::spawn(async move {
                 let _permit = semaphore
                     .acquire()
                     .await
@@ -320,11 +321,14 @@ impl BatchProcessor {
                     } => ocr.recognize_text(&data, width, height).await,
                     ImageInput::File { path } => ocr.recognize_text_from_file(path).await,
                 }
-            });
+            }));
         }
 
-        let mut results = Vec::new();
-        while let Some(result) = tasks.next().await {
+        let mut results = Vec::with_capacity(handles.len());
+        for handle in handles {
+            let result = handle
+                .await
+                .map_err(|e| ApiError::Internal(format!("Batch task panicked: {}", e)))?;
             results.push(result?);
         }
 

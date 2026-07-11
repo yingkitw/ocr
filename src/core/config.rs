@@ -107,6 +107,8 @@ pub struct ImageProcessingConfig {
     pub enable_super_resolution: bool,
     /// Target DPI for super-resolution upscaling
     pub target_dpi: u32,
+    /// Assess image quality and auto-fix blur/low-contrast before OCR
+    pub enable_quality_gate: bool,
     /// Enable binarization
     pub enable_binarization: bool,
     /// Binarization threshold
@@ -130,6 +132,7 @@ impl Default for ImageProcessingConfig {
             enable_curve_rectification: true,
             enable_super_resolution: true,
             target_dpi: 300,
+            enable_quality_gate: true,
             enable_binarization: true,
             binarization_threshold: 0.5,
             binarization_method: BinarizationMethod::Otsu,
@@ -308,7 +311,9 @@ pub struct PerformanceConfig {
 impl Default for PerformanceConfig {
     fn default() -> Self {
         Self {
-            max_threads: num_cpus::get(),
+            max_threads: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1),
             enable_simd: true,
             enable_gpu: false,
             memory_limit_mb: 1024,

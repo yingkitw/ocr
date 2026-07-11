@@ -1,9 +1,10 @@
 //! Async utilities for OCR
 
-use futures::future::BoxFuture;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Semaphore};
 use tracing::debug;
+
+use crate::utils::error::*;
 
 /// Async semaphore for controlling concurrency
 pub struct ConcurrencyLimiter {
@@ -24,56 +25,6 @@ impl ConcurrencyLimiter {
             .acquire()
             .await
             .map_err(|_| OcrError::Internal("Failed to acquire semaphore permit".to_string()))
-    }
-}
-
-/// Async batch processor for processing items in parallel
-pub struct AsyncBatchProcessor<T, R> {
-    concurrency_limiter: ConcurrencyLimiter,
-    processor: Arc<dyn Fn(T) -> BoxFuture<'static, Result<R>> + Send + Sync>,
-}
-
-impl<T, R> AsyncBatchProcessor<T, R>
-where
-    T: Send + 'static,
-    R: Send + 'static,
-{
-    /// Create a new async batch processor
-    pub fn new<F>(concurrency_limit: usize, processor: F) -> Self
-    where
-        F: Fn(T) -> BoxFuture<'static, Result<R>> + Send + Sync + 'static,
-    {
-        Self {
-            concurrency_limiter: ConcurrencyLimiter::new(concurrency_limit),
-            processor: Arc::new(processor),
-        }
-    }
-
-    /// Process a batch of items
-    pub async fn process_batch(&self, items: Vec<T>) -> Result<Vec<R>> {
-        let mut handles = Vec::new();
-
-        for item in items {
-            let processor = Arc::clone(&self.processor);
-            let limiter = Arc::clone(&self.concurrency_limiter.semaphore);
-
-            let handle = tokio::spawn(async move {
-                let _permit = limiter.acquire().await?;
-                processor(item).await
-            });
-
-            handles.push(handle);
-        }
-
-        let mut results = Vec::new();
-        for handle in handles {
-            match handle.await {
-                Ok(result) => results.push(result?),
-                Err(e) => return Err(OcrError::Internal(format!("Task failed: {}", e))),
-            }
-        }
-
-        Ok(results)
     }
 }
 
@@ -159,34 +110,18 @@ impl AsyncProgressTracker {
         let mut completed = self.completed.lock().await;
         *completed += increment;
 
-        let progress = {
-            let total = *self.total.lock().await;
-            if total > 0 {
-                *completed as f32 / total as f32
-            } else {
-                0.0
-            }
+        let total = *self.total.lock().await;
+        let progress = if total > 0 {
+            *completed as f32 / total as f32
+        } else {
+            0.0
         };
 
-        if let Some(callback) = self.callback.lock().await.as_ref() {
+        if let Some(ref callback) = *self.callback.lock().await {
             callback(progress);
         }
 
-        debug!("Progress updated: {:.2}%", progress * 100.0);
+        debug!("Progress: {:.1}% ({}/{})", progress * 100.0, *completed, total);
         Ok(())
     }
-
-    /// Get current progress
-    pub async fn progress(&self) -> f32 {
-        let completed = *self.completed.lock().await;
-        let total = *self.total.lock().await;
-
-        if total > 0 {
-            completed as f32 / total as f32
-        } else {
-            0.0
-        }
-    }
 }
-
-use crate::utils::error::*;

@@ -4,16 +4,16 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 
 ## Current State
 
-**Compiles and passes 408+ tests.** The full pipeline works end-to-end for printed text on clean images, with a modular architecture supporting both classical and learned recognition:
+**Compiles and passes 410+ tests.** The full pipeline works end-to-end for printed text on clean images, with a modular architecture supporting both classical and learned recognition:
 
-- **Image preprocessing**: deskew, perspective dewarp, curved-line rectification, super-resolution for tiny/low-DPI text, binarization (Otsu, Sauvola), noise reduction, contrast enhancement, auto-rotate (0°/90°/180°/270°)
+- **Image preprocessing**: deskew, perspective dewarp, curved-line rectification, super-resolution for tiny/low-DPI text, quality gate (auto-sharpen/contrast), binarization (Otsu, Sauvola), noise reduction, contrast enhancement, auto-rotate (0°/90°/180°/270°)
 - **Layout analysis**: Union-Find CCL, multi-angle oriented detection (±45°), column/line detection, reading-order resolution, table detection, form field extraction
 - **Text detection**: `TextDetector` trait with CCL and lightweight CNN implementations
 - **Recognition**: Pattern-matching engine (trainable from synthetic fonts) + CRNN (CNN + BiLSTM + CTC beam search with dictionary/LM rescoring and calibrated confidence) selectable via `--engine`
-- **Multi-language**: Unicode script detection (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari), dictionaries for 25+ languages, per-script CRNN vocabularies
+- **Multi-language**: Unicode script detection (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari), dictionaries for 25+ languages, `--lang auto`, per-script CRNN vocabularies
 - **Post-processing**: Dictionary-based spell correction, document structure classification (headings, lists, paragraphs), hierarchical Markdown/JSON output
-- **Output formats**: text, JSON, hOCR, TSV, ALTO XML, box files, **searchable PDF** (invisible text overlay), **Markdown**, **structured JSON**
-- **CLI**: `extract`, `batch`, `layout`, `list-languages`, `check`, `info`, `validate`, `train`, `benchmark`, `makebox`
+- **Output formats**: text, JSON, hOCR, TSV, ALTO XML, box files, **searchable PDF** (feature `pdf-output`), **Markdown**, **structured JSON**
+- **CLI**: `extract`, `batch` (with progress/ETA), `layout`, `list-languages`, `check`, `info`, `validate`, `train`, `benchmark`, `makebox`
 - **Training**: `CrnnTrainer` with FC-layer backprop on synthetic data + checkpoint saving
 - **Benchmarking**: Per-script CER/WER evaluation across all supported scripts
 - **Font attributes**: Bold/italic/monospace detection from stroke analysis (`FontAttributeDetector`)
@@ -104,6 +104,9 @@ A from-scratch OCR system built in Rust, informed by decades of OCR research and
 ```bash
 # Default build (pattern matching engine)
 cargo build --release
+
+# Searchable PDF output (`--format pdf`)
+cargo build --release --features pdf-output
 
 # With all features
 cargo build --release --all-features

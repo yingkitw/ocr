@@ -1,13 +1,21 @@
 [package]
 name = "ocr"
-version = "0.1.1"
-edition = "2021"
+version = "0.1.2"
+edition = "2024"
 authors = ["Ying Kit WONG"]
 description = "A pure Rust CLI OCR tool for printed text extraction"
 license = "Apache-2.0"
 repository = "https://github.com/yingkitw/ocr"
 homepage = "https://github.com/yingkitw/ocr"
 documentation = "https://docs.rs/ocr"
+readme = "README.md"
+keywords = ["ocr", "text-recognition", "computer-vision", "tesseract", "cli"]
+categories = ["command-line-utilities", "multimedia::images", "text-processing"]
+exclude = [
+    "examples/images/*",
+    "target/*",
+    ".git/*",
+]
 
 [[bin]]
 name = "ocr"
@@ -16,81 +24,51 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
-image = "0.24"
+image = { version = "0.24", default-features = false, features = ["png", "jpeg", "gif", "bmp", "tiff", "webp"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros", "fs", "sync", "net", "io-util"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "std", "ansi"] }
 
 thiserror = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
-num_cpus = "1.0"
-futures = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 imageproc = "0.23"
-nalgebra = "0.32"
 ndarray = "0.15"
-fastrand = "2.0"
 rand = "0.8"
-blake3 = "1.5"
-sha2 = "0.10"
 rayon = "1.8"
-printpdf = { version = "0.9.1", features = ["images"] }
 rusttype = "0.9"
+
+# Optional / heavy
+printpdf = { version = "0.9.1", features = ["images"], optional = true }
+axum = { version = "0.7", features = ["multipart"], optional = true }
+tower = { version = "0.4", optional = true }
+tower-http = { version = "0.5", features = ["cors", "limit"], optional = true }
+multer = { version = "3", optional = true }
+pdf = { version = "0.9", optional = true, default-features = false }
+cudarc = { version = "0.12", optional = true, features = ["cuda-12040"] }
+ocl = { version = "0.19", optional = true }
+onnx-rs = { version = "0.1", optional = true }
+reqwest = { version = "0.12", features = ["multipart", "json"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.8"
 assert_cmd = "2.0"
 predicates = "3.0"
 insta = "1.0"
-reqwest = { version = "0.12", features = ["multipart", "json"] }
-rusttype = "0.9"
 
 [features]
 default = ["simd"]
 simd = []
+# Searchable PDF output (`--format pdf`) — pulls printpdf + font stack
+pdf-output = ["dep:printpdf"]
+# PDF *input* rasterization
+pdf = ["dep:pdf"]
+web-api = ["dep:axum", "dep:tower", "dep:tower-http", "dep:multer", "dep:reqwest"]
 cuda = ["dep:cudarc"]
 opencl = ["dep:ocl"]
-web-api = ["dep:axum", "dep:tower", "dep:tower-http", "dep:multer"]
-pdf = ["dep:pdf"]
 opencv = []
 onnx = ["dep:onnx-rs"]
-
-[dependencies.axum]
-version = "0.7"
-features = ["multipart"]
-optional = true
-
-[dependencies.tower]
-version = "0.4"
-optional = true
-
-[dependencies.tower-http]
-version = "0.5"
-features = ["cors", "limit"]
-optional = true
-
-[dependencies.multer]
-version = "3"
-optional = true
-
-[dependencies.pdf]
-version = "0.9"
-optional = true
-default-features = false
-
-[dependencies.cudarc]
-version = "0.12"
-optional = true
-features = ["cuda-12040"]
-
-[dependencies.ocl]
-version = "0.19"
-optional = true
-
-[dependencies.onnx-rs]
-version = "0.1"
-optional = true
 
 [profile.release]
 opt-level = 3

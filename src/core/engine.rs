@@ -505,6 +505,11 @@ impl OcrEngine {
             processed = sr.upscale_if_needed(&processed)?.image;
         }
 
+        // Quality gate: auto-sharpen / boost contrast when metrics are poor
+        if self.config.image_processing.enable_quality_gate {
+            processed = Self::apply_quality_gate(processed)?;
+        }
+
         // Orientation detection and correction (auto-rotate 0/90/180/270)
         if self.config.layout_analysis.enable_orientation_detection {
             tracing::debug!("Running orientation detection");
@@ -522,6 +527,26 @@ impl OcrEngine {
         }
 
         Ok(processed)
+    }
+
+    /// Auto-correct blur / low contrast based on `ImageQualityAssessor` metrics.
+    fn apply_quality_gate(mut img: OcrImage) -> Result<OcrImage> {
+        let score = crate::image::ImageQualityAssessor::assess_quality(&img);
+        if score.sharpness < 0.35 {
+            tracing::debug!(
+                sharpness = score.sharpness,
+                "quality gate: sharpening blurry image"
+            );
+            img = crate::image::ImageEnhancer::sharpen(&img)?;
+        }
+        if score.contrast < 0.35 {
+            tracing::debug!(
+                contrast = score.contrast,
+                "quality gate: boosting contrast"
+            );
+            img = crate::image::ImageEnhancer::enhance_contrast(&img, 1.4)?;
+        }
+        Ok(img)
     }
 
     /// Optionally flatten curved text-line crops before recognition.
@@ -850,6 +875,7 @@ impl OcrEngine {
         image: &OcrImage,
     ) -> Result<TextResult> {
         use crate::lang::dictionary::DictionaryHandler;
+        use crate::lang::LanguageDetector;
 
         let whitelist = &self.config.recognition.character_whitelist;
         let blacklist = &self.config.recognition.character_blacklist;
@@ -857,10 +883,20 @@ impl OcrEngine {
         let enable_dict_correction = self.config.recognition.enable_dictionary_correction;
         let enable_font_analysis = self.config.recognition.enable_font_attribute_detection;
 
+        // Resolve `--lang auto` from recognized text (script + dictionary hit-rates).
+        let mut resolved_lang = self.config.recognition.language.clone();
+        if resolved_lang.eq_ignore_ascii_case("auto") {
+            let guess = LanguageDetector::detect(&recognition.text);
+            tracing::debug!(
+                language = %guess.language,
+                confidence = guess.confidence,
+                "auto language detection"
+            );
+            resolved_lang = guess.language;
+        }
+
         let dict = if enable_dict_correction {
-            Some(DictionaryHandler::new_for_language(
-                &self.config.recognition.language,
-            ))
+            Some(DictionaryHandler::new_for_language(&resolved_lang))
         } else {
             None
         };
@@ -872,6 +908,7 @@ impl OcrEngine {
             recognition.confidence,
             crate::core::text::BoundingBox::new(0, 0, 0, 0),
         );
+        text_result.language = Some(resolved_lang);
 
         for line_rec in &recognition.lines {
             let line_bbox = line_rec
