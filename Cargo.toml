@@ -3,14 +3,14 @@ name = "ocr"
 version = "0.1.3"
 edition = "2024"
 authors = ["Ying Kit WONG"]
-description = "A pure Rust CLI OCR tool for printed text extraction"
+description = "Pure Rust OCR engine and CLI for extracting printed text from images. Supports 25+ languages, CRNN/CTC recognition, table and form extraction, and output to text, JSON, Markdown, hOCR, TSV, and ALTO XML."
 license = "Apache-2.0"
 repository = "https://github.com/yingkitw/ocr"
 homepage = "https://github.com/yingkitw/ocr"
 documentation = "https://docs.rs/ocr"
 readme = "README.md"
-keywords = ["ocr", "text-recognition", "computer-vision", "tesseract", "cli"]
-categories = ["command-line-utilities", "multimedia::images", "text-processing"]
+keywords = ["ocr", "tesseract", "image-to-text", "document-ai", "pure-rust"]
+categories = ["command-line-utilities", "multimedia::images", "text-processing", "science"]
 exclude = [
     "examples/images/*",
     "target/*",
