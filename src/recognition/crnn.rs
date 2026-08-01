@@ -203,20 +203,20 @@ impl Vocabulary {
 pub struct CnnFeatureExtractor {
     pub config: CrnnConfig,
     // Conv1: 1 -> 64, 3x3
-    pub(crate) conv1_weights: Array3<f32>,
-    pub(crate) conv1_bias: Array1<f32>,
+    pub conv1_weights: Array3<f32>,
+    pub conv1_bias: Array1<f32>,
     // Conv2: 64 -> 128, 3x3
-    pub(crate) conv2_weights: Array3<f32>,
-    pub(crate) conv2_bias: Array1<f32>,
+    pub conv2_weights: Array3<f32>,
+    pub conv2_bias: Array1<f32>,
     // Conv3: 128 -> 256, 3x3
-    pub(crate) conv3_weights: Array3<f32>,
-    pub(crate) conv3_bias: Array1<f32>,
+    pub conv3_weights: Array3<f32>,
+    pub conv3_bias: Array1<f32>,
     // Conv4: 256 -> 256, 3x3
-    pub(crate) conv4_weights: Array3<f32>,
-    pub(crate) conv4_bias: Array1<f32>,
+    pub conv4_weights: Array3<f32>,
+    pub conv4_bias: Array1<f32>,
     // Conv5: 256 -> 512, 3x3
-    pub(crate) conv5_weights: Array3<f32>,
-    pub(crate) conv5_bias: Array1<f32>,
+    pub conv5_weights: Array3<f32>,
+    pub conv5_bias: Array1<f32>,
     // Batch norm params (simplified: just scale + shift per channel)
     pub(crate) bn_scales: Vec<Array1<f32>>,
     pub(crate) bn_shifts: Vec<Array1<f32>>,
@@ -531,15 +531,15 @@ pub struct BiLstmLayer {
     pub input_size: usize,
     pub hidden_size: usize,
     // Forward LSTM weights
-    pub(crate) wf_ih: Array2<f32>,
-    pub(crate) wf_hh: Array2<f32>,
-    pub(crate) bf_ih: Array1<f32>,
-    pub(crate) bf_hh: Array1<f32>,
+    pub wf_ih: Array2<f32>,
+    pub wf_hh: Array2<f32>,
+    pub bf_ih: Array1<f32>,
+    pub bf_hh: Array1<f32>,
     // Backward LSTM weights
-    pub(crate) wb_ih: Array2<f32>,
-    pub(crate) wb_hh: Array2<f32>,
-    pub(crate) bb_ih: Array1<f32>,
-    pub(crate) bb_hh: Array1<f32>,
+    pub wb_ih: Array2<f32>,
+    pub wb_hh: Array2<f32>,
+    pub bb_ih: Array1<f32>,
+    pub bb_hh: Array1<f32>,
 }
 
 impl BiLstmLayer {
