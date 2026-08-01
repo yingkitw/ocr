@@ -11,7 +11,6 @@ fn build_config(lang: &str, preprocess: bool, engine: &str, dict_correct: bool) 
     config.recognition.confidence_threshold = 0.3;
     config.recognition.engine = match engine {
         "lstm" => RecognitionEngine::LSTM,
-        "hybrid" => RecognitionEngine::Hybrid,
         _ => RecognitionEngine::PatternMatching,
     };
     config.recognition.enable_dictionary_correction = dict_correct;

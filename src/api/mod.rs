@@ -2,13 +2,11 @@
 
 pub mod config;
 pub mod error;
-pub mod image;
 pub mod ocr;
 pub mod text;
 
 pub use config::*;
 pub use error::*;
-pub use image::*;
 pub use ocr::*;
 pub use text::*;
 

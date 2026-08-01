@@ -96,19 +96,6 @@ fn test_cli_extract_with_lstm_engine() {
 }
 
 #[test]
-fn test_cli_extract_with_hybrid_engine() {
-    let file = create_test_image_with_rectangles();
-    let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&[
-        "extract",
-        file.path().to_str().unwrap(),
-        "--engine",
-        "hybrid",
-    ]);
-    cmd.assert().success();
-}
-
-#[test]
 fn test_cli_extract_with_dict_correct() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();

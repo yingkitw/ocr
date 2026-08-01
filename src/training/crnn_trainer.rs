@@ -5,7 +5,7 @@
 use crate::recognition::crnn::CrnnModel;
 use crate::synthetic::{DistortionConfig, SyntheticSample, TextLineGenerator};
 use crate::utils::Result;
-use ndarray::Array2;
+use ndarray::{Array1, Array2};
 #[cfg(test)]
 use crate::recognition::crnn::CrnnConfig;
 
@@ -263,20 +263,74 @@ impl CrnnTrainer {
         }
     }
 
-    /// Save model checkpoint
+    /// Save model checkpoint (config + vocabulary + FC weights/biases)
     pub fn save_checkpoint(&self, path: &std::path::Path) -> Result<()> {
         use std::io::Write;
         let config = &self.model.config;
         let vocab_chars: String = self.model.vocab.chars.iter().collect();
+        let fc_weight: Vec<Vec<f32>> = self
+            .model
+            .fc_weight
+            .rows()
+            .into_iter()
+            .map(|row| row.to_vec())
+            .collect();
+        let fc_bias: Vec<f32> = self.model.fc_bias.to_vec();
 
         let checkpoint = serde_json::json!({
             "config": config,
             "vocab": vocab_chars,
             "parameter_count": self.model.parameter_count(),
+            "fc_weight": fc_weight,
+            "fc_bias": fc_bias,
         });
 
         let mut file = std::fs::File::create(path)?;
         file.write_all(serde_json::to_string_pretty(&checkpoint)?.as_bytes())?;
+        Ok(())
+    }
+
+    /// Load model checkpoint (config + vocabulary + FC weights/biases) into the trainer's model
+    pub fn load_checkpoint(&mut self, path: &std::path::Path) -> Result<()> {
+        let bytes = std::fs::read(path)?;
+        let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+
+        let fc_weight_rows: Vec<Vec<f32>> = serde_json::from_value(value["fc_weight"].clone())?;
+        let fc_bias_vec: Vec<f32> = serde_json::from_value(value["fc_bias"].clone())?;
+        let expected_rows = self.model.fc_weight.nrows();
+        let expected_cols = self.model.fc_weight.ncols();
+        if fc_weight_rows.len() != expected_rows
+            || fc_weight_rows.iter().any(|r| r.len() != expected_cols)
+        {
+            return Err(crate::utils::OcrError::Configuration(format!(
+                "FC weight shape mismatch: expected {}x{}, got {}x{:?}",
+                expected_rows,
+                expected_cols,
+                fc_weight_rows.len(),
+                fc_weight_rows.first().map(|r| r.len()).unwrap_or(0)
+            )));
+        }
+        if fc_bias_vec.len() != self.model.fc_bias.len() {
+            return Err(crate::utils::OcrError::Configuration(format!(
+                "FC bias length mismatch: expected {}, got {}",
+                self.model.fc_bias.len(),
+                fc_bias_vec.len()
+            )));
+        }
+
+        let mut fc_weight = Array2::zeros((expected_rows, expected_cols));
+        for (i, row) in fc_weight_rows.iter().enumerate() {
+            for (j, v) in row.iter().enumerate() {
+                fc_weight[[i, j]] = *v;
+            }
+        }
+        let mut fc_bias = Array1::zeros(self.model.fc_bias.len());
+        for (i, v) in fc_bias_vec.iter().enumerate() {
+            fc_bias[i] = *v;
+        }
+        self.model.fc_weight = fc_weight;
+        self.model.fc_bias = fc_bias;
+        self.model.fc_weight_quantized = None;
         Ok(())
     }
 }
@@ -371,10 +425,20 @@ mod tests {
     fn test_trainer_checkpoint() {
         let config = CrnnConfig::default();
         let model = CrnnModel::new(config);
-        let trainer = CrnnTrainer::new(model);
+        let mut trainer = CrnnTrainer::new(model);
+        // Inject a distinctive FC weight so we can verify it round-trips.
+        trainer.model.fc_weight[[0, 0]] = 0.12345;
+        trainer.model.fc_bias[1] = -0.6789;
         let temp_path = std::path::Path::new("/tmp/test_crnn_checkpoint.json");
         trainer.save_checkpoint(temp_path).unwrap();
         assert!(temp_path.exists());
+
+        let mut fresh = CrnnTrainer::new(CrnnModel::new(CrnnConfig::default()));
+        fresh.load_checkpoint(temp_path).unwrap();
+        assert!((fresh.model.fc_weight[[0, 0]] - 0.12345).abs() < 1e-6);
+        assert!((fresh.model.fc_bias[1] - -0.6789).abs() < 1e-6);
+        assert_eq!(fresh.model.fc_weight.shape(), trainer.model.fc_weight.shape());
+
         let _ = std::fs::remove_file(temp_path);
     }
 }

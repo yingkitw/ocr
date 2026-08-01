@@ -44,7 +44,7 @@ pub enum Commands {
         #[arg(long, default_value = "0.5")]
         confidence: f32,
 
-        /// Recognition engine: pattern, lstm, hybrid
+        /// Recognition engine: pattern, lstm
         #[arg(long, default_value = "pattern")]
         engine: String,
 
@@ -83,7 +83,7 @@ pub enum Commands {
         #[arg(long, default_value = "4")]
         max_concurrent: usize,
 
-        /// Recognition engine: pattern, lstm, hybrid
+        /// Recognition engine: pattern, lstm
         #[arg(long, default_value = "pattern")]
         engine: String,
 
@@ -175,7 +175,7 @@ pub enum Commands {
         #[arg(short, long, default_value = "en")]
         lang: String,
 
-        /// Recognition engine: pattern, lstm, hybrid
+        /// Recognition engine: pattern, lstm
         #[arg(long, default_value = "pattern")]
         engine: String,
 

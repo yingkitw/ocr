@@ -454,62 +454,6 @@ impl OcrImage {
         })
     }
 
-    /// Translate image
-    pub fn translate(&self, _tx: f32, _ty: f32) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
-
-    /// Adjust brightness
-    pub fn adjust_brightness(&self, _factor: f32) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
-
-    /// Adjust contrast
-    pub fn adjust_contrast(&self, _factor: f32) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
-
-    /// Add noise
-    pub fn add_noise(&self, _noise_level: f32) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
-
-    /// Apply Gaussian blur
-    pub fn gaussian_blur(&self, _blur_radius: f32) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
-
-    /// Apply perspective transform
-    pub fn perspective_transform(
-        &self,
-        _src_points: &[(f32, f32)],
-        _dst_points: &[(f32, f32)],
-    ) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
-
-    /// Apply elastic deformation
-    pub fn elastic_deformation(&self, _alpha: f32, _sigma: f32) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
-
-    /// Apply color jitter
-    pub fn color_jitter(
-        &self,
-        _hue_shift: f32,
-        _saturation_factor: f32,
-        _value_factor: f32,
-    ) -> Result<Self> {
-        // Placeholder implementation
-        Ok(self.clone())
-    }
 }
 
 /// Pixel value representation

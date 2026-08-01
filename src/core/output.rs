@@ -27,8 +27,6 @@ pub enum OutputFormat {
     Alto,
     /// Box file for Tesseract training
     Box,
-    /// Searchable PDF with invisible text layer
-    Pdf,
     /// Hierarchical structured JSON with document elements
     StructuredJson,
     /// Markdown output with heading/paragraph/list structure
@@ -828,10 +826,6 @@ pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String
         OutputFormat::Tsv => format_tsv(result),
         OutputFormat::Alto => format_alto(result),
         OutputFormat::Box => format_box(result),
-        OutputFormat::Pdf => Err(crate::OcrError::Internal(
-            "PDF output requires image path. Use format_pdf_with_image instead.".to_string(),
-        )
-        .into()),
         OutputFormat::StructuredJson => format_structured_json(result),
         OutputFormat::Markdown => format_markdown(result),
     }
@@ -846,11 +840,10 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
         "tsv" => Ok(OutputFormat::Tsv),
         "alto" | "xml" => Ok(OutputFormat::Alto),
         "box" => Ok(OutputFormat::Box),
-        "pdf" => Ok(OutputFormat::Pdf),
         "md" | "markdown" => Ok(OutputFormat::Markdown),
         "structured" | "structured-json" | "doc" => Ok(OutputFormat::StructuredJson),
         _ => Err(crate::OcrError::InvalidInput(format!(
-            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, pdf, markdown, structured-json",
+            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, markdown, structured-json",
             s
         ))
         .into()),

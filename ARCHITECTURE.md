@@ -52,7 +52,7 @@ Shared data structures and the central engine:
 | `engine.rs` | `OcrEngine` — state machine: init → load image → preprocess → segment → recognize → post-process |
 | `geometry.rs` | `TBox`, `Polygon`, `Point2D` — layout geometry types |
 | `layout.rs` | `LayoutResult`, `Block`, `TextRegion`, `Table`, `ReadingOrder` — layout analysis outputs |
-| `output.rs` | Formatters: text, JSON, hOCR, TSV, ALTO XML, box, PDF, Markdown, structured JSON |
+| `output.rs` | Formatters: text, JSON, hOCR, TSV, ALTO XML, box, Markdown, structured JSON |
 | `recognition.rs` | `RecognitionResult`, `CharacterRecognition`, `WordRecognition`, `LineRecognition` |
 | `text.rs` | `TextResult` — final unified output with confidence, bounding boxes, lines, words |
 
@@ -92,9 +92,7 @@ Multiple engines behind a unified trait:
 | `BasicOcrEngine` | **Working** | Tesseract-inspired: CCL → lines → pattern match | More robust segmentation. Trainable via `TemplateTrainer`. |
 | `CrnnModel` | **Working** | 5-layer CNN + 2-layer BiLSTM + CTC beam decode | Pure Rust ndarray. Model size < 5MB. Beam search + dict/LM rescoring + calibrated confidence. Selectable via `--engine lstm`. |
 | `ScriptModelRegistry` | **Working** | HashMap of per-script CRNN models | Routes to Latin/CJK/Arabic/Cyrillic/etc. vocabularies. |
-| `LstmModel` | Working (internal) | Manual LSTM cell (ndarray) | Used inside `CrnnModel` BiLSTM layers. |
-| `TransformerModel` | Stub | Self-attention encoder (ndarray) | Future work. |
-| `HybridModel` | Stub | Ensemble wrapper | Future work. |
+| `LstmModel` | Working (internal) | Manual LSTM cell (ndarray) | Used inside `CrnnModel` BiLSTM layers; also wrapped by `ModelManager` for runtime model switching. |
 
 **Evolution completed:**
 1. CRNN (CNN feature extractor + BiLSTM + CTC decoder) implemented and wired
@@ -121,16 +119,14 @@ Multiple engines behind a unified trait:
 
 ### Training (`src/training/`)
 
-Infrastructure for learning models from data:
+Only the CRNN trainer is wired today; the broader training stack
+(generic data loaders, optimizers, augmentation pipeline, checkpoint manager,
+loss zoo) was speculative and has been removed until a second concrete
+consumer arrives.
 
-- `data.rs` — Dataset loading, batching
-- `augmentation.rs` — Image distortions: blur, noise, rotation, scaling, perspective
-- `losses.rs` — CTC loss, cross-entropy
-- `optimizers.rs` — SGD, Adam (manual implementation with ndarray)
-- `metrics.rs` — Character Error Rate (CER), Word Error Rate (WER)
-- `checkpoint.rs` — Save/load model weights
-- `crnn_trainer.rs` — `CrnnTrainer`: synthetic batch training, checkpoint saving/loading
-- `quantization.rs` — `QuantizedTensor`, `quantize_array2`, `quantized_matmul`: INT8 symmetric quantization for edge deployment
+- `crnn_trainer.rs` — `CrnnTrainer`: FC-only backprop on synthetic text-line
+  images, checkpoint save/load that now actually persists `fc_weight` /
+  `fc_bias` (the only tensors the trainer updates)
 
 ### ONNX Import (`src/onnx/`)
 
@@ -177,7 +173,7 @@ Infrastructure for learning models from data:
    b. Dictionary correction (if enabled)
    c. Confidence score aggregation
 9. Output formatting:
-   a. Plain text, JSON, hOCR, TSV, ALTO XML, box, PDF, Markdown, structured JSON
+   a. Plain text, JSON, hOCR, TSV, ALTO XML, box, Markdown, structured JSON
    b. Write to stdout or file
 ```
 

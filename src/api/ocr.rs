@@ -3,7 +3,6 @@
 use crate::api::error::{ApiError, ApiResult};
 use crate::core::{image::ImageFormat, LayoutResult, OcrConfig, OcrEngine, OcrImage, TextResult};
 use crate::utils::{OcrError, Result, Timer};
-use chrono::{DateTime, Utc};
 use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -249,9 +248,7 @@ impl Ocr {
 
     /// Check if engine is initialized
     pub async fn is_initialized(&self) -> bool {
-        let _engine = self.engine.read().await;
-        // TODO: Add is_initialized method to OcrEngine
-        true
+        self.engine.read().await.is_initialized().await
     }
 }
 
@@ -261,131 +258,3 @@ impl Default for Ocr {
     }
 }
 
-/// Batch processing for multiple images
-pub struct BatchProcessor {
-    /// OCR engine
-    ocr: std::sync::Arc<Ocr>,
-    /// Batch configuration
-    config: BatchConfig,
-}
-
-/// Batch processing configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BatchConfig {
-    /// Maximum number of concurrent images
-    pub max_concurrent: usize,
-    /// Enable progress tracking
-    pub enable_progress_tracking: bool,
-    /// Progress callback
-    pub progress_callback: Option<String>, // Function name for callback
-}
-
-impl Default for BatchConfig {
-    fn default() -> Self {
-        Self {
-            max_concurrent: 4,
-            enable_progress_tracking: true,
-            progress_callback: None,
-        }
-    }
-}
-
-impl BatchProcessor {
-    /// Create a new batch processor
-    pub fn new(ocr: Ocr, config: BatchConfig) -> Self {
-        Self {
-            ocr: std::sync::Arc::new(ocr),
-            config,
-        }
-    }
-
-    /// Process multiple images
-    pub async fn process_images(&self, images: Vec<ImageInput>) -> ApiResult<Vec<TextResult>> {
-        let semaphore =
-            std::sync::Arc::new(tokio::sync::Semaphore::new(self.config.max_concurrent.max(1)));
-        let mut handles = Vec::with_capacity(images.len());
-
-        for image in images {
-            let semaphore = semaphore.clone();
-            let ocr = self.ocr.clone();
-            handles.push(tokio::spawn(async move {
-                let _permit = semaphore
-                    .acquire()
-                    .await
-                    .map_err(|e| ApiError::Internal(format!("Semaphore acquire failed: {}", e)))?;
-                match image {
-                    ImageInput::Data {
-                        data,
-                        width,
-                        height,
-                    } => ocr.recognize_text(&data, width, height).await,
-                    ImageInput::File { path } => ocr.recognize_text_from_file(path).await,
-                }
-            }));
-        }
-
-        let mut results = Vec::with_capacity(handles.len());
-        for handle in handles {
-            let result = handle
-                .await
-                .map_err(|e| ApiError::Internal(format!("Batch task panicked: {}", e)))?;
-            results.push(result?);
-        }
-
-        Ok(results)
-    }
-}
-
-/// Image input for batch processing
-#[derive(Debug, Clone)]
-pub enum ImageInput {
-    /// Image data with dimensions
-    Data {
-        data: Vec<u8>,
-        width: u32,
-        height: u32,
-    },
-    /// Image file path
-    File { path: String },
-}
-
-/// OCR result with additional metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OcrResult {
-    /// Text result
-    pub text_result: TextResult,
-    /// Processing time in milliseconds
-    pub processing_time_ms: u64,
-    /// Image metadata
-    pub image_metadata: ImageMetadata,
-    /// Engine metadata
-    pub engine_metadata: EngineMetadata,
-}
-
-/// Image metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImageMetadata {
-    /// Image width
-    pub width: u32,
-    /// Image height
-    pub height: u32,
-    /// Image format
-    pub format: String,
-    /// Image DPI
-    pub dpi: u32,
-    /// Image size in bytes
-    pub size_bytes: usize,
-}
-
-/// Engine metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineMetadata {
-    /// Engine name
-    pub name: String,
-    /// Engine version
-    pub version: String,
-    /// Processing timestamp
-    pub timestamp: DateTime<Utc>,
-    /// Configuration used
-    pub config: OcrConfig,
-}

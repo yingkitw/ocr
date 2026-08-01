@@ -80,8 +80,6 @@ pub enum RecognitionEngine {
     LSTM,
     /// Traditional pattern matching
     PatternMatching,
-    /// Hybrid approach
-    Hybrid,
 }
 
 /// Image processing configuration

@@ -28,13 +28,13 @@ After each batch of features, perform a quality pass:
 - **Consistency**: Match existing code style and patterns
 
 ### 6. Competitive Intelligence
-Research similar open-source WebRTC signaling servers (Janus, LiveKit, mediasoup, Pion, etc.). Identify capabilities they have that this project lacks. Add the most valuable ones to the `TODO.md` brainstorming section. Prioritize features that provide clear competitive advantage.
+Research similar open-source OCR engines (Tesseract, EasyOCR, PaddleOCR, docTR, surya, etc.). Identify capabilities they have that this project lacks. Add the most valuable ones to the `TODO.md` brainstorming section. Prioritize features that provide clear competitive advantage.
 
 ### 7. Update Documentation
 Keep all project docs aligned with the current implementation:
 - **`README.md`**: Quick start, CLI options, feature list, architecture summary
 - **`TODO.md`**: Mark completed items, move them to Done, keep brainstorming current
-- **`SPEC.md`**: Message types, protocol semantics, error handling, HTTP endpoints
+- **`SPEC.md`**: CLI spec, output formats, API contracts, feature flags
 - **`ARCHITECTURE.md`**: Module relationships, data flow, deployment topology
 - **`AGENTS.md`**: This file — update if the loop itself evolves
 

@@ -8,8 +8,6 @@ pub mod lang;
 pub mod layout;
 #[cfg(feature = "onnx")]
 pub mod onnx;
-#[cfg(feature = "pdf")]
-pub mod pdf;
 pub mod recognition;
 #[cfg(feature = "web-api")]
 pub mod server;

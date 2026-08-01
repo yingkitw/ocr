@@ -10,7 +10,6 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use image::GenericImageView;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -153,8 +152,8 @@ async fn list_languages(State(state): State<Arc<AppState>>) -> Json<serde_json::
 /// - `image` (required): the image file (png, jpg, tiff, bmp, webp)
 /// - `lang` (optional): language code, default "en"
 /// - `format` (optional): output format "text", "json", "hocr", "tsv", default "text"
-/// - `preprocess` (optional): "true"/"false", default "false"
-/// - `engine` (optional): "pattern", "lstm", "hybrid", default "pattern"
+/// - `preprocess` (optional): "true"/"false", default "false" (no-op: server uses default config)
+/// - `engine` (optional): "pattern", "lstm", default "pattern" (no-op: server uses default config)
 async fn recognize_text(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
@@ -222,43 +221,7 @@ async fn recognize_text(
     let (width, height) = gray.dimensions();
     let raw_pixels: Vec<u8> = gray.pixels().map(|p| p[0]).collect();
 
-    let mut config = crate::core::config::OcrConfig::default();
-    config.recognition.language = params.lang.clone();
-    config.recognition.engine = match params.engine.as_str() {
-        "lstm" => crate::core::config::RecognitionEngine::LSTM,
-        "hybrid" => crate::core::config::RecognitionEngine::Hybrid,
-        _ => crate::core::config::RecognitionEngine::PatternMatching,
-    };
-    config.image_processing.enable_preprocessing = params.preprocess;
-    config.image_processing.enable_binarization = params.preprocess;
-    config.image_processing.enable_noise_reduction = params.preprocess;
-    config.image_processing.enable_contrast_enhancement = params.preprocess;
-    config.image_processing.enable_deskewing = params.preprocess;
-
-    let ocr = match crate::api::Ocr::with_config(config) {
-        Ok(o) => o,
-        Err(e) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    success: false,
-                    error: format!("Failed to create OCR engine: {}", e),
-                }),
-            ));
-        }
-    };
-
-    if let Err(e) = ocr.initialize().await {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                success: false,
-                error: format!("Failed to initialize OCR engine: {}", e),
-            }),
-        ));
-    }
-
-    let result = match ocr.recognize_text(&raw_pixels, width, height).await {
+    let result = match state.ocr.recognize_text(&raw_pixels, width, height).await {
         Ok(r) => r,
         Err(e) => {
             return Err((

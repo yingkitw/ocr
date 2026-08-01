@@ -4,16 +4,12 @@ pub mod cjk;
 pub mod detector;
 pub mod dictionary;
 mod ngram;
-pub mod osd;
-pub mod unicharset;
 pub mod unicode;
 
 pub use cjk::*;
 pub use detector::*;
 pub use dictionary::*;
 pub use ngram::*;
-pub use osd::*;
-pub use unicharset::*;
 pub use unicode::*;
 
 /// Re-export commonly used types

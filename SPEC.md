@@ -42,7 +42,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | `-o, --output` | stdout | Output file path |
 | `-l, --lang` | `en` | Language code (`en`, `fr`, `de`, `zh`, `ja`, `ko`, …) or `auto` (script + dictionary detection after recognition) |
 | `--preprocess` | false | Enable full preprocessing pipeline |
-| `-f, --format` | `text` | Output: text, json, hocr, tsv, alto, box, pdf, markdown, structured-json |
+| `-f, --format` | `text` | Output: text, json, hocr, tsv, alto, box, markdown, structured-json |
 | `--psm` | `3` | Page segmentation mode (Tesseract-compatible) |
 | `--confidence` | `0.5` | Minimum confidence threshold (0.0–1.0) |
 | `--engine` | `pattern` | Recognition engine: pattern, lstm, hybrid |
@@ -84,7 +84,6 @@ pub struct OcrConfig {
 | `tsv` | TSV with Tesseract-compatible columns | level, page_num, block_num, par_num, line_num, word_num, left, top, width, height, conf, text |
 | `alto` | ALTO XML v4 | `<Page>`, `<TextBlock>`, `<TextLine>`, `<String>` |
 | `box` | Box file format | `char left top right bottom page` |
-| `pdf` | Searchable PDF with invisible text overlay | Requires `--features pdf-output`; original image + invisible text layer |
 | `markdown` | Markdown with headings, paragraphs, lists | `## Heading`, `- List item` |
 | `structured-json` | Hierarchical JSON with document elements | `{"elements": [{"Heading": {...}}, {"Paragraph": {...}}]}` |
 
@@ -270,7 +269,6 @@ impl Script {
 - [x] Document structure classification: Heading, Paragraph, ListItem, Caption, Footer, PageNumber
 - [x] Hierarchical Markdown output (`--format markdown`)
 - [x] Structured JSON output (`--format structured-json`)
-- [x] Searchable PDF generation with invisible text overlay
 
 ### Layout API
 

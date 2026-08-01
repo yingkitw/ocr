@@ -6,7 +6,7 @@ use tracing::info;
 use ocr::api::Ocr;
 
 use super::helpers::{
-    apply_dictionary_correction, build_config, format_result, generate_searchable_pdf,
+    apply_dictionary_correction, build_config, format_result,
 };
 
 pub async fn handle_extract(
@@ -40,24 +40,6 @@ pub async fn handle_extract(
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 
-    let ext = image_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    if ext == "pdf" {
-        return super::pdf::handle_pdf_extraction(
-            &ocr,
-            &image_path,
-            output,
-            format,
-            lang,
-            dict_correct,
-        )
-        .await;
-    }
-
     let mut result = ocr
         .recognize_text_from_file(&image_path)
         .await
@@ -71,10 +53,6 @@ pub async fn handle_extract(
         "OCR completed with confidence: {:.2}%",
         result.confidence * 100.0
     );
-
-    if format.to_lowercase() == "pdf" {
-        return generate_searchable_pdf(&image_path, &result, output).await;
-    }
 
     let output_content = format_result(&result, format)?;
     super::helpers::write_output(&output_content, output)

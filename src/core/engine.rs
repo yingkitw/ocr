@@ -275,6 +275,11 @@ impl OcrEngine {
         Ok(state.statistics.clone())
     }
 
+    /// Whether the engine has been initialized
+    pub async fn is_initialized(&self) -> bool {
+        self.state.read().await.initialized
+    }
+
     /// Get engine metadata
     pub fn get_metadata(&self) -> &EngineMetadata {
         &self.metadata
@@ -465,19 +470,16 @@ impl OcrEngine {
 
     /// Initialize image processing
     async fn initialize_image_processing(&self) -> Result<()> {
-        // TODO: Initialize image processing pipeline
         Ok(())
     }
 
     /// Initialize layout analysis
     async fn initialize_layout_analysis(&self) -> Result<()> {
-        // TODO: Initialize layout analysis
         Ok(())
     }
 
     /// Initialize language detection
     async fn initialize_language_detection(&self) -> Result<()> {
-        // TODO: Initialize language detection
         Ok(())
     }
 

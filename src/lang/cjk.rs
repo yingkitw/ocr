@@ -61,41 +61,12 @@ pub struct CJKSegment {
 }
 
 /// CJK text processor
-pub struct CJKProcessor {
-    chinese_dictionary: Option<ChineseDictionary>,
-    japanese_dictionary: Option<JapaneseDictionary>,
-    korean_dictionary: Option<KoreanDictionary>,
-}
+pub struct CJKProcessor;
 
 impl CJKProcessor {
     /// Create a new CJK processor
     pub fn new() -> Self {
-        Self {
-            chinese_dictionary: None,
-            japanese_dictionary: None,
-            korean_dictionary: None,
-        }
-    }
-
-    /// Load Chinese dictionary
-    pub async fn load_chinese_dictionary(&mut self, _path: &str) -> Result<()> {
-        // TODO: Implement Chinese dictionary loading
-        self.chinese_dictionary = Some(ChineseDictionary::new());
-        Ok(())
-    }
-
-    /// Load Japanese dictionary
-    pub async fn load_japanese_dictionary(&mut self, _path: &str) -> Result<()> {
-        // TODO: Implement Japanese dictionary loading
-        self.japanese_dictionary = Some(JapaneseDictionary::new());
-        Ok(())
-    }
-
-    /// Load Korean dictionary
-    pub async fn load_korean_dictionary(&mut self, _path: &str) -> Result<()> {
-        // TODO: Implement Korean dictionary loading
-        self.korean_dictionary = Some(KoreanDictionary::new());
-        Ok(())
+        Self
     }
 
     /// Detect CJK language from text
@@ -415,33 +386,6 @@ impl CJKProcessor {
         } else {
             None
         }
-    }
-}
-
-/// Chinese dictionary (placeholder)
-pub struct ChineseDictionary;
-
-impl ChineseDictionary {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-/// Japanese dictionary (placeholder)
-pub struct JapaneseDictionary;
-
-impl JapaneseDictionary {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-/// Korean dictionary (placeholder)
-pub struct KoreanDictionary;
-
-impl KoreanDictionary {
-    pub fn new() -> Self {
-        Self
     }
 }
 

@@ -6,7 +6,7 @@ use ocr::utils::Result;
 #[tokio::test]
 async fn test_ocr_creation() -> Result<()> {
     let ocr = Ocr::new()?;
-    assert!(ocr.is_initialized().await);
+    assert!(!ocr.is_initialized().await);
     Ok(())
 }
 

@@ -6,7 +6,6 @@ pub mod info;
 pub mod layout;
 pub mod list_languages;
 pub mod makebox;
-pub mod pdf;
 pub mod train;
 pub mod validate;
 

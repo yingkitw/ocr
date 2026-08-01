@@ -1,24 +1,9 @@
 //! OCR Training Pipeline
 //!
-//! This crate provides neural network training capabilities for OCR,
-//! including data loading, training loops, loss functions, and model serialization.
+//! Currently exposes only the CRNN trainer (FC-only backprop on synthetic data).
+//! Loss / optimizer / augmentation / checkpoint abstractions were speculative
+//! and have been removed until a concrete second consumer arrives.
 
-pub mod augmentation;
-pub mod checkpoint;
-pub mod config;
 pub mod crnn_trainer;
-pub mod data;
-pub mod losses;
-pub mod metrics;
-pub mod optimizers;
-pub mod training;
 
-pub use augmentation::*;
-pub use checkpoint::*;
-pub use config::*;
 pub use crnn_trainer::*;
-pub use data::*;
-pub use losses::*;
-pub use metrics::*;
-pub use optimizers::*;
-pub use training::*;

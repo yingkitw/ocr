@@ -2,15 +2,16 @@
 
 ## Completed
 
-All five phases of the OCR roadmap are implemented and tested (410+ tests passing).
+All five phases of the OCR roadmap are implemented and tested (400+ tests passing).
 
-- **Phase 0 — Baseline**: End-to-end pipeline, pattern matching, layout analysis, CLI, Web API, PDF input
+- **Phase 0 — Baseline**: End-to-end pipeline, pattern matching, layout analysis, CLI, Web API
 - **Phase 1 — Synthetic Training**: Font rendering, distortion pipeline, CER/WER benchmarks, `TemplateTrainer` for pattern-matching templates
 - **Phase 2 — Text Detection**: `TextDetector` trait, CCL + CNN detectors, `DocumentGenerator` + IoU evaluation, auto-rotate 0/90/180/270
 - **Phase 3 — CRNN Recognition**: 5-layer CNN extractor, 2-layer BiLSTM, CTC decoder/loss, `CrnnTrainer`, checkpointing, `--engine lstm`, model < 5MB
 - **Phase 4 — Multi-Language**: Script detection (8 scripts), 25+ dictionaries, `ScriptLineGenerator`, `ScriptModelRegistry` for per-script CRNN
-- **Phase 5 — Layout & Structure**: Table detection with span inference, form field extraction, document classification, Markdown/structured JSON output, searchable PDF
-- **Hygiene pass**: fixed PDF command wiring redundancy (`handle_pdf_extraction` dead code), synced doc drift (test counts 357→373, CLI version now derived from `Cargo.toml`), and drove the whole crate to a **zero-warning build** (267 → 0 across `cargo build`, tests, and examples): annotated experimental/unwired model modules + SIMD fallbacks, removed dead imports/fields, fixed a `CheckpointInfo` visibility bug, and cleaned redundant match arms in script detection
+- **Phase 5 — Layout & Structure**: Table detection with span inference, form field extraction, document classification, Markdown/structured JSON output
+- **Hygiene pass**: synced doc drift (test counts 357→373, CLI version now derived from `Cargo.toml`), and drove the whole crate to a **zero-warning build** (267 → 0 across `cargo build`, tests, and examples): annotated experimental/unwired model modules + SIMD fallbacks, removed dead imports/fields, fixed a `CheckpointInfo` visibility bug, and cleaned redundant match arms in script detection
+- **2024 lean pass (gocr-inspired)**: removed ~13 kLOC of speculative/dead code — five stub recognizer modules (`cnn_model`, `transformer_model`, `vit_model`, `hybrid_model`, `end_to_end_model`), `pattern.rs`/`lstm.rs` empty trait stubs, `simd_advanced.rs` (~970 lines, never used), `tesseract_textline.rs` (565 lines, defined but unused), `lang/unicharset.rs` (325 lines), the orphan `domain/*` IoC stack (~1 kLOC, zero external refs), the eight `core/image.rs` no-op augmentation methods, and eight speculative `training/*` modules (`augmentation`, `checkpoint`, `config`, `data`, `losses`, `metrics`, `optimizers`, `training`); removed `--engine hybrid` (silently fell through to pattern matching). Wired `CrnnTrainer::save_checkpoint`/`load_checkpoint` so checkpoints actually persist the FC weights the trainer modifies; collapsed per-request `Ocr::with_config` + `initialize` in `server/mod.rs` to the shared `AppState.ocr` instance. Net: 92 → 91 .rs files, source LOC trimmed from ~46 k → ~32 k, test count from 417 → 403 (the dropped tests were the ones covering deleted code), `RecognitionEngine` enum down to two variants. Followed up by deleting the duplicate `api::ImageProcessor` stack (~347 lines, zero external refs), `api::OcrResult` / `BatchProcessor` / `ImageInput` / `EngineMetadata` (zero external refs), `TextPostProcessor` + its `apply_spell_checking` / `apply_grammar_correction` stubs, and fixing `Ocr::is_initialized` to actually read `OcrEngine.state.initialized` instead of returning `true` unconditionally.
 
 ## Next Steps
 
@@ -35,6 +36,7 @@ These are **blocked on execution or hardware**, not additional code:
 - [~] **GPU acceleration** (`ComputeBackend` wired into `CnnFeatureExtractor`; OpenCL kernels implemented; CUDA path still falls back to CPU — *blocked: needs NVIDIA hardware to validate real `cudarc` kernels*)
 - [ ] Handwriting recognition (separate model, likely transformer-based)
 - [x] **Zero-warning build** — annotated stub/future-work modules (`end_to_end`, `vit`, `cnn`, `hybrid`, `transformer` models, SIMD scalar fallbacks), removed dead imports/fields/functions, fixed `CheckpointInfo` visibility, cleaned script-detection match arms
+- [x] **Lean codebase** — removed all speculative/dead modules (see 2024 lean pass entry above)
 
 ## Brainstorming (competitive intelligence)
 
@@ -50,7 +52,8 @@ Gaps observed vs. Tesseract / PaddleOCR / EasyOCR / RapidOCR / docTR / surya. Pr
 - [x] **Auto language detection (`--lang auto`)** — `LanguageDetector` (Unicode script + Latin dictionary hit-rates + CJK kana/hangul heuristics); resolves dictionary language in post-process when `lang=auto`
 - [x] **Image quality gate** — `ImageProcessingConfig::enable_quality_gate` (default on): auto-sharpen / boost contrast when `ImageQualityAssessor` metrics are poor
 - [x] **Batch progress reporting** — `ocr batch` prints `[n/total] % ETA …` per image and a final summary
-- [x] **Dependency simplification** — dropped unused `blake3`/`sha2`/`fastrand`/`nalgebra`/`num_cpus`/`futures`; trimmed `tokio`/`chrono`/`image` features; gated heavy `printpdf` behind `pdf-output` (default tree ~187 nodes vs ~537)
+- [x] **Dependency simplification** — dropped unused `blake3`/`sha2`/`fastrand`/`nalgebra`/`num_cpus`/`futures`; trimmed `tokio`/`chrono`/`image` features; removed `printpdf` and `pdf` crates (PDF input/output dropped); `pdfrs` feature is now an empty placeholder (default tree ~187 nodes vs ~537)
+- [x] **Lean pass** — removed ~13 kLOC of speculative/dead code (stub recognizers, orphan domain/*, unused simd/tesseract-textline/unicharset, no-op image augmentation methods, speculative training infrastructure)
 - [~] **Publish to crates.io** — `Cargo.toml` has keywords/categories/readme/docs.rs URL; `cargo publish --dry-run` when disk allows; do not publish without explicit ask
 - [ ] Handwriting recognition (separate model, likely transformer-based)
 - [ ] Seal / stamp / formula / KIE extraction (document AI extras vs PaddleOCR/surya)
