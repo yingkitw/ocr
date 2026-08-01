@@ -5,5 +5,7 @@
 //! and have been removed until a concrete second consumer arrives.
 
 pub mod crnn_trainer;
+pub mod ctc;
 
 pub use crnn_trainer::*;
+pub use ctc::*;
