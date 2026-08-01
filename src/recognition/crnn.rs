@@ -218,8 +218,8 @@ pub struct CnnFeatureExtractor {
     pub(crate) conv5_weights: Array3<f32>,
     pub(crate) conv5_bias: Array1<f32>,
     // Batch norm params (simplified: just scale + shift per channel)
-    bn_scales: Vec<Array1<f32>>,
-    bn_shifts: Vec<Array1<f32>>,
+    pub(crate) bn_scales: Vec<Array1<f32>>,
+    pub(crate) bn_shifts: Vec<Array1<f32>>,
     /// Optional compute backend for offloading conv2d to GPU
     backend: Option<Box<dyn ComputeBackend>>,
 }

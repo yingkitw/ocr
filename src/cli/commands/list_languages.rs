@@ -21,7 +21,7 @@ pub async fn handle_list_languages() -> Result<()> {
         println!("  - {}", lang);
     }
     println!();
-    println!("Note: Use --engine to select recognition engine (pattern, lstm)");
+    println!("Note: Recognition uses the bundled CRNN (CNN + BiLSTM + CTC) model.");
     println!("      Use --dict-correct to enable dictionary-based post-correction");
 
     Ok(())

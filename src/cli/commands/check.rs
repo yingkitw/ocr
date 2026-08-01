@@ -18,7 +18,7 @@ pub async fn handle_check() -> Result<()> {
 
     println!("\nCapabilities:");
     println!("  - Pattern matching engine (default)");
-    println!("  - CRNN (CNN + BiLSTM + CTC) engine (--engine lstm)");
+    println!("  - CRNN (CNN + BiLSTM + CTC) engine");
     println!("  - Layout analysis (columns, lines, tables, forms)");
     println!("  - Dictionary-based post-correction (25+ languages)");
     println!("  - Multi-script support (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)");

@@ -60,7 +60,7 @@ pub struct RecognitionConfig {
 impl Default for RecognitionConfig {
     fn default() -> Self {
         Self {
-            engine: RecognitionEngine::PatternMatching,
+            engine: RecognitionEngine::LSTM,
             language: "en".to_string(),
             confidence_threshold: 0.5,
             character_whitelist: None,
@@ -76,10 +76,8 @@ impl Default for RecognitionConfig {
 /// Recognition engine enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecognitionEngine {
-    /// LSTM-based recognition
+    /// LSTM-based recognition (the only engine; rule-based fallback has been removed)
     LSTM,
-    /// Traditional pattern matching
-    PatternMatching,
 }
 
 /// Image processing configuration

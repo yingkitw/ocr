@@ -36,10 +36,10 @@ pub fn apply_dictionary_correction(result: &mut TextResult, lang: &str) {
 }
 
 pub fn parse_engine(s: &str) -> ocr::core::config::RecognitionEngine {
-    match s.to_lowercase().as_str() {
-        "lstm" => ocr::core::config::RecognitionEngine::LSTM,
-        _ => ocr::core::config::RecognitionEngine::PatternMatching,
-    }
+    // Only the CRNN engine exists; the legacy `--engine pattern` flag is
+    // accepted and silently mapped to LSTM for back-compat.
+    let _ = s;
+    ocr::core::config::RecognitionEngine::LSTM
 }
 
 pub fn build_config(

@@ -445,24 +445,33 @@ impl CJKProcessor {
     }
 }
 
-/// Basic recognition engine implementation (legacy compatibility)
+/// CRNN-based recognition engine. Replaces the legacy `BasicOcrEngine` path.
 pub struct BasicRecognitionEngine {
     config: ModelConfig,
+    model: std::sync::Arc<super::crnn::CrnnModel>,
 }
 
 impl BasicRecognitionEngine {
-    /// Create a new basic recognition engine
+    /// Create a new CRNN-backed recognition engine.
     pub fn new(config: ModelConfig) -> Self {
-        Self { config }
+        let model = std::sync::Arc::new(super::loader::load_bundled().unwrap_or_else(|_| {
+            super::crnn::CrnnModel::new(super::crnn::CrnnConfig::default())
+        }));
+        Self { config, model }
+    }
+
+    /// Create with an explicit model (e.g. freshly trained).
+    pub fn with_model(config: ModelConfig, model: std::sync::Arc<super::crnn::CrnnModel>) -> Self {
+        Self { config, model }
     }
 }
 
 impl RecognitionEngine for BasicRecognitionEngine {
     async fn recognize(&self, image: &OcrImage) -> Result<RecognitionResult> {
-        let core_result = super::basic_ocr::BasicOcrEngine::new().recognize_sync(image)?;
+        let recognition = self.model.recognize_detailed(image, None, None)?;
         let bbox = TBox::new(0, 0, image.width as i32, image.height as i32);
-        Ok(Self::convert_core_result(
-            core_result,
+        Ok(Self::to_result(
+            recognition,
             bbox,
             self.config.model_type.clone(),
         ))
@@ -479,10 +488,10 @@ impl RecognitionEngine for BasicRecognitionEngine {
         }
 
         let cropped = image.crop(left, top, right - left, bottom - top)?;
-        let core_result = super::basic_ocr::BasicOcrEngine::new().recognize_sync(&cropped)?;
+        let recognition = self.model.recognize_detailed(&cropped, None, None)?;
         let bbox = TBox::new(left as i32, top as i32, right as i32, bottom as i32);
-        Ok(Self::convert_core_result(
-            core_result,
+        Ok(Self::to_result(
+            recognition,
             bbox,
             self.config.model_type.clone(),
         ))
@@ -493,13 +502,11 @@ impl RecognitionEngine for BasicRecognitionEngine {
         image: &OcrImage,
         language_hint: Option<LanguageVariant>,
     ) -> Result<RecognitionResult> {
-        let mut core_result = super::basic_ocr::BasicOcrEngine::new().recognize_sync(image)?;
-        if let Some(lang) = language_hint {
-            core_result.language = Some(format!("{:?}", lang));
-        }
+        let _ = language_hint;
+        let recognition = self.model.recognize_detailed(image, None, None)?;
         let bbox = TBox::new(0, 0, image.width as i32, image.height as i32);
-        Ok(Self::convert_core_result(
-            core_result,
+        Ok(Self::to_result(
+            recognition,
             bbox,
             self.config.model_type.clone(),
         ))
@@ -520,68 +527,45 @@ impl RecognitionEngine for BasicRecognitionEngine {
 }
 
 impl BasicRecognitionEngine {
-    fn convert_core_result(
-        core_result: crate::core::recognition::RecognitionResult,
+    fn to_result(
+        recognition: super::crnn::CrnnRecognition,
         bbox: TBox,
         model_type: ModelType,
     ) -> RecognitionResult {
-        let mut character_results = Vec::new();
-        for ch in &core_result.characters {
-            character_results.push(CharacterRecognitionResult {
-                character: ch.character,
-                confidence: ch.confidence,
+        let has_text = !recognition.text.trim().is_empty();
+        let character_results = recognition
+            .char_confidences
+            .iter()
+            .map(|c| CharacterRecognitionResult {
+                character: c.character,
+                confidence: c.confidence,
                 bounding_box: bbox,
-                unicode_category: CJKProcessor::get_unicode_category(ch.character),
-                script: CJKProcessor::get_script_type(ch.character),
-            });
-        }
-
-        let mut word_results = Vec::new();
-        for w in &core_result.words {
-            let mut word_chars = Vec::new();
-            for ch in &w.characters {
-                word_chars.push(CharacterRecognitionResult {
-                    character: ch.character,
-                    confidence: ch.confidence,
-                    bounding_box: bbox,
-                    unicode_category: CJKProcessor::get_unicode_category(ch.character),
-                    script: CJKProcessor::get_script_type(ch.character),
-                });
-            }
-
-            word_results.push(WordRecognitionResult {
-                text: w.word.clone(),
-                confidence: w.confidence,
+                unicode_category: CJKProcessor::get_unicode_category(c.character),
+                script: CJKProcessor::get_script_type(c.character),
+            })
+            .collect();
+        let word_results = recognition
+            .word_confidences()
+            .into_iter()
+            .map(|(text, confidence)| WordRecognitionResult {
+                text,
+                confidence,
                 bounding_box: bbox,
-                characters: word_chars,
-                language: core_result.language.clone(),
-            });
-        }
-
-        let mut line_results = Vec::new();
-        for l in &core_result.lines {
-            line_results.push(LineRecognitionResult {
-                text: l.line.clone(),
-                confidence: l.confidence,
-                bounding_box: bbox,
-                words: Vec::new(),
-                reading_order: ReadingOrder::LeftToRight,
-            });
-        }
-
-        let has_text = !core_result.text.trim().is_empty();
-        let text = core_result.text;
+                characters: Vec::new(),
+                language: None,
+            })
+            .collect();
 
         RecognitionResult {
-            text,
-            confidence: core_result.confidence,
+            text: recognition.text,
+            confidence: recognition.confidence,
             bounding_boxes: if has_text { vec![bbox] } else { Vec::new() },
             character_results,
             word_results,
-            line_results,
-            language: core_result.language,
+            line_results: Vec::new(),
+            language: None,
             model_type,
-            processing_time_ms: core_result.processing_time_ms.unwrap_or(0),
+            processing_time_ms: 0,
         }
     }
 }

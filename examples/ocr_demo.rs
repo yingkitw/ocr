@@ -9,10 +9,8 @@ fn build_config(lang: &str, preprocess: bool, engine: &str, dict_correct: bool) 
     let mut config = OcrConfig::default();
     config.recognition.language = lang.to_string();
     config.recognition.confidence_threshold = 0.3;
-    config.recognition.engine = match engine {
-        "lstm" => RecognitionEngine::LSTM,
-        _ => RecognitionEngine::PatternMatching,
-    };
+    let _ = engine;
+    config.recognition.engine = RecognitionEngine::LSTM;
     config.recognition.enable_dictionary_correction = dict_correct;
     config.image_processing.enable_preprocessing = preprocess;
     config.image_processing.enable_binarization = preprocess;
@@ -98,7 +96,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Usage: {} <image-path> [engine] [lang] [preprocess] [dict-correct]",
             args.first().map(|s| s.as_str()).unwrap_or("ocr_demo")
         );
-        eprintln!("  engine: pattern (default), lstm, hybrid");
+        eprintln!("  engine: lstm (only engine; legacy pattern/hybrid removed)");
         eprintln!("  lang: en (default), fr, es, de, it, pt, ru, zh, ja, ko, nl, pl, sv, da, fi, no, tr, el, hi, th, vi, ar, he, id, ms, uk, cs, hu, ro, bg");
         eprintln!("  preprocess: true (default), false");
         eprintln!("  dict-correct: true, false (default)");
