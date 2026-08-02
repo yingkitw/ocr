@@ -4,6 +4,7 @@
 
 use crate::recognition::crnn::CrnnModel;
 use crate::synthetic::{DistortionConfig, SyntheticSample, TextLineGenerator};
+use crate::training::ctc::ctc_loss_and_grad;
 use crate::utils::Result;
 use ndarray::{Array1, Array2};
 #[cfg(test)]
@@ -28,6 +29,61 @@ pub struct CrnnTrainer {
     pub learning_rate: f32,
     pub batch_size: usize,
     pub distortion: DistortionConfig,
+}
+
+/// Adam state for the FC layer
+pub struct AdamState {
+    pub m_w: ndarray::Array2<f32>,
+    pub v_w: ndarray::Array2<f32>,
+    pub m_b: ndarray::Array1<f32>,
+    pub v_b: ndarray::Array1<f32>,
+    pub t: u64,
+}
+
+impl AdamState {
+    pub fn new_like(model: &CrnnModel) -> Self {
+        Self {
+            m_w: ndarray::Array2::zeros(model.fc_weight.dim()),
+            v_w: ndarray::Array2::zeros(model.fc_weight.dim()),
+            m_b: ndarray::Array1::zeros(model.fc_bias.dim()),
+            v_b: ndarray::Array1::zeros(model.fc_bias.dim()),
+            t: 0,
+        }
+    }
+}
+
+/// Apply Adam update to the FC layer weights in-place. `grad_w` and `grad_b`
+/// are gradients of the loss w.r.t. fc_weight and fc_bias.
+pub fn adam_update_fc(
+    model: &mut CrnnModel,
+    grad_w: &ndarray::Array2<f32>,
+    grad_b: &ndarray::Array1<f32>,
+    state: &mut AdamState,
+    learning_rate: f32,
+) {
+    state.t += 1;
+    let step_t = state.t as f32;
+    let bc1 = 1.0 - 0.9f32.powi(state.t as i32);
+    let bc2 = 1.0 - 0.999f32.powi(state.t as i32);
+    let eps = 1e-8f32;
+    for j in 0..model.fc_weight.nrows() {
+        for k in 0..model.fc_weight.ncols() {
+            let g = grad_w[[j, k]];
+            state.m_w[[j, k]] = 0.9 * state.m_w[[j, k]] + 0.1 * g;
+            state.v_w[[j, k]] = 0.999 * state.v_w[[j, k]] + 0.001 * g * g;
+            let m_hat = state.m_w[[j, k]] / bc1;
+            let v_hat = state.v_w[[j, k]] / bc2;
+            model.fc_weight[[j, k]] -= learning_rate * m_hat / (v_hat.sqrt() + eps);
+        }
+    }
+    for j in 0..model.fc_bias.len() {
+        let g = grad_b[j];
+        state.m_b[j] = 0.9 * state.m_b[j] + 0.1 * g;
+        state.v_b[j] = 0.999 * state.v_b[j] + 0.001 * g * g;
+        let m_hat = state.m_b[j] / bc1;
+        let v_hat = state.v_b[j] / bc2;
+        model.fc_bias[j] -= learning_rate * m_hat / (v_hat.sqrt() + eps);
+    }
 }
 
 impl CrnnTrainer {
@@ -177,7 +233,7 @@ impl CrnnTrainer {
             let cnn_features = self.model.cnn.forward(&arr);
             let lstm1_out = self.model.lstm1.forward(&cnn_features);
             let lstm2_out = self.model.lstm2.forward(&lstm1_out);
-            let (t, lstm_dim) = lstm2_out.dim();
+            let (mut t, lstm_dim) = lstm2_out.dim();
             let num_classes = self.model.fc_weight.nrows();
 
             // Compute logits
@@ -261,6 +317,154 @@ impl CrnnTrainer {
         } else {
             0.0
         }
+    }
+
+    /// Train on a batch using CTC loss + Adam updates on the FC layer only.
+    /// The CNN and BiLSTM weights are kept frozen (random init); only the FC
+    /// readout is trained. Useful as a sanity check that the pipeline works
+    /// end-to-end without requiring full BPTT through CNN+LSTM.
+    pub fn train_batch_ctc(&mut self, samples: &[SyntheticSample], adam_state: &mut AdamState) -> f32 {
+        let mut total_loss = 0.0f32;
+        let mut total_chars = 0usize;
+        let mut total_correct = 0usize;
+        let mut total_words = 0usize;
+        let mut word_correct = 0usize;
+
+        let n_initial = samples.len();
+        let mut n = 0;
+        // Accumulate grads across the batch.
+        let mut grad_w_acc = ndarray::Array2::<f32>::zeros(self.model.fc_weight.dim());
+        let mut grad_b_acc = ndarray::Array1::<f32>::zeros(self.model.fc_bias.len());
+
+        for sample in samples {
+            let gray = sample.image.to_luma8();
+            let (w, h) = (gray.width() as usize, gray.height() as usize);
+            let mut arr = Array2::zeros((h, w));
+            for y in 0..h {
+                for x in 0..w {
+                    arr[[y, x]] = gray.get_pixel(x as u32, y as u32).0[0] as f32 / 255.0;
+                }
+            }
+            let target_h = self.model.config.input_height;
+            if h != target_h {
+                arr = CrnnModel::resize_array2_height(&arr, target_h);
+            }
+
+            // Forward through frozen feature extractors
+            let cnn_features = self.model.cnn.forward(&arr);
+            let lstm1_out = self.model.lstm1.forward(&cnn_features);
+            let lstm2_out = self.model.lstm2.forward(&lstm1_out);
+            let (t, lstm_dim) = lstm2_out.dim();
+            let num_classes = self.model.fc_weight.nrows();
+            if t < 1 {
+                continue;
+            }
+
+            // Compute logits [t, num_classes]
+            let mut logits = Array2::zeros((t, num_classes));
+            for i in 0..t {
+                for j in 0..num_classes {
+                    let mut sum = self.model.fc_bias[j];
+                    for k in 0..lstm_dim {
+                        sum += self.model.fc_weight[[j, k]] * lstm2_out[[i, k]];
+                    }
+                    logits[[i, j]] = sum;
+                }
+            }
+
+            // Target indices
+            let gt = &sample.ground_truth;
+            let gt_indices: Vec<usize> = gt
+                .chars()
+                .map(|ch| self.model.vocab.char_to_idx.get(&ch).copied().unwrap_or(0))
+                .collect();
+            if gt_indices.is_empty() {
+                continue;
+            }
+
+            // CTC needs T >= 2*S + 1 (extended label length). For very short
+            // sequences (T too small for the target), pad by repeating the
+            // last logit row until we have enough timesteps.
+            let ext_len = 2 * gt_indices.len() + 1;
+            let mut t_padded = t;
+            while t_padded < ext_len {
+                let last_row = logits.row(t_padded - 1).to_owned();
+                let mut new_logits = Array2::zeros((t_padded + 1, num_classes));
+                for i in 0..t_padded {
+                    new_logits.row_mut(i).assign(&logits.row(i));
+                }
+                new_logits.row_mut(t_padded).assign(&last_row);
+                logits = new_logits;
+                t_padded += 1;
+            }
+
+            // Flatten logits for the CTC API.
+            let logits_flat: Vec<f32> = logits.iter().copied().collect();
+            let (loss, grad) = ctc_loss_and_grad(
+                &logits_flat,
+                &gt_indices,
+                num_classes,
+                self.model.vocab.blank_idx,
+            );
+
+            // grad: [t_padded, num_classes], softmax - gamma.
+            // Backprop through FC: dW[j, k] = sum_t grad[t, j] * lstm2_out[t, k]
+            //                     dB[j] = sum_t grad[t, j]
+            // Note: we only need grad w.r.t. lstm2_out from FC's backward,
+            // which we don't propagate further (we keep CNN/LSTM frozen).
+            for j in 0..num_classes {
+                for k in 0..lstm_dim {
+                    let mut g = 0.0f32;
+                    for ti in 0..t {
+                        g += grad[ti * num_classes + j] * lstm2_out[[ti, k]];
+                    }
+                    grad_w_acc[[j, k]] += g;
+                }
+                let mut gb = 0.0f32;
+                for ti in 0..t {
+                    gb += grad[ti * num_classes + j];
+                }
+                grad_b_acc[j] += gb;
+            }
+
+            total_loss += loss;
+            n += 1;
+
+            // Greedy decode accuracy
+            let pred_text = self.model.decode_greedy_from_logits(&logits);
+            total_chars += gt.chars().count();
+            total_correct += pred_text.chars().zip(gt.chars()).filter(|(a, b)| a == b).count();
+            total_words += 1;
+            if pred_text.as_str() == gt.as_str() {
+                word_correct += 1;
+            }
+        }
+
+        // Apply Adam update with mean grad over the batch
+        let mean: f32 = 1.0 / n as f32;
+        grad_w_acc.mapv_inplace(|v| v * mean);
+        grad_b_acc.mapv_inplace(|v| v * mean);
+        adam_update_fc(
+            &mut self.model,
+            &grad_w_acc,
+            &grad_b_acc,
+            adam_state,
+            self.learning_rate,
+        );
+
+        // Aggregate metrics
+        EpochMetrics {
+            epoch: 0,
+            train_loss: total_loss / n as f32,
+            train_cer: 1.0 - total_correct as f32 / total_chars.max(1) as f32,
+            train_wer: 1.0 - word_correct as f32 / total_words.max(1) as f32,
+            val_loss: 0.0,
+            val_cer: 0.0,
+            val_wer: 0.0,
+            samples_per_sec: 0.0,
+        };
+
+        total_loss / n as f32
     }
 
     /// Save model checkpoint (config + vocabulary + FC weights/biases)

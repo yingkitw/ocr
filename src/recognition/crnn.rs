@@ -475,6 +475,71 @@ impl CnnFeatureExtractor {
         }
         output
     }
+
+    /// Run only the conv2d part of block `idx` (no BN, no ReLU). Used by
+    /// the forward-with-cache path in `backward.rs`.
+    pub fn run_conv_only(&self, input: &Array3<f32>, idx: usize) -> Array3<f32> {
+        let (w, b) = match idx {
+            0 => (&self.conv1_weights, &self.conv1_bias),
+            1 => (&self.conv2_weights, &self.conv2_bias),
+            2 => (&self.conv3_weights, &self.conv3_bias),
+            3 => (&self.conv4_weights, &self.conv4_bias),
+            4 => (&self.conv5_weights, &self.conv5_bias),
+            _ => panic!("invalid conv idx {idx}"),
+        };
+        if let Some(ref backend) = self.backend {
+            return self.conv_block_backend(
+                input, w, b,
+                &Array1::zeros(w.shape()[0]), // unused on this path
+                &Array1::zeros(w.shape()[0]),
+                backend.as_ref(),
+            );
+        }
+        let (in_c, in_h, in_w) = (input.shape()[0], input.shape()[1], input.shape()[2]);
+        let out_c = w.shape()[0];
+        let k = (w.shape()[2] as f32).sqrt() as usize;
+        let pad = k / 2;
+        let in_slice = input.as_slice().unwrap();
+        let w_slice = w.as_slice().unwrap();
+        let b_slice = b.as_slice().unwrap();
+
+        let channels: Vec<Vec<f32>> = (0..out_c)
+            .into_par_iter()
+            .map(|oc| {
+                let mut channel = vec![0.0f32; in_h * in_w];
+                for oh in 0..in_h {
+                    for ow in 0..in_w {
+                        let mut sum = b_slice[oc];
+                        for ic in 0..in_c {
+                            for ky in 0..k {
+                                for kx in 0..k {
+                                    let iy = oh as i32 + ky as i32 - pad as i32;
+                                    let ix = ow as i32 + kx as i32 - pad as i32;
+                                    if iy >= 0 && iy < in_h as i32 && ix >= 0 && ix < in_w as i32 {
+                                        let wv = w_slice[oc * in_c * k * k + ic * k * k + ky * k + kx];
+                                        let inp = in_slice[ic * in_h * in_w + iy as usize * in_w + ix as usize];
+                                        sum += inp * wv;
+                                    }
+                                }
+                            }
+                        }
+                        channel[oh * in_w + ow] = sum;
+                    }
+                }
+                channel
+            })
+            .collect();
+
+        let mut output = Array3::zeros((out_c, in_h, in_w));
+        for (oc, channel) in channels.iter().enumerate() {
+            for oh in 0..in_h {
+                for ow in 0..in_w {
+                    output[[oc, oh, ow]] = channel[oh * in_w + ow];
+                }
+            }
+        }
+        output
+    }
 }
 
 fn maxpool2d(input: &Array3<f32>, pool: usize) -> Array3<f32> {
@@ -859,6 +924,12 @@ impl CrnnModel {
         } else {
             Ok(decoder.beam_search_decode(logits, &self.vocab.chars))
         }
+    }
+
+    /// Greedy CTC decode from raw logits [T, num_classes].
+    pub fn decode_greedy_from_logits(&self, logits: &Array2<f32>) -> String {
+        let decoder = crate::recognition::ctc_decoder::CtcDecoder::new();
+        decoder.greedy_decode(logits, &self.vocab.chars)
     }
 
     pub fn resize_array2_height(arr: &Array2<f32>, target_h: usize) -> Array2<f32> {
