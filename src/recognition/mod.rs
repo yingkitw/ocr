@@ -1,5 +1,6 @@
 //! Text recognition engines for OCR
 
+pub mod backward;
 pub mod confidence;
 pub mod crnn;
 pub mod ctc_decoder;

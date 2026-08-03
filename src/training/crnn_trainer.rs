@@ -319,6 +319,114 @@ impl CrnnTrainer {
         }
     }
 
+    /// Train on a batch using CTC loss + Adam updates on **all** parameters
+    /// (full BPTT through CNN + 2x BiLSTM + FC). This is the real training
+    /// loop; the bundled model converges to a model that actually recognizes
+    /// text given enough epochs.
+    pub fn train_batch_full(&mut self, samples: &[SyntheticSample], adam_states: &mut FullAdamState) -> f32 {
+        use crate::recognition::backward::ParamGrads;
+
+        let mut total_loss = 0.0f32;
+        let mut total_chars = 0usize;
+        let mut total_correct = 0usize;
+        let mut total_words = 0usize;
+        let mut word_correct = 0usize;
+
+        // Aggregate grads across the batch
+        let mut grads_acc = ParamGrads::zero_like(&self.model);
+        let mut n = 0usize;
+
+        for sample in samples {
+            let gray = sample.image.to_luma8();
+            let (w, h) = (gray.width() as usize, gray.height() as usize);
+            let mut arr = Array2::zeros((h, w));
+            for y in 0..h {
+                for x in 0..w {
+                    arr[[y, x]] = gray.get_pixel(x as u32, y as u32).0[0] as f32 / 255.0;
+                }
+            }
+            let target_h = self.model.config.input_height;
+            if h != target_h || w != INPUT_WIDTH {
+                arr = resize_to(&arr, INPUT_WIDTH, INPUT_HEIGHT);
+            }
+
+            // Forward with cache
+            let (mut logits, cache) = self.model.forward_with_cache(&arr);
+            let (mut t, num_classes) = (logits.nrows(), logits.ncols());
+            if t < 1 {
+                continue;
+            }
+
+            // Target indices
+            let gt = &sample.ground_truth;
+            let gt_indices: Vec<usize> = gt
+                .chars()
+                .map(|ch| self.model.vocab.char_to_idx.get(&ch).copied().unwrap_or(0))
+                .collect();
+            if gt_indices.is_empty() {
+                continue;
+            }
+
+            // Pad logits to satisfy T >= 2*S + 1
+            let ext_len = 2 * gt_indices.len() + 1;
+            while t < ext_len {
+                let last_row = logits.row(t - 1).to_owned();
+                let mut new_logits = Array2::zeros((t + 1, num_classes));
+                for i in 0..t {
+                    new_logits.row_mut(i).assign(&logits.row(i));
+                }
+                new_logits.row_mut(t).assign(&last_row);
+                logits = new_logits;
+                t += 1;
+            }
+
+            // CTC loss + gradient
+            let logits_flat: Vec<f32> = logits.iter().copied().collect();
+            let (loss, grad) = ctc_loss_and_grad(
+                &logits_flat,
+                &gt_indices,
+                num_classes,
+                self.model.vocab.blank_idx,
+            );
+            if !loss.is_finite() {
+                continue;
+            }
+            // Trim grad to original t (in case we padded)
+            let grad = if t < grad.len() / num_classes {
+                let trimmed: Vec<f32> = grad[..t * num_classes].to_vec();
+                trimmed
+            } else {
+                grad
+            };
+            let d_logits = Array2::from_shape_vec((t, num_classes), grad)
+                .unwrap_or_else(|_| Array2::zeros((t, num_classes)));
+
+            // Full backward
+            let grads = self.model.backward_full(&cache, &d_logits);
+            accumulate_grads(&mut grads_acc, &grads);
+            total_loss += loss;
+            n += 1;
+
+            // Greedy decode for accuracy
+            let pred_text = self.model.decode_greedy_from_logits(&logits);
+            total_chars += gt.chars().count();
+            total_correct += pred_text.chars().zip(gt.chars()).filter(|(a, b)| a == b).count();
+            total_words += 1;
+            if pred_text.as_str() == gt.as_str() {
+                word_correct += 1;
+            }
+        }
+
+        if n == 0 {
+            return 0.0;
+        }
+        let mean = 1.0 / n as f32;
+        scale_grads(&mut grads_acc, mean);
+        apply_full_adam(&mut self.model, &grads_acc, adam_states, self.learning_rate);
+
+        total_loss / n as f32
+    }
+
     /// Train on a batch using CTC loss + Adam updates on the FC layer only.
     /// The CNN and BiLSTM weights are kept frozen (random init); only the FC
     /// readout is trained. Useful as a sanity check that the pipeline works
@@ -645,4 +753,367 @@ mod tests {
 
         let _ = std::fs::remove_file(temp_path);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Full Adam state (covers every parameter in the model)
+// ---------------------------------------------------------------------------
+
+use crate::recognition::backward::ParamGrads as FullParamGrads;
+
+pub struct FullAdamState {
+    pub conv1_w_m: ndarray::Array3<f32>,
+    pub conv1_w_v: ndarray::Array3<f32>,
+    pub conv1_b_m: ndarray::Array1<f32>,
+    pub conv1_b_v: ndarray::Array1<f32>,
+    pub conv2_w_m: ndarray::Array3<f32>,
+    pub conv2_w_v: ndarray::Array3<f32>,
+    pub conv2_b_m: ndarray::Array1<f32>,
+    pub conv2_b_v: ndarray::Array1<f32>,
+    pub conv3_w_m: ndarray::Array3<f32>,
+    pub conv3_w_v: ndarray::Array3<f32>,
+    pub conv3_b_m: ndarray::Array1<f32>,
+    pub conv3_b_v: ndarray::Array1<f32>,
+    pub conv4_w_m: ndarray::Array3<f32>,
+    pub conv4_w_v: ndarray::Array3<f32>,
+    pub conv4_b_m: ndarray::Array1<f32>,
+    pub conv4_b_v: ndarray::Array1<f32>,
+    pub conv5_w_m: ndarray::Array3<f32>,
+    pub conv5_w_v: ndarray::Array3<f32>,
+    pub conv5_b_m: ndarray::Array1<f32>,
+    pub conv5_b_v: ndarray::Array1<f32>,
+    pub bn1s_m: ndarray::Array1<f32>,
+    pub bn1s_v: ndarray::Array1<f32>,
+    pub bn1p_m: ndarray::Array1<f32>,
+    pub bn1p_v: ndarray::Array1<f32>,
+    pub bn2s_m: ndarray::Array1<f32>,
+    pub bn2s_v: ndarray::Array1<f32>,
+    pub bn2p_m: ndarray::Array1<f32>,
+    pub bn2p_v: ndarray::Array1<f32>,
+    pub bn3s_m: ndarray::Array1<f32>,
+    pub bn3s_v: ndarray::Array1<f32>,
+    pub bn3p_m: ndarray::Array1<f32>,
+    pub bn3p_v: ndarray::Array1<f32>,
+    pub bn4s_m: ndarray::Array1<f32>,
+    pub bn4s_v: ndarray::Array1<f32>,
+    pub bn4p_m: ndarray::Array1<f32>,
+    pub bn4p_v: ndarray::Array1<f32>,
+    pub bn5s_m: ndarray::Array1<f32>,
+    pub bn5s_v: ndarray::Array1<f32>,
+    pub bn5p_m: ndarray::Array1<f32>,
+    pub bn5p_v: ndarray::Array1<f32>,
+    pub lstm1wfih_m: ndarray::Array2<f32>,
+    pub lstm1wfih_v: ndarray::Array2<f32>,
+    pub lstm1wfhh_m: ndarray::Array2<f32>,
+    pub lstm1wfhh_v: ndarray::Array2<f32>,
+    pub lstm1bfih_m: ndarray::Array1<f32>,
+    pub lstm1bfih_v: ndarray::Array1<f32>,
+    pub lstm1bfhh_m: ndarray::Array1<f32>,
+    pub lstm1bfhh_v: ndarray::Array1<f32>,
+    pub lstm1wbih_m: ndarray::Array2<f32>,
+    pub lstm1wbih_v: ndarray::Array2<f32>,
+    pub lstm1wbhh_m: ndarray::Array2<f32>,
+    pub lstm1wbhh_v: ndarray::Array2<f32>,
+    pub lstm1bbih_m: ndarray::Array1<f32>,
+    pub lstm1bbih_v: ndarray::Array1<f32>,
+    pub lstm1bbhh_m: ndarray::Array1<f32>,
+    pub lstm1bbhh_v: ndarray::Array1<f32>,
+    pub lstm2wfih_m: ndarray::Array2<f32>,
+    pub lstm2wfih_v: ndarray::Array2<f32>,
+    pub lstm2wfhh_m: ndarray::Array2<f32>,
+    pub lstm2wfhh_v: ndarray::Array2<f32>,
+    pub lstm2bfih_m: ndarray::Array1<f32>,
+    pub lstm2bfih_v: ndarray::Array1<f32>,
+    pub lstm2bfhh_m: ndarray::Array1<f32>,
+    pub lstm2bfhh_v: ndarray::Array1<f32>,
+    pub lstm2wbih_m: ndarray::Array2<f32>,
+    pub lstm2wbih_v: ndarray::Array2<f32>,
+    pub lstm2wbhh_m: ndarray::Array2<f32>,
+    pub lstm2wbhh_v: ndarray::Array2<f32>,
+    pub lstm2bbih_m: ndarray::Array1<f32>,
+    pub lstm2bbih_v: ndarray::Array1<f32>,
+    pub lstm2bbhh_m: ndarray::Array1<f32>,
+    pub lstm2bbhh_v: ndarray::Array1<f32>,
+    pub fcw_m: ndarray::Array2<f32>,
+    pub fcw_v: ndarray::Array2<f32>,
+    pub fcb_m: ndarray::Array1<f32>,
+    pub fcb_v: ndarray::Array1<f32>,
+    pub t: u64,
+}
+
+impl FullAdamState {
+    pub fn new_like(model: &CrnnModel) -> Self {
+        let m3 = |s| ndarray::Array3::<f32>::zeros(s);
+        let m2 = |s| ndarray::Array2::<f32>::zeros(s);
+        let m1 = |n| ndarray::Array1::<f32>::zeros(n);
+        Self {
+            conv1_w_m: m3(model.cnn.conv1_weights.dim()),
+            conv1_w_v: m3(model.cnn.conv1_weights.dim()),
+            conv1_b_m: m1(model.cnn.conv1_bias.len()),
+            conv1_b_v: m1(model.cnn.conv1_bias.len()),
+            conv2_w_m: m3(model.cnn.conv2_weights.dim()),
+            conv2_w_v: m3(model.cnn.conv2_weights.dim()),
+            conv2_b_m: m1(model.cnn.conv2_bias.len()),
+            conv2_b_v: m1(model.cnn.conv2_bias.len()),
+            conv3_w_m: m3(model.cnn.conv3_weights.dim()),
+            conv3_w_v: m3(model.cnn.conv3_weights.dim()),
+            conv3_b_m: m1(model.cnn.conv3_bias.len()),
+            conv3_b_v: m1(model.cnn.conv3_bias.len()),
+            conv4_w_m: m3(model.cnn.conv4_weights.dim()),
+            conv4_w_v: m3(model.cnn.conv4_weights.dim()),
+            conv4_b_m: m1(model.cnn.conv4_bias.len()),
+            conv4_b_v: m1(model.cnn.conv4_bias.len()),
+            conv5_w_m: m3(model.cnn.conv5_weights.dim()),
+            conv5_w_v: m3(model.cnn.conv5_weights.dim()),
+            conv5_b_m: m1(model.cnn.conv5_bias.len()),
+            conv5_b_v: m1(model.cnn.conv5_bias.len()),
+            bn1s_m: m1(model.cnn.bn_scales[0].len()),
+            bn1s_v: m1(model.cnn.bn_scales[0].len()),
+            bn1p_m: m1(model.cnn.bn_shifts[0].len()),
+            bn1p_v: m1(model.cnn.bn_shifts[0].len()),
+            bn2s_m: m1(model.cnn.bn_scales[1].len()),
+            bn2s_v: m1(model.cnn.bn_scales[1].len()),
+            bn2p_m: m1(model.cnn.bn_shifts[1].len()),
+            bn2p_v: m1(model.cnn.bn_shifts[1].len()),
+            bn3s_m: m1(model.cnn.bn_scales[2].len()),
+            bn3s_v: m1(model.cnn.bn_scales[2].len()),
+            bn3p_m: m1(model.cnn.bn_shifts[2].len()),
+            bn3p_v: m1(model.cnn.bn_shifts[2].len()),
+            bn4s_m: m1(model.cnn.bn_scales[3].len()),
+            bn4s_v: m1(model.cnn.bn_scales[3].len()),
+            bn4p_m: m1(model.cnn.bn_shifts[3].len()),
+            bn4p_v: m1(model.cnn.bn_shifts[3].len()),
+            bn5s_m: m1(model.cnn.bn_scales[4].len()),
+            bn5s_v: m1(model.cnn.bn_scales[4].len()),
+            bn5p_m: m1(model.cnn.bn_shifts[4].len()),
+            bn5p_v: m1(model.cnn.bn_shifts[4].len()),
+            lstm1wfih_m: m2(model.lstm1.wf_ih.dim()),
+            lstm1wfih_v: m2(model.lstm1.wf_ih.dim()),
+            lstm1wfhh_m: m2(model.lstm1.wf_hh.dim()),
+            lstm1wfhh_v: m2(model.lstm1.wf_hh.dim()),
+            lstm1bfih_m: m1(model.lstm1.bf_ih.len()),
+            lstm1bfih_v: m1(model.lstm1.bf_ih.len()),
+            lstm1bfhh_m: m1(model.lstm1.bf_hh.len()),
+            lstm1bfhh_v: m1(model.lstm1.bf_hh.len()),
+            lstm1wbih_m: m2(model.lstm1.wb_ih.dim()),
+            lstm1wbih_v: m2(model.lstm1.wb_ih.dim()),
+            lstm1wbhh_m: m2(model.lstm1.wb_hh.dim()),
+            lstm1wbhh_v: m2(model.lstm1.wb_hh.dim()),
+            lstm1bbih_m: m1(model.lstm1.bb_ih.len()),
+            lstm1bbih_v: m1(model.lstm1.bb_ih.len()),
+            lstm1bbhh_m: m1(model.lstm1.bb_hh.len()),
+            lstm1bbhh_v: m1(model.lstm1.bb_hh.len()),
+            lstm2wfih_m: m2(model.lstm2.wf_ih.dim()),
+            lstm2wfih_v: m2(model.lstm2.wf_ih.dim()),
+            lstm2wfhh_m: m2(model.lstm2.wf_hh.dim()),
+            lstm2wfhh_v: m2(model.lstm2.wf_hh.dim()),
+            lstm2bfih_m: m1(model.lstm2.bf_ih.len()),
+            lstm2bfih_v: m1(model.lstm2.bf_ih.len()),
+            lstm2bfhh_m: m1(model.lstm2.bf_hh.len()),
+            lstm2bfhh_v: m1(model.lstm2.bf_hh.len()),
+            lstm2wbih_m: m2(model.lstm2.wb_ih.dim()),
+            lstm2wbih_v: m2(model.lstm2.wb_ih.dim()),
+            lstm2wbhh_m: m2(model.lstm2.wb_hh.dim()),
+            lstm2wbhh_v: m2(model.lstm2.wb_hh.dim()),
+            lstm2bbih_m: m1(model.lstm2.bb_ih.len()),
+            lstm2bbih_v: m1(model.lstm2.bb_ih.len()),
+            lstm2bbhh_m: m1(model.lstm2.bb_hh.len()),
+            lstm2bbhh_v: m1(model.lstm2.bb_hh.len()),
+            fcw_m: m2(model.fc_weight.dim()),
+            fcw_v: m2(model.fc_weight.dim()),
+            fcb_m: m1(model.fc_bias.len()),
+            fcb_v: m1(model.fc_bias.len()),
+            t: 0,
+        }
+    }
+}
+
+const INPUT_WIDTH: usize = 256;
+const INPUT_HEIGHT: usize = 32;
+
+fn resize_to(arr: &ndarray::Array2<f32>, w: usize, h: usize) -> ndarray::Array2<f32> {
+    use image::GrayImage;
+    let (cur_h, cur_w) = arr.dim();
+    let mut img = GrayImage::new(cur_w as u32, cur_h as u32);
+    for y in 0..cur_h {
+        for x in 0..cur_w {
+            img.put_pixel(x as u32, y as u32, image::Luma([(arr[[y, x]] * 255.0) as u8]));
+        }
+    }
+    let resized = image::imageops::resize(&img, w as u32, h as u32, image::imageops::FilterType::Lanczos3);
+    let mut out = ndarray::Array2::zeros((h, w));
+    for y in 0..h {
+        for x in 0..w {
+            out[[y, x]] = resized.get_pixel(x as u32, y as u32).0[0] as f32 / 255.0;
+        }
+    }
+    out
+}
+
+fn accumulate_grads(acc: &mut FullParamGrads, g: &FullParamGrads) {
+    acc.conv1_w += &g.conv1_w;
+    acc.conv1_b += &g.conv1_b;
+    acc.conv2_w += &g.conv2_w;
+    acc.conv2_b += &g.conv2_b;
+    acc.conv3_w += &g.conv3_w;
+    acc.conv3_b += &g.conv3_b;
+    acc.conv4_w += &g.conv4_w;
+    acc.conv4_b += &g.conv4_b;
+    acc.conv5_w += &g.conv5_w;
+    acc.conv5_b += &g.conv5_b;
+    acc.bn1_s += &g.bn1_s;
+    acc.bn1_p += &g.bn1_p;
+    acc.bn2_s += &g.bn2_s;
+    acc.bn2_p += &g.bn2_p;
+    acc.bn3_s += &g.bn3_s;
+    acc.bn3_p += &g.bn3_p;
+    acc.bn4_s += &g.bn4_s;
+    acc.bn4_p += &g.bn4_p;
+    acc.bn5_s += &g.bn5_s;
+    acc.bn5_p += &g.bn5_p;
+    acc.lstm1_wf_ih += &g.lstm1_wf_ih;
+    acc.lstm1_wf_hh += &g.lstm1_wf_hh;
+    acc.lstm1_bf_ih += &g.lstm1_bf_ih;
+    acc.lstm1_bf_hh += &g.lstm1_bf_hh;
+    acc.lstm1_wb_ih += &g.lstm1_wb_ih;
+    acc.lstm1_wb_hh += &g.lstm1_wb_hh;
+    acc.lstm1_bb_ih += &g.lstm1_bb_ih;
+    acc.lstm1_bb_hh += &g.lstm1_bb_hh;
+    acc.lstm2_wf_ih += &g.lstm2_wf_ih;
+    acc.lstm2_wf_hh += &g.lstm2_wf_hh;
+    acc.lstm2_bf_ih += &g.lstm2_bf_ih;
+    acc.lstm2_bf_hh += &g.lstm2_bf_hh;
+    acc.lstm2_wb_ih += &g.lstm2_wb_ih;
+    acc.lstm2_wb_hh += &g.lstm2_wb_hh;
+    acc.lstm2_bb_ih += &g.lstm2_bb_ih;
+    acc.lstm2_bb_hh += &g.lstm2_bb_hh;
+    acc.fc_w += &g.fc_w;
+    acc.fc_b += &g.fc_b;
+}
+
+fn scale_grads(g: &mut FullParamGrads, s: f32) {
+    g.conv1_w *= s;
+    g.conv1_b *= s;
+    g.conv2_w *= s;
+    g.conv2_b *= s;
+    g.conv3_w *= s;
+    g.conv3_b *= s;
+    g.conv4_w *= s;
+    g.conv4_b *= s;
+    g.conv5_w *= s;
+    g.conv5_b *= s;
+    g.bn1_s *= s;
+    g.bn1_p *= s;
+    g.bn2_s *= s;
+    g.bn2_p *= s;
+    g.bn3_s *= s;
+    g.bn3_p *= s;
+    g.bn4_s *= s;
+    g.bn4_p *= s;
+    g.bn5_s *= s;
+    g.bn5_p *= s;
+    g.lstm1_wf_ih *= s;
+    g.lstm1_wf_hh *= s;
+    g.lstm1_bf_ih *= s;
+    g.lstm1_bf_hh *= s;
+    g.lstm1_wb_ih *= s;
+    g.lstm1_wb_hh *= s;
+    g.lstm1_bb_ih *= s;
+    g.lstm1_bb_hh *= s;
+    g.lstm2_wf_ih *= s;
+    g.lstm2_wf_hh *= s;
+    g.lstm2_bf_ih *= s;
+    g.lstm2_bf_hh *= s;
+    g.lstm2_wb_ih *= s;
+    g.lstm2_wb_hh *= s;
+    g.lstm2_bb_ih *= s;
+    g.lstm2_bb_hh *= s;
+    g.fc_w *= s;
+    g.fc_b *= s;
+}
+
+fn apply_full_adam(
+    model: &mut CrnnModel,
+    g: &FullParamGrads,
+    s: &mut FullAdamState,
+    lr: f32,
+) {
+    s.t += 1;
+    let bc1 = 1.0 - 0.9f32.powi(s.t as i32);
+    let bc2 = 1.0 - 0.999f32.powi(s.t as i32);
+    let eps = 1e-8f32;
+    macro_rules! adam3 {
+        ($p:expr, $m:expr, $v:expr) => {{
+            for ix in $p.iter_mut().zip($m.iter_mut().zip($v.iter_mut())) {
+                let (pv, (mm, vv)) = ix;
+                *mm = 0.9 * *mm + 0.1 * *pv;
+                *vv = 0.999 * *vv + 0.001 * *pv * *pv;
+                let mh = *mm / bc1;
+                let vh = *vv / bc2;
+                *pv -= lr * mh / (vh.sqrt() + eps);
+            }
+        }};
+    }
+    macro_rules! adam1 {
+        ($p:expr, $m:expr, $v:expr) => {{
+            for ix in $p.iter_mut().zip($m.iter_mut().zip($v.iter_mut())) {
+                let (pv, (mm, vv)) = ix;
+                *mm = 0.9 * *mm + 0.1 * *pv;
+                *vv = 0.999 * *vv + 0.001 * *pv * *pv;
+                let mh = *mm / bc1;
+                let vh = *vv / bc2;
+                *pv -= lr * mh / (vh.sqrt() + eps);
+            }
+        }};
+    }
+    macro_rules! adam2 {
+        ($p:expr, $m:expr, $v:expr) => {{
+            for ix in $p.iter_mut().zip($m.iter_mut().zip($v.iter_mut())) {
+                let (pv, (mm, vv)) = ix;
+                *mm = 0.9 * *mm + 0.1 * *pv;
+                *vv = 0.999 * *vv + 0.001 * *pv * *pv;
+                let mh = *mm / bc1;
+                let vh = *vv / bc2;
+                *pv -= lr * mh / (vh.sqrt() + eps);
+            }
+        }};
+    }
+    adam3!(model.cnn.conv1_weights, s.conv1_w_m, s.conv1_w_v);
+    adam1!(model.cnn.conv1_bias, s.conv1_b_m, s.conv1_b_v);
+    adam3!(model.cnn.conv2_weights, s.conv2_w_m, s.conv2_w_v);
+    adam1!(model.cnn.conv2_bias, s.conv2_b_m, s.conv2_b_v);
+    adam3!(model.cnn.conv3_weights, s.conv3_w_m, s.conv3_w_v);
+    adam1!(model.cnn.conv3_bias, s.conv3_b_m, s.conv3_b_v);
+    adam3!(model.cnn.conv4_weights, s.conv4_w_m, s.conv4_w_v);
+    adam1!(model.cnn.conv4_bias, s.conv4_b_m, s.conv4_b_v);
+    adam3!(model.cnn.conv5_weights, s.conv5_w_m, s.conv5_w_v);
+    adam1!(model.cnn.conv5_bias, s.conv5_b_m, s.conv5_b_v);
+    adam1!(model.cnn.bn_scales[0], s.bn1s_m, s.bn1s_v);
+    adam1!(model.cnn.bn_shifts[0], s.bn1p_m, s.bn1p_v);
+    adam1!(model.cnn.bn_scales[1], s.bn2s_m, s.bn2s_v);
+    adam1!(model.cnn.bn_shifts[1], s.bn2p_m, s.bn2p_v);
+    adam1!(model.cnn.bn_scales[2], s.bn3s_m, s.bn3s_v);
+    adam1!(model.cnn.bn_shifts[2], s.bn3p_m, s.bn3p_v);
+    adam1!(model.cnn.bn_scales[3], s.bn4s_m, s.bn4s_v);
+    adam1!(model.cnn.bn_shifts[3], s.bn4p_m, s.bn4p_v);
+    adam1!(model.cnn.bn_scales[4], s.bn5s_m, s.bn5s_v);
+    adam1!(model.cnn.bn_shifts[4], s.bn5p_m, s.bn5p_v);
+    adam2!(model.lstm1.wf_ih, s.lstm1wfih_m, s.lstm1wfih_v);
+    adam2!(model.lstm1.wf_hh, s.lstm1wfhh_m, s.lstm1wfhh_v);
+    adam1!(model.lstm1.bf_ih, s.lstm1bfih_m, s.lstm1bfih_v);
+    adam1!(model.lstm1.bf_hh, s.lstm1bfhh_m, s.lstm1bfhh_v);
+    adam2!(model.lstm1.wb_ih, s.lstm1wbih_m, s.lstm1wbih_v);
+    adam2!(model.lstm1.wb_hh, s.lstm1wbhh_m, s.lstm1wbhh_v);
+    adam1!(model.lstm1.bb_ih, s.lstm1bbih_m, s.lstm1bbih_v);
+    adam1!(model.lstm1.bb_hh, s.lstm1bbhh_m, s.lstm1bbhh_v);
+    adam2!(model.lstm2.wf_ih, s.lstm2wfih_m, s.lstm2wfih_v);
+    adam2!(model.lstm2.wf_hh, s.lstm2wfhh_m, s.lstm2wfhh_v);
+    adam1!(model.lstm2.bf_ih, s.lstm2bfih_m, s.lstm2bfih_v);
+    adam1!(model.lstm2.bf_hh, s.lstm2bfhh_m, s.lstm2bfhh_v);
+    adam2!(model.lstm2.wb_ih, s.lstm2wbih_m, s.lstm2wbih_v);
+    adam2!(model.lstm2.wb_hh, s.lstm2wbhh_m, s.lstm2wbhh_v);
+    adam1!(model.lstm2.bb_ih, s.lstm2bbih_m, s.lstm2bbih_v);
+    adam1!(model.lstm2.bb_hh, s.lstm2bbhh_m, s.lstm2bbhh_v);
+    adam2!(model.fc_weight, s.fcw_m, s.fcw_v);
+    adam1!(model.fc_bias, s.fcb_m, s.fcb_v);
 }

@@ -369,8 +369,10 @@ impl CnnFeatureExtractor {
         let out_c = weights.shape()[0];
         let k = (weights.shape()[2] as f32).sqrt() as usize; // k*k = last dim
         let pad = k / 2;
-        let out_h = in_h;
-        let out_w = in_w;
+        // Output spatial dims: in_h - k + 2*pad + 1. For k=3, pad=1, this is in_h.
+        // For k=2, pad=1, this is in_h. (legacy behavior — preserve size)
+        let out_h = in_h + 2 * pad - k + 1;
+        let out_w = in_w + 2 * pad - k + 1;
 
         let input_slice = input.as_slice().unwrap_or(&[]);
         let weights_slice = weights.as_slice().unwrap_or(&[]);
@@ -746,10 +748,10 @@ impl CrnnModel {
         let num_classes = vocab.size();
         let cnn = CnnFeatureExtractor::new(&config);
 
-        // After CNN: feature dim = 512 * (32/4 - 1) ≈ 512 * 7 = 3584 (simplified)
-        // Actually after our CNN: cnn_channels[-1] * remaining_height
-        // With 32 input and 2 maxpool(2): height = 32/4 = 8, minus conv5(2x2) = 7
-        let cnn_out_h = config.input_height / 4 - 1;
+        // After CNN: feature dim = cnn_channels[4] * (input_height / 4) because
+        // conv5 uses k=3, k*k=9 (init_conv_weights(3, ...)) with pad=1, so the
+        // spatial size is preserved: 32 → 16 → 8 → 8 → 8.
+        let cnn_out_h = config.input_height / 4;
         let cnn_feature_dim = config.cnn_channels[4] * cnn_out_h;
 
         let lstm1 = BiLstmLayer::new(cnn_feature_dim, config.hidden_size);

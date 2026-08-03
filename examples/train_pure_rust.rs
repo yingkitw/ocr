@@ -13,7 +13,7 @@ use ndarray::Array1;
 use ocr::recognition::crnn::{CrnnConfig, Vocabulary};
 use ocr::recognition::model_format;
 use ocr::synthetic::{DistortionConfig, SyntheticSample, TextLineGenerator};
-use ocr::training::crnn_trainer::{AdamState, CrnnTrainer};
+use ocr::training::crnn_trainer::{CrnnTrainer, FullAdamState};
 use ocr::utils::Result;
 
 const INPUT_HEIGHT: usize = 32;
@@ -38,7 +38,7 @@ fn run() -> Result<()> {
     let mut trainer = CrnnTrainer::new(ocr::recognition::crnn::CrnnModel::new(cfg))
         .with_learning_rate(args.learning_rate)
         .with_batch_size(args.batch_size);
-    let mut adam_state = AdamState::new_like(&trainer.model);
+    let mut adam_state = FullAdamState::new_like(&trainer.model);
     println!("parameters: {}", trainer.model.parameter_count());
 
     // Synthetic data
@@ -72,7 +72,7 @@ fn run() -> Result<()> {
             if batch.is_empty() {
                 continue;
             }
-            let loss = trainer.train_batch_ctc(&batch, &mut adam_state);
+            let loss = trainer.train_batch_full(&batch, &mut adam_state);
             total_loss += loss;
             n_batches += 1;
             // Greedy decode for accuracy
@@ -110,7 +110,7 @@ fn run() -> Result<()> {
             if h != INPUT_HEIGHT || w != INPUT_WIDTH {
                 arr = resize_to(&arr, INPUT_WIDTH, INPUT_HEIGHT);
             }
-            let logits = trainer.model.forward(&arr);
+            let (logits, _) = trainer.model.forward_with_cache(&arr);
             let pred = trainer.model.decode_greedy_from_logits(&logits);
             let max_len = pred.chars().count().max(s.ground_truth.chars().count());
             if max_len == 0 {
