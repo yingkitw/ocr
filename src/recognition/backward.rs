@@ -8,7 +8,7 @@
 //! pass consumes those activations plus the gradient of the loss w.r.t.
 //! the logits and returns a `ParamGrads` populated for every layer.
 
-use crate::recognition::crnn::{BiLstmLayer, CnnFeatureExtractor, CrnnModel};
+use crate::recognition::crnn::{CnnFeatureExtractor, CrnnModel};
 use ndarray::{Array1, Array2, Array3};
 
 /// Cached activations from a single-sample forward pass.
@@ -618,8 +618,6 @@ impl CrnnModel {
         );
 
         // ---- BiLSTM 1 backward (same as BiLSTM 2 but produces gradient w.r.t. cnn_seq) ----
-        let lstm1_x_shape = cache.lstm1_x.dim();
-        let mut d_lstm1_out = ndarray::Array2::<f32>::zeros(lstm1_x_shape);
         let mut d_lstm2_fwd_h2 = Array2::zeros((t, hs2));
         let mut d_lstm2_bwd_h2 = Array2::zeros((t, hs2));
         for ti in 0..t {
@@ -628,8 +626,8 @@ impl CrnnModel {
                 d_lstm2_bwd_h2[[ti, k]] = d_lstm2_out[[ti, hs2 + k]];
             }
         }
-        let mut d_lstm1_fwd_h = Array2::zeros((t, hs2));
-        let mut d_lstm1_bwd_h = Array2::zeros((t, hs2));
+        let d_lstm1_fwd_h = Array2::zeros((t, hs2));
+        let d_lstm1_bwd_h = Array2::zeros((t, hs2));
         // d_lstm1_out has shape [T, cnn_feature_dim] = (T, 1024) — input to lstm1
         let mut d_lstm1_out = Array2::zeros(cache.lstm1_x.dim());
         // lstm1 forward (in cache.lstm1_fwd order); backward iterate in reverse
@@ -843,7 +841,7 @@ fn lstm_bptt_one_direction(
         let do_g = &dh * &tanh_c;
         let one_minus_tanh_c_sq = tanh_c.mapv(|x| 1.0 - x * x);
         let dc_term = &dh * &step.o * &one_minus_tanh_c_sq;
-        let mut dc_total = &dc_term + &dc_next;
+        let dc_total = &dc_term + &dc_next;
         // c = f * c_prev + i * g; gradients via activations
         // f = sigmoid(g_f), so df/d(g_f) = f*(1-f). dc/d(f) = c_prev, so dc/d(g_f) = c_prev * f * (1-f)
         // similarly for i and g.
@@ -1027,7 +1025,6 @@ fn conv2d_backward(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::recognition::crnn::{CrnnConfig, CrnnModel};
 
     #[test]

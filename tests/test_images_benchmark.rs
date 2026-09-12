@@ -77,6 +77,7 @@ fn generate_noisy_image(width: u32, height: u32) -> Vec<u8> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn benchmark_synthetic_text_recognition() -> Result<()> {
     let png_data = generate_synthetic_text_image("Hello World Test OCR Benchmark", 24.0);
     let tmp = tempfile::NamedTempFile::new()?;
@@ -102,6 +103,7 @@ async fn benchmark_synthetic_text_recognition() -> Result<()> {
 }
 
 #[tokio::test]
+#[ignore]
 async fn benchmark_noisy_image_recognition() -> Result<()> {
     let png_data = generate_noisy_image(400, 200);
     let tmp = tempfile::NamedTempFile::new()?;

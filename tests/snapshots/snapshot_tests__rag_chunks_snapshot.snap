@@ -1,0 +1,10 @@
+---
+source: tests/snapshot_tests.rs
+expression: out
+---
+[0] kind=heading    section=[] text="INTRO"
+[1] kind=paragraph  section=["INTRO"] text="First paragraph."
+[2] kind=heading    section=["INTRO"] text="More Details"
+[3] kind=paragraph  section=["INTRO", "More Details"] text="Second paragraph."
+[4] kind=list_item  section=["INTRO", "More Details"] text="item one"
+[5] kind=list_item  section=["INTRO", "More Details"] text="item two"

@@ -205,8 +205,7 @@ fn test_geometry_types_snapshot() {
 
 /// Test text structures snapshots
 #[test]
-fn test_text_structures_snapshot() {
-    let mut results = Vec::new();
+fn test_text_structures_snapshot() {    let mut results = Vec::new();
 
     // Test BlobChoice
     let blob_choice = BlobChoice::new(
@@ -482,4 +481,25 @@ fn test_model_type_device_combinations_snapshot() {
 
     let output = results.join("\n");
     assert_snapshot!(output);
+}
+
+/// Snapshot of RAG chunk output structure (kinds, section paths, text)
+#[test]
+fn test_rag_chunks_snapshot() {
+    use ocr::core::output::rag_chunks;
+    use ocr::core::text::{BoundingBox, TextResult};
+
+    let mut result = TextResult::new(String::new(), 0.9, BoundingBox::new(0, 0, 200, 50));
+    result.text = "INTRO\n\nFirst paragraph.\nMore Details\n\nSecond paragraph.\n\n- item one\n- item two"
+        .to_string();
+
+    let chunks = rag_chunks(&result);
+    let mut out = String::new();
+    for c in &chunks {
+        out.push_str(&format!(
+            "[{}] kind={:<10} section={:?} text={:?}\n",
+            c.id, c.kind, c.section, c.text
+        ));
+    }
+    assert_snapshot!(out);
 }

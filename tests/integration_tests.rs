@@ -145,7 +145,7 @@ fn test_text_structures() {
 /// Test model management
 #[tokio::test]
 async fn test_model_management() {
-    let mut manager = ModelManager::new(DeviceType::CPU);
+    let manager = ModelManager::new(DeviceType::CPU);
 
     // Create a CRNN model and load it through the engine abstraction
     let config = ModelConfig {

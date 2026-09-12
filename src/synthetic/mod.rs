@@ -18,7 +18,6 @@ pub mod distortion;
 pub mod document_generator;
 pub mod generator;
 pub mod multi_script;
-pub mod template_trainer;
 
 pub use benchmark::*;
 pub use bitmap_font::*;
@@ -26,5 +25,4 @@ pub use distortion::*;
 pub use document_generator::*;
 pub use generator::*;
 pub use multi_script::*;
-pub use template_trainer::*;
 

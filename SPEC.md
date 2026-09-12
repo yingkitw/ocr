@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested. 408+ tests passing, 0 failures.**
+**Current status: All five phases implemented and tested. 322+ tests passing, 0 failures.**
 
 ---
 
@@ -13,18 +13,18 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero failures (408+ tests)
+- [x] `cargo test` passes with zero failures (322+ tests)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
-- [x] CLI covers: extract, batch, layout, list-languages, check, info, validate, train, benchmark, makebox
+- [x] CLI covers: extract, batch, layout, list-languages, check, info, validate, train, benchmark, makebox, serve
 
 ### CLI Specification
 
 | Command | Description | Required Args | Optional Flags |
 |---------|-------------|---------------|--------------|
-| `extract` | Recognize text from an image | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--confidence`, `--engine`, `--dict-correct`, `--osd` |
-| `batch` | Process a directory of images (prints `[n/total] % ETA` progress) | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct`, `--max-concurrent` |
+| `extract` | Recognize text from an image | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--confidence`, `--engine`, `--dict-correct`, `--device`, `--osd` |
+| `batch` | Process a directory of images (prints `[n/total] % ETA` progress) | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct`, `--max-concurrent`, `--device` |
 | `layout` | Analyze page layout | `IMAGE_PATH` | `-o, --output` |
 | `list-languages` | Print supported language codes | — | — |
 | `check` | Verify system requirements | — | — |
@@ -33,6 +33,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | `train` | Train a recognition model | — | `-e, --epochs`, `-b, --batch-size`, `-l, --learning-rate`, `--engine`, `-c, --checkpoint-dir`, `--distortion` |
 | `benchmark` | Benchmark per-script accuracy | — | `-s, --samples`, `--distortion` |
 | `makebox` | Generate Tesseract `.box` training file | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--engine`, `--preprocess` |
+| `serve` | Start HTTP API server (requires `--features web-api`) | — | `--host`, `--port`, `--max-upload-size` |
 
 ### Extract Flags
 
@@ -42,11 +43,12 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | `-o, --output` | stdout | Output file path |
 | `-l, --lang` | `en` | Language code (`en`, `fr`, `de`, `zh`, `ja`, `ko`, …) or `auto` (script + dictionary detection after recognition) |
 | `--preprocess` | false | Enable full preprocessing pipeline |
-| `-f, --format` | `text` | Output: text, json, hocr, tsv, alto, box, markdown, structured-json |
+| `-f, --format` | `text` | Output: text, json, hocr, tsv, alto, box, markdown, structured-json, rag |
 | `--psm` | `3` | Page segmentation mode (Tesseract-compatible) |
 | `--confidence` | `0.5` | Minimum confidence threshold (0.0–1.0) |
-| `--engine` | `pattern` | Recognition engine: pattern, lstm, hybrid |
+| `--engine` | `pattern` | Legacy alias: only the CRNN engine exists; `pattern` is accepted and silently mapped to `lstm` |
 | `--dict-correct` | false | Enable dictionary post-correction |
+| `--device` | `auto` | Compute device: `cpu`, `gpu`, `auto` |
 | `--osd` | false | Enable orientation & script detection |
 
 ### Library API
@@ -86,6 +88,7 @@ pub struct OcrConfig {
 | `box` | Box file format | `char left top right bottom page` |
 | `markdown` | Markdown with headings, paragraphs, lists | `## Heading`, `- List item` |
 | `structured-json` | Hierarchical JSON with document elements | `{"elements": [{"Heading": {...}}, {"Paragraph": {...}}]}` |
+| `rag` | Chunked JSON for RAG / LLM pipelines (aliases: `rag-json`, `chunks`) | `{"chunks": [{"id": 0, "kind": "paragraph", "text": "...", "section": ["Heading"]}]}` — one chunk per element, `section` is the anchoring heading path; tables render as Markdown |
 
 ---
 
@@ -98,7 +101,7 @@ pub struct OcrConfig {
 - [x] Applies realistic distortions: rotation ±5°, Gaussian blur, salt & pepper noise, random contrast, perspective shear
 - [x] Outputs paired dataset: `(image_bytes, ground_truth_text)`
 - [x] CER/WER benchmark harness with clean/mild/heavy test sets
-- [x] `TemplateTrainer` trains pattern-matching templates from synthetic renders and evaluates vs baseline
+- [x] `TemplateTrainer` trained pattern-matching templates from synthetic renders (module removed in v0.2 when the pattern engine was deleted)
 
 ### Synthetic Data Generator API
 
@@ -115,12 +118,6 @@ impl TextLineGenerator {
     pub fn generate(&self, text: &str) -> SyntheticSample;
     pub fn generate_batch(&self, texts: &[String]) -> Vec<SyntheticSample>;
     pub fn generate_with_font(&self, text: &str, font_index: usize) -> SyntheticSample;
-}
-
-pub struct TemplateTrainer {
-    pub fn train_templates(&self, chars: &[char]) -> HashMap<char, TrainedTemplate>;
-    pub fn train_ascii(&self) -> HashMap<char, TrainedTemplate>;
-    pub fn evaluate_templates(...) -> (trained_correct, baseline_correct, total);
 }
 ```
 
@@ -170,7 +167,8 @@ pub struct CnnDetector;          // 3-layer CNN with heuristic edge-detector wei
 - [x] Wired into `OcrEngine` via `--engine lstm`
 - [x] Model size < 5MB (~2.4MB default config)
 - [x] Inference benchmark test (target < 100ms/line in release)
-- [x] FC-layer backprop via frame-level cross-entropy (CNN/BiLSTM frozen)
+- [x] Pure-Rust CTC loss (forward-backward + gradient) in `src/training/ctc.rs`
+- [x] Full BPTT training through CNN + BiLSTM + FC (`CrnnTrainer::train_batch_full`); FC-only CTC path retained (`train_batch_ctc`)
 - [x] Rayon-parallel convolutions + ndarray FC layer for faster inference
 - [ ] CER < 5% on clean synthetic test (requires training execution)
 - [ ] CER < 15% on distorted synthetic test (requires training execution)
@@ -195,7 +193,9 @@ Linear(128 → num_classes + 1)
 CTC Beam Search (+ optional dictionary / n-gram LM rescoring) → text string
 ```
 
-`CrnnConfig` defaults: `use_beam_search = true`, `beam_width = 10`. Set `use_beam_search = false` for greedy decode. When dictionary correction / language model are enabled in `RecognitionConfig`, `OcrEngine` rescored beam hypotheses via `DictLmRescorer`.
+`CrnnConfig` defaults: `use_beam_search = true`, `beam_width = 10`. Set `use_beam_search = false` for greedy decode. When dictionary correction / language model are enabled in `RecognitionConfig`, `OcrEngine` rescores beam hypotheses via `DictLmRescorer`.
+
+**Model bundle:** `models/crnn-en.bin` (3.07 MB, `OCR1` format — magic + version 1) is embedded via `include_bytes!` (`src/recognition/loader.rs`) and auto-loaded on `Ocr::initialize()`. Replace the file to deploy a newly trained checkpoint.
 
 ### Training API
 
@@ -213,8 +213,11 @@ impl CrnnTrainer {
     pub fn with_batch_size(self, bs: usize) -> Self;
     pub fn with_distortion(self, distortion: DistortionConfig) -> Self;
     pub fn train_epoch(&mut self, num_batches: usize, samples_per_batch: usize) -> EpochMetrics;
+    pub fn train_batch_full(&mut self, samples: &[SyntheticSample], adam: &mut FullAdamState) -> f32; // full BPTT
+    pub fn train_batch_ctc(&mut self, samples: &[SyntheticSample], adam: &mut AdamState) -> f32;     // FC-only
     pub fn evaluate(&self, samples: &[SyntheticSample]) -> EpochMetrics;
     pub fn save_checkpoint(&self, path: &Path) -> Result<()>;
+    pub fn load_checkpoint(&mut self, path: &Path) -> Result<()>;
 }
 
 pub struct EpochMetrics {
@@ -301,6 +304,7 @@ These items require running the training pipeline, not writing additional code:
 
 1. **Train CRNN to target CER**
    - Run `cargo run --release -- train --engine lstm --epochs 100`
+   - Or `cargo run --release --example train_pure_rust -- --epochs 100` (full BPTT, writes a new `models/crnn-en.bin`)
    - Target: CER < 5% clean, CER < 15% distorted
    - Debug inference is ~4s/line; use `--release` for realistic speed
 

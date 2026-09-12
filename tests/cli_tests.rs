@@ -158,6 +158,16 @@ fn test_cli_extract_with_json_format() {
 }
 
 #[test]
+fn test_cli_extract_with_rag_format() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(&["extract", file.path().to_str().unwrap(), "-f", "rag"]);
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains("\"chunks\""));
+}
+
+#[test]
 fn test_cli_extract_with_all_options() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();

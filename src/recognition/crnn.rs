@@ -856,6 +856,18 @@ impl CrnnModel {
         let gray = image.data.to_luma8();
         let (w, h) = (gray.width() as usize, gray.height() as usize);
 
+        // The CNN halves the width four times (two 2x2 pools, two width-only
+        // pools), so a crop narrower than 16 px collapses to a zero-width
+        // feature map and would underflow in `conv_block`. Such degenerate
+        // crops carry no readable text — return an empty result instead.
+        if w < 16 {
+            return Ok(CrnnRecognition {
+                text: String::new(),
+                confidence: 0.0,
+                char_confidences: Vec::new(),
+            });
+        }
+
         let mut arr = Array2::zeros((h, w));
         for y in 0..h {
             for x in 0..w {

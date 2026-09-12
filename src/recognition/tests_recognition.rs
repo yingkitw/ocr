@@ -62,4 +62,36 @@ mod tests {
         let m = CrnnModel::new(cfg);
         assert!(m.fc_weight.nrows() > 0);
     }
+
+    #[test]
+    fn test_recognize_detailed_narrow_crop_returns_empty() {
+        // Regression: crops narrower than 16 px used to underflow in
+        // `conv_block` (the CNN halves the width 4 times, so w < 16
+        // collapses to a zero-width feature map). They must yield an
+        // empty result instead of panicking.
+        let model = CrnnModel::new(CrnnConfig::default());
+        for w in [0u32, 1, 8, 15] {
+            let img = crate::core::image::OcrImage::from_raw_pixels(
+                w,
+                32,
+                vec![255u8; w as usize * 32],
+                crate::core::image::ImageFormat::Grayscale,
+                300,
+            )
+            .expect("valid OcrImage");
+            let res = model.recognize_detailed(&img, None, None).expect("no error");
+            assert!(res.text.is_empty(), "w={w} should decode to empty text");
+            assert_eq!(res.confidence, 0.0);
+        }
+        // Width 16 is the first size that survives the CNN; it must not panic.
+        let img = crate::core::image::OcrImage::from_raw_pixels(
+            16,
+            32,
+            vec![255u8; 16 * 32],
+            crate::core::image::ImageFormat::Grayscale,
+            300,
+        )
+        .expect("valid OcrImage");
+        let _ = model.recognize_detailed(&img, None, None).expect("no panic at w=16");
+    }
 }

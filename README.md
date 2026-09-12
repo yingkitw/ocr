@@ -6,7 +6,7 @@
 [![docs.rs](https://docs.rs/ocr/badge.svg)](https://docs.rs/ocr)
 [![License: Apache-2.0](https://img.shields.io/crates/l/ocr)](LICENSE)
 [![Rust Edition 2024](https://img.shields.io/badge/rust-2024-edition-orange.svg)](https://doc.rust-lang.org/edition-guide/)
-[![Tests](https://img.shields.io/badge/tests-400%2B_passing-brightgreen.svg)](#roadmap)
+[![Tests](https://img.shields.io/badge/tests-322%2B_passing-brightgreen.svg)](#roadmap)
 [![Build](https://img.shields.io/badge/build-zero_warnings-brightgreen.svg)](#)
 
 > **TL;DR.** `cargo install ocr` then `ocr extract document.png`. No C/C++ build deps, no Python, no GPU. CLI and library. Replaces Tesseract for embedded Rust workflows.
@@ -34,7 +34,7 @@ It is built for **printed text on clean scans**, similar to Tesseract's sweet sp
 
 | Engine | Language | Detection | Recognition | Languages | Strengths |
 |---|---|---|---|---|---|
-| **OCR (this crate)** | Pure Rust | CCL + lightweight CNN | Pattern + CRNN + CTC | 25+ | No C deps, async API, Apache-2.0, embedded-friendly |
+| **OCR (this crate)** | Pure Rust | CCL + lightweight CNN | CRNN + CTC | 25+ | No C deps, async API, Apache-2.0, embedded-friendly |
 | Tesseract | C++ | CCL + LSTM line finder | Conv + BiLSTM + CTC (VGSL) | 100+ | Mature, tiny binary, great for scanned docs |
 | EasyOCR | Python | CRAFT (CNN) | CRNN (ResNet + BiLSTM + CTC) | 80+ | Simple PyTorch API, good scene text |
 | PaddleOCR | Python / C++ | DB (differentiable binarization) | SVTR / CRNN | 80+ | Best speed/accuracy trade-off, ultra-light models |
@@ -75,11 +75,11 @@ It is built for **printed text on clean scans**, similar to Tesseract's sweet sp
 - IoU-based evaluation harness on synthetic documents
 
 ### Recognition
-- Pattern-matching engine (trainable from synthetic fonts)
-- CRNN (CNN + BiLSTM + CTC beam search with dictionary / LM rescoring)
+- CRNN (5-layer CNN + 2-layer BiLSTM) with CTC decoding — greedy + beam search with dictionary / LM rescoring
+- Bundled model (`models/crnn-en.bin`, 3.07 MB, `OCR1` binary format) embedded via `include_bytes!`
 - Calibrated per-character / word confidence (`ConfidenceCalibrator`)
-- Selectable via `--engine pattern` or `--engine lstm`
-- Model size < 5 MB (~2.4 MB default config)
+- `--engine` flag accepted for compatibility (`pattern` is mapped to the CRNN engine)
+- Model size < 5 MB
 
 ### Multi-language
 - Unicode script detection (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)
@@ -92,6 +92,7 @@ It is built for **printed text on clean scans**, similar to Tesseract's sweet sp
 - Plain text, JSON, hOCR, TSV, ALTO XML
 - **Markdown** with headings, paragraphs, lists
 - **Structured JSON** with bounding boxes, confidence, hierarchy
+- **RAG JSON** (`-f rag`): retrieval-friendly chunks with heading-path context for LLM / embedding pipelines
 - Tesseract-compatible `.box` files for training (`ocr makebox`)
 
 ### Post-processing
@@ -100,9 +101,9 @@ It is built for **printed text on clean scans**, similar to Tesseract's sweet sp
 - Document structure classification
 
 ### Training and benchmarking
-- `CrnnTrainer` with synthetic data + checkpoint saving
-- `TemplateTrainer` for pattern-matching templates
+- `CrnnTrainer` with full BPTT (CNN + BiLSTM + FC) through a pure-Rust CTC loss (forward-backward + gradient), Adam updates, checkpoint save/load
 - `ocr train --engine lstm --epochs 10` for CRNN training
+- `examples/train_pure_rust.rs` — standalone trainer that writes a new `models/crnn-en.bin`
 - `ocr benchmark --samples 10` for per-script CER/WER
 - INT8 per-tensor symmetric quantization for FC layer (4× memory reduction)
 
@@ -111,8 +112,9 @@ It is built for **printed text on clean scans**, similar to Tesseract's sweet sp
 - **Web API** (`--features web-api`): HTTP server with multipart upload
 - **CUDA** (`--features cuda`): GPU acceleration via `cudarc`
 - **OpenCL** (`--features opencl`): GPU acceleration via `ocl`
-- **PDF** (`--features pdfrs`): native PDF rendering (no external deps)
 - **SIMD** (default): CPU SIMD optimizations
+
+Note: PDF input/output is not currently supported (the `pdfrs` feature is an empty placeholder).
 
 ### Font attributes
 - Bold / italic / monospace detection from stroke analysis (`FontAttributeDetector`)
@@ -130,7 +132,7 @@ Use `--lang auto` to auto-detect scripts on mixed documents.
 ## Installation
 
 ```bash
-# Default build (pattern-matching engine + SIMD)
+# Default build (CRNN engine + SIMD)
 cargo install ocr
 
 # Or build from source
@@ -167,13 +169,16 @@ ocr extract document.png -f markdown
 # Structured JSON with headings, paragraphs, lists
 ocr extract document.png -f structured-json
 
+# RAG-ready chunks with heading context (for LLM / embedding pipelines)
+ocr extract document.png -f rag
+
 # hOCR (Tesseract-compatible)
 ocr extract document.png -f hocr
 
 # Enable preprocessing pipeline (deskew, contrast, etc.)
 ocr extract document.png --preprocess
 
-# Use CRNN engine instead of pattern matching
+# Explicitly select the CRNN engine (`pattern` is a legacy alias for the same engine)
 ocr extract document.png --engine lstm
 
 # Auto-detect language (mixed-script documents)
@@ -247,7 +252,7 @@ src/
 ├── image/        Image preprocessing pipeline (binarization, enhancement, quality)
 ├── lang/         Language support (CJK, detection, dictionary, N-gram, unicode)
 ├── layout/       Layout analysis (column/line detection, text ordering, CCL, detection CNN, table/form extractors, classifier)
-├── recognition/  Recognition models (pattern matching, CRNN, CTC decoder, LSTM)
+├── recognition/  Recognition models (CRNN, CTC decoder, per-script registry, model loader)
 ├── synthetic/    Synthetic data generation (fonts, distortion, multi-script, document layouts, template training)
 ├── training/     Model training pipeline (data, losses, metrics, optimizers, CRNN trainer)
 ├── compute/      GPU compute backends (CUDA, OpenCL)
@@ -260,17 +265,17 @@ src/
 
 ### Phase 0 — Baseline (DONE)
 - [x] End-to-end pipeline: image → preprocess → layout → recognize → output
-- [x] Pattern-matching recognition engine for Latin glyphs
+- [x] Rule-based recognition for Latin glyphs (superseded by the CRNN-only pipeline in v0.2)
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with `extract`, `batch`, `layout`, `list-languages`
-- [x] 400+ tests passing
+- [x] 322+ tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback
 - [x] Distortion pipeline (rotation, blur, noise, contrast, shear)
 - [x] CER/WER benchmark harness with clean / mild / heavy test sets
-- [x] Train pattern-matching templates from synthetic renders (`TemplateTrainer`)
+- [x] Train pattern-matching templates from synthetic renders (`TemplateTrainer`) (superseded in v0.2 — pattern engine removed)
 
 ### Phase 2 — Robust Text Detection (DONE)
 - [x] `TextDetector` trait with `CclDetector` and `CnnDetector`
@@ -290,7 +295,7 @@ src/
 - [x] CTC loss with forward-backward algorithm
 - [x] `CrnnTrainer` with synthetic data + checkpoint saving
 - [x] Wired into `OcrEngine` via `--engine lstm`
-- [x] Model size < 5 MB (~2.4 MB default config)
+- [x] Model size < 5 MB (bundled `models/crnn-en.bin`, 3.07 MB)
 
 ### Phase 4 — Multi-Language Scale (DONE)
 - [x] Unicode script detection and routing (8 scripts)
@@ -309,6 +314,7 @@ src/
 - [x] Training CLI wired up (`ocr train --engine lstm --epochs 10`)
 - [x] Benchmark CLI wired up (`ocr benchmark --samples 10`)
 - [x] CRNN inference optimized (rayon-parallel convolutions, ndarray FC layer)
+- [x] Full BPTT training through CNN + BiLSTM + FC with pure-Rust CTC loss (`CrnnTrainer::train_batch_full`)
 - [ ] Train CRNN to CER < 5% on clean synthetic test
 - [ ] Train CRNN to CER < 15% on distorted synthetic test
 - [ ] Evaluate per-language accuracy on synthetic benchmarks
@@ -329,7 +335,7 @@ Not yet. OCR is optimized for printed text. Handwriting recognition is on the ro
 
 ### What image formats are supported?
 
-PNG, JPEG, GIF, BMP, TIFF, and WebP (via the `image` crate). PDF is supported via the optional `pdfrs` feature.
+PNG, JPEG, GIF, BMP, TIFF, and WebP (via the `image` crate). PDF is not currently supported (the `pdfrs` feature is an empty placeholder).
 
 ### Can I embed OCR in my Rust application?
 
@@ -338,14 +344,18 @@ Yes. Use `ocr::api::Ocr` for the high-level async API. The crate is published on
 ### How do I train the CRNN model?
 
 ```bash
+# Via the built-in trainer (full BPTT + CTC loss)
 cargo run --release -- train --engine lstm --epochs 100 --batch-size 8 --learning-rate 0.001
+
+# Or via the standalone example, which writes a new models/crnn-en.bin
+cargo run --release --example train_pure_rust -- --epochs 100
 ```
 
-Training is blocked on multi-hour `--release` runs. Synthetic data is generated automatically.
+Training requires multi-hour `--release` runs. Synthetic data is generated automatically.
 
 ### Is OCR production-ready?
 
-OCR is feature-complete for printed text on clean scans and has 400+ passing tests. The CRNN model still needs to be trained to target accuracy levels (CER < 5% on clean / < 15% on distorted). For production deployments today, use the pattern-matching engine (`--engine pattern`) which is stable and deterministic.
+OCR is feature-complete for printed text on clean scans and has 322+ passing tests. The CRNN training pipeline (full BPTT + CTC loss) is implemented, but the bundled model is not yet trained to target accuracy (CER < 5% on clean / < 15% on distorted synthetic tests). Accuracy will improve once a trained checkpoint replaces `models/crnn-en.bin`.
 
 ### What is the license?
 
@@ -357,7 +367,7 @@ Open an issue at <https://github.com/yingkitw/ocr/issues>.
 
 ## Contributing
 
-Contributions are welcome. Read the [AGENTS.md](AGENTS.md) file for the development loop, and [ARCHITECTURE.md](ARCHITECTURE.md) for module dependencies. The project follows a TODO → test → ship cadence: every new feature ships with integration tests in `tests/integration.rs`.
+Contributions are welcome. Read the [AGENTS.md](AGENTS.md) file for the development loop, and [ARCHITECTURE.md](ARCHITECTURE.md) for module dependencies. The project follows a TODO → test → ship cadence: every new feature ships with integration tests in `tests/integration_tests.rs`.
 
 ## License
 

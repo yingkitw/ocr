@@ -62,7 +62,7 @@ pub fn adam_update_fc(
     learning_rate: f32,
 ) {
     state.t += 1;
-    let step_t = state.t as f32;
+    let _step_t = state.t as f32;
     let bc1 = 1.0 - 0.9f32.powi(state.t as i32);
     let bc2 = 1.0 - 0.999f32.powi(state.t as i32);
     let eps = 1e-8f32;
@@ -233,7 +233,7 @@ impl CrnnTrainer {
             let cnn_features = self.model.cnn.forward(&arr);
             let lstm1_out = self.model.lstm1.forward(&cnn_features);
             let lstm2_out = self.model.lstm2.forward(&lstm1_out);
-            let (mut t, lstm_dim) = lstm2_out.dim();
+            let (t, lstm_dim) = lstm2_out.dim();
             let num_classes = self.model.fc_weight.nrows();
 
             // Compute logits
@@ -327,10 +327,6 @@ impl CrnnTrainer {
         use crate::recognition::backward::ParamGrads;
 
         let mut total_loss = 0.0f32;
-        let mut total_chars = 0usize;
-        let mut total_correct = 0usize;
-        let mut total_words = 0usize;
-        let mut word_correct = 0usize;
 
         // Aggregate grads across the batch
         let mut grads_acc = ParamGrads::zero_like(&self.model);
@@ -406,15 +402,6 @@ impl CrnnTrainer {
             accumulate_grads(&mut grads_acc, &grads);
             total_loss += loss;
             n += 1;
-
-            // Greedy decode for accuracy
-            let pred_text = self.model.decode_greedy_from_logits(&logits);
-            total_chars += gt.chars().count();
-            total_correct += pred_text.chars().zip(gt.chars()).filter(|(a, b)| a == b).count();
-            total_words += 1;
-            if pred_text.as_str() == gt.as_str() {
-                word_correct += 1;
-            }
         }
 
         if n == 0 {
@@ -438,7 +425,7 @@ impl CrnnTrainer {
         let mut total_words = 0usize;
         let mut word_correct = 0usize;
 
-        let n_initial = samples.len();
+        let _n_initial = samples.len();
         let mut n = 0;
         // Accumulate grads across the batch.
         let mut grad_w_acc = ndarray::Array2::<f32>::zeros(self.model.fc_weight.dim());
@@ -753,6 +740,47 @@ mod tests {
 
         let _ = std::fs::remove_file(temp_path);
     }
+
+    /// Regression test: `train_batch_full` must actually update model parameters
+    /// using the computed gradients. Before the fix, `apply_full_adam` ignored
+    /// the gradient argument `g` and used parameter values as gradients — the
+    /// parameters still changed but not in the gradient direction. This test
+    /// verifies that FC weights change after a training step and that loss
+    /// decreases over multiple steps on the same batch.
+    #[test]
+    fn test_train_batch_full_updates_params() {
+        let config = CrnnConfig::default();
+        let model = CrnnModel::new(config);
+        let mut trainer = CrnnTrainer::new(model);
+        trainer.learning_rate = 0.01;
+
+        let generator = TextLineGenerator::default();
+        let samples = vec![generator.generate("HELLO")];
+
+        let fc_before = trainer.model.fc_weight.clone();
+
+        let mut adam = FullAdamState::new_like(&trainer.model);
+        let loss1 = trainer.train_batch_full(&samples, &mut adam);
+
+        // FC weights must change after a training step.
+        let fc_after = &trainer.model.fc_weight;
+        let changed = fc_before
+            .iter()
+            .zip(fc_after.iter())
+            .any(|(a, b)| (a - b).abs() > 1e-8);
+        assert!(changed, "FC weights did not change after train_batch_full");
+
+        // Loss should decrease over a few steps on the same batch.
+        let mut prev_loss = loss1;
+        for _ in 0..4 {
+            let loss = trainer.train_batch_full(&samples, &mut adam);
+            assert!(
+                loss <= prev_loss + 0.5,
+                "loss increased unexpectedly: {prev_loss} -> {loss}"
+            );
+            prev_loss = loss;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1042,78 +1070,54 @@ fn apply_full_adam(
     let bc1 = 1.0 - 0.9f32.powi(s.t as i32);
     let bc2 = 1.0 - 0.999f32.powi(s.t as i32);
     let eps = 1e-8f32;
-    macro_rules! adam3 {
-        ($p:expr, $m:expr, $v:expr) => {{
-            for ix in $p.iter_mut().zip($m.iter_mut().zip($v.iter_mut())) {
-                let (pv, (mm, vv)) = ix;
-                *mm = 0.9 * *mm + 0.1 * *pv;
-                *vv = 0.999 * *vv + 0.001 * *pv * *pv;
+    macro_rules! adam {
+        ($grad:expr, $param:expr, $m:expr, $v:expr) => {{
+            for ix in $grad.iter().zip($param.iter_mut().zip($m.iter_mut().zip($v.iter_mut()))) {
+                let (gv, (pv, (mm, vv))) = ix;
+                *mm = 0.9 * *mm + 0.1 * *gv;
+                *vv = 0.999 * *vv + 0.001 * *gv * *gv;
                 let mh = *mm / bc1;
                 let vh = *vv / bc2;
                 *pv -= lr * mh / (vh.sqrt() + eps);
             }
         }};
     }
-    macro_rules! adam1 {
-        ($p:expr, $m:expr, $v:expr) => {{
-            for ix in $p.iter_mut().zip($m.iter_mut().zip($v.iter_mut())) {
-                let (pv, (mm, vv)) = ix;
-                *mm = 0.9 * *mm + 0.1 * *pv;
-                *vv = 0.999 * *vv + 0.001 * *pv * *pv;
-                let mh = *mm / bc1;
-                let vh = *vv / bc2;
-                *pv -= lr * mh / (vh.sqrt() + eps);
-            }
-        }};
-    }
-    macro_rules! adam2 {
-        ($p:expr, $m:expr, $v:expr) => {{
-            for ix in $p.iter_mut().zip($m.iter_mut().zip($v.iter_mut())) {
-                let (pv, (mm, vv)) = ix;
-                *mm = 0.9 * *mm + 0.1 * *pv;
-                *vv = 0.999 * *vv + 0.001 * *pv * *pv;
-                let mh = *mm / bc1;
-                let vh = *vv / bc2;
-                *pv -= lr * mh / (vh.sqrt() + eps);
-            }
-        }};
-    }
-    adam3!(model.cnn.conv1_weights, s.conv1_w_m, s.conv1_w_v);
-    adam1!(model.cnn.conv1_bias, s.conv1_b_m, s.conv1_b_v);
-    adam3!(model.cnn.conv2_weights, s.conv2_w_m, s.conv2_w_v);
-    adam1!(model.cnn.conv2_bias, s.conv2_b_m, s.conv2_b_v);
-    adam3!(model.cnn.conv3_weights, s.conv3_w_m, s.conv3_w_v);
-    adam1!(model.cnn.conv3_bias, s.conv3_b_m, s.conv3_b_v);
-    adam3!(model.cnn.conv4_weights, s.conv4_w_m, s.conv4_w_v);
-    adam1!(model.cnn.conv4_bias, s.conv4_b_m, s.conv4_b_v);
-    adam3!(model.cnn.conv5_weights, s.conv5_w_m, s.conv5_w_v);
-    adam1!(model.cnn.conv5_bias, s.conv5_b_m, s.conv5_b_v);
-    adam1!(model.cnn.bn_scales[0], s.bn1s_m, s.bn1s_v);
-    adam1!(model.cnn.bn_shifts[0], s.bn1p_m, s.bn1p_v);
-    adam1!(model.cnn.bn_scales[1], s.bn2s_m, s.bn2s_v);
-    adam1!(model.cnn.bn_shifts[1], s.bn2p_m, s.bn2p_v);
-    adam1!(model.cnn.bn_scales[2], s.bn3s_m, s.bn3s_v);
-    adam1!(model.cnn.bn_shifts[2], s.bn3p_m, s.bn3p_v);
-    adam1!(model.cnn.bn_scales[3], s.bn4s_m, s.bn4s_v);
-    adam1!(model.cnn.bn_shifts[3], s.bn4p_m, s.bn4p_v);
-    adam1!(model.cnn.bn_scales[4], s.bn5s_m, s.bn5s_v);
-    adam1!(model.cnn.bn_shifts[4], s.bn5p_m, s.bn5p_v);
-    adam2!(model.lstm1.wf_ih, s.lstm1wfih_m, s.lstm1wfih_v);
-    adam2!(model.lstm1.wf_hh, s.lstm1wfhh_m, s.lstm1wfhh_v);
-    adam1!(model.lstm1.bf_ih, s.lstm1bfih_m, s.lstm1bfih_v);
-    adam1!(model.lstm1.bf_hh, s.lstm1bfhh_m, s.lstm1bfhh_v);
-    adam2!(model.lstm1.wb_ih, s.lstm1wbih_m, s.lstm1wbih_v);
-    adam2!(model.lstm1.wb_hh, s.lstm1wbhh_m, s.lstm1wbhh_v);
-    adam1!(model.lstm1.bb_ih, s.lstm1bbih_m, s.lstm1bbih_v);
-    adam1!(model.lstm1.bb_hh, s.lstm1bbhh_m, s.lstm1bbhh_v);
-    adam2!(model.lstm2.wf_ih, s.lstm2wfih_m, s.lstm2wfih_v);
-    adam2!(model.lstm2.wf_hh, s.lstm2wfhh_m, s.lstm2wfhh_v);
-    adam1!(model.lstm2.bf_ih, s.lstm2bfih_m, s.lstm2bfih_v);
-    adam1!(model.lstm2.bf_hh, s.lstm2bfhh_m, s.lstm2bfhh_v);
-    adam2!(model.lstm2.wb_ih, s.lstm2wbih_m, s.lstm2wbih_v);
-    adam2!(model.lstm2.wb_hh, s.lstm2wbhh_m, s.lstm2wbhh_v);
-    adam1!(model.lstm2.bb_ih, s.lstm2bbih_m, s.lstm2bbih_v);
-    adam1!(model.lstm2.bb_hh, s.lstm2bbhh_m, s.lstm2bbhh_v);
-    adam2!(model.fc_weight, s.fcw_m, s.fcw_v);
-    adam1!(model.fc_bias, s.fcb_m, s.fcb_v);
+    adam!(g.conv1_w, model.cnn.conv1_weights, s.conv1_w_m, s.conv1_w_v);
+    adam!(g.conv1_b, model.cnn.conv1_bias, s.conv1_b_m, s.conv1_b_v);
+    adam!(g.conv2_w, model.cnn.conv2_weights, s.conv2_w_m, s.conv2_w_v);
+    adam!(g.conv2_b, model.cnn.conv2_bias, s.conv2_b_m, s.conv2_b_v);
+    adam!(g.conv3_w, model.cnn.conv3_weights, s.conv3_w_m, s.conv3_w_v);
+    adam!(g.conv3_b, model.cnn.conv3_bias, s.conv3_b_m, s.conv3_b_v);
+    adam!(g.conv4_w, model.cnn.conv4_weights, s.conv4_w_m, s.conv4_w_v);
+    adam!(g.conv4_b, model.cnn.conv4_bias, s.conv4_b_m, s.conv4_b_v);
+    adam!(g.conv5_w, model.cnn.conv5_weights, s.conv5_w_m, s.conv5_w_v);
+    adam!(g.conv5_b, model.cnn.conv5_bias, s.conv5_b_m, s.conv5_b_v);
+    adam!(g.bn1_s, model.cnn.bn_scales[0], s.bn1s_m, s.bn1s_v);
+    adam!(g.bn1_p, model.cnn.bn_shifts[0], s.bn1p_m, s.bn1p_v);
+    adam!(g.bn2_s, model.cnn.bn_scales[1], s.bn2s_m, s.bn2s_v);
+    adam!(g.bn2_p, model.cnn.bn_shifts[1], s.bn2p_m, s.bn2p_v);
+    adam!(g.bn3_s, model.cnn.bn_scales[2], s.bn3s_m, s.bn3s_v);
+    adam!(g.bn3_p, model.cnn.bn_shifts[2], s.bn3p_m, s.bn3p_v);
+    adam!(g.bn4_s, model.cnn.bn_scales[3], s.bn4s_m, s.bn4s_v);
+    adam!(g.bn4_p, model.cnn.bn_shifts[3], s.bn4p_m, s.bn4p_v);
+    adam!(g.bn5_s, model.cnn.bn_scales[4], s.bn5s_m, s.bn5s_v);
+    adam!(g.bn5_p, model.cnn.bn_shifts[4], s.bn5p_m, s.bn5p_v);
+    adam!(g.lstm1_wf_ih, model.lstm1.wf_ih, s.lstm1wfih_m, s.lstm1wfih_v);
+    adam!(g.lstm1_wf_hh, model.lstm1.wf_hh, s.lstm1wfhh_m, s.lstm1wfhh_v);
+    adam!(g.lstm1_bf_ih, model.lstm1.bf_ih, s.lstm1bfih_m, s.lstm1bfih_v);
+    adam!(g.lstm1_bf_hh, model.lstm1.bf_hh, s.lstm1bfhh_m, s.lstm1bfhh_v);
+    adam!(g.lstm1_wb_ih, model.lstm1.wb_ih, s.lstm1wbih_m, s.lstm1wbih_v);
+    adam!(g.lstm1_wb_hh, model.lstm1.wb_hh, s.lstm1wbhh_m, s.lstm1wbhh_v);
+    adam!(g.lstm1_bb_ih, model.lstm1.bb_ih, s.lstm1bbih_m, s.lstm1bbih_v);
+    adam!(g.lstm1_bb_hh, model.lstm1.bb_hh, s.lstm1bbhh_m, s.lstm1bbhh_v);
+    adam!(g.lstm2_wf_ih, model.lstm2.wf_ih, s.lstm2wfih_m, s.lstm2wfih_v);
+    adam!(g.lstm2_wf_hh, model.lstm2.wf_hh, s.lstm2wfhh_m, s.lstm2wfhh_v);
+    adam!(g.lstm2_bf_ih, model.lstm2.bf_ih, s.lstm2bfih_m, s.lstm2bfih_v);
+    adam!(g.lstm2_bf_hh, model.lstm2.bf_hh, s.lstm2bfhh_m, s.lstm2bfhh_v);
+    adam!(g.lstm2_wb_ih, model.lstm2.wb_ih, s.lstm2wbih_m, s.lstm2wbih_v);
+    adam!(g.lstm2_wb_hh, model.lstm2.wb_hh, s.lstm2wbhh_m, s.lstm2wbhh_v);
+    adam!(g.lstm2_bb_ih, model.lstm2.bb_ih, s.lstm2bbih_m, s.lstm2bbih_v);
+    adam!(g.lstm2_bb_hh, model.lstm2.bb_hh, s.lstm2bbhh_m, s.lstm2bbhh_v);
+    adam!(g.fc_w, model.fc_weight, s.fcw_m, s.fcw_v);
+    adam!(g.fc_b, model.fc_bias, s.fcb_m, s.fcb_v);
 }

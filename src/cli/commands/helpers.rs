@@ -83,24 +83,17 @@ pub fn build_config(
 }
 
 pub fn format_result(result: &TextResult, format: &str) -> Result<String> {
-    use ocr::core::output::{format_alto, format_box, format_hocr, format_tsv, to_json_output};
-    use tracing::warn;
+    use ocr::core::output::{format_output, parse_output_format};
 
-    match format.to_lowercase().as_str() {
-        "json" => Ok(serde_json::to_string_pretty(&to_json_output(result))?),
-        "hocr" | "html" => Ok(format_hocr(result)?),
-        "tsv" => Ok(format_tsv(result)?),
-        "alto" | "xml" => Ok(format_alto(result)?),
-        "box" => Ok(format_box(result)?),
-        _ => {
-            if result.text.is_empty() {
-                warn!("No text recognized");
-                Ok("".to_string())
-            } else {
-                Ok(result.text.clone())
-            }
-        }
+    // Route every format through the library dispatcher so CLI flags stay in
+    // sync with `OutputFormat` (text, json, hocr, tsv, alto, box, markdown,
+    // structured-json, rag). Warn on empty results but still emit valid
+    // structured output (e.g. `{"chunks": []}`).
+    if result.text.is_empty() {
+        tracing::warn!("No text recognized");
     }
+    let fmt = parse_output_format(format)?;
+    Ok(format_output(result, fmt)?)
 }
 
 pub fn write_output(content: &str, output: Option<PathBuf>) -> Result<()> {

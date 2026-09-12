@@ -31,6 +31,8 @@ pub enum OutputFormat {
     StructuredJson,
     /// Markdown output with heading/paragraph/list structure
     Markdown,
+    /// RAG-friendly chunked JSON for LLM / embedding pipelines
+    RagJson,
 }
 
 /// JSON output structure
@@ -780,15 +782,7 @@ impl StructuredDocument {
                 }
                 DocElement::Table { rows } => {
                     if !rows.is_empty() {
-                        for (i, row) in rows.iter().enumerate() {
-                            let cells: Vec<String> = row.iter().map(|c| format!("| {} ", c)).collect();
-                            md.push_str(&cells.join(""));
-                            md.push_str("|\n");
-                            if i == 0 {
-                                let sep = "|---".repeat(row.len());
-                                md.push_str(&format!("{}|\n", sep));
-                            }
-                        }
+                        md.push_str(&markdown_table(rows));
                         md.push('\n');
                     }
                 }
@@ -811,6 +805,93 @@ pub fn format_structured_json(result: &TextResult) -> Result<String> {
         .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)).into())
 }
 
+/// Render table rows as GitHub-flavored Markdown
+fn markdown_table(rows: &[Vec<String>]) -> String {
+    let mut md = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        let cells: Vec<String> = row.iter().map(|c| format!("| {} ", c)).collect();
+        md.push_str(&cells.join(""));
+        md.push_str("|\n");
+        if i == 0 {
+            let sep = "|---".repeat(row.len());
+            md.push_str(&format!("{}|\n", sep));
+        }
+    }
+    md
+}
+
+/// A retrieval-friendly chunk for RAG / LLM pipelines.
+///
+/// One chunk per document element (heading, paragraph, list item, table,
+/// figure, code block), tagged with the heading path that anchors it so
+/// downstream embedders keep section context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RagChunk {
+    /// Zero-based chunk index in reading order
+    pub id: usize,
+    /// Chunk kind: `heading`, `paragraph`, `list_item`, `table`, `figure`, `code`
+    pub kind: String,
+    /// Chunk text (tables are rendered as Markdown)
+    pub text: String,
+    /// Heading path anchoring this chunk (e.g. `["Introduction", "Scope"]`)
+    pub section: Vec<String>,
+}
+
+/// Split a document into RAG-friendly chunks with heading context.
+pub fn rag_chunks(result: &TextResult) -> Vec<RagChunk> {
+    let doc = StructuredDocument::from_text(&result.text);
+    let mut chunks: Vec<RagChunk> = Vec::new();
+    // Stack of (level, heading text) currently in scope
+    let mut section: Vec<(u8, String)> = Vec::new();
+
+    for element in &doc.elements {
+        match element {
+            DocElement::Heading { level, text } => {
+                // Pop shallower-or-equal headings: a level-2 heading closes
+                // prior level-2/3 sections but stays nested under level-1.
+                while section.last().is_some_and(|(l, _)| l >= level) {
+                    section.pop();
+                }
+                chunks.push(RagChunk {
+                    id: chunks.len(),
+                    kind: "heading".to_string(),
+                    text: text.clone(),
+                    section: section.iter().map(|(_, t)| t.clone()).collect(),
+                });
+                section.push((*level, text.clone()));
+            }
+            DocElement::Paragraph { text } => {
+                push_chunk(&mut chunks, "paragraph", text, &section)
+            }
+            DocElement::ListItem { text, .. } => {
+                push_chunk(&mut chunks, "list_item", text, &section)
+            }
+            DocElement::Table { rows } => {
+                push_chunk(&mut chunks, "table", &markdown_table(rows), &section)
+            }
+            DocElement::Figure { caption } => push_chunk(&mut chunks, "figure", caption, &section),
+            DocElement::CodeBlock { text } => push_chunk(&mut chunks, "code", text, &section),
+        }
+    }
+    chunks
+}
+
+fn push_chunk(chunks: &mut Vec<RagChunk>, kind: &str, text: &str, section: &[(u8, String)]) {
+    chunks.push(RagChunk {
+        id: chunks.len(),
+        kind: kind.to_string(),
+        text: text.to_string(),
+        section: section.iter().map(|(_, t)| t.clone()).collect(),
+    });
+}
+
+/// Generate RAG-friendly chunked JSON output for LLM / embedding pipelines
+pub fn format_rag_json(result: &TextResult) -> Result<String> {
+    let chunks = rag_chunks(result);
+    serde_json::to_string_pretty(&serde_json::json!({ "chunks": chunks }))
+        .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)).into())
+}
+
 /// Generate Markdown output with document structure
 pub fn format_markdown(result: &TextResult) -> Result<String> {
     let doc = StructuredDocument::from_text(&result.text);
@@ -828,6 +909,7 @@ pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String
         OutputFormat::Box => format_box(result),
         OutputFormat::StructuredJson => format_structured_json(result),
         OutputFormat::Markdown => format_markdown(result),
+        OutputFormat::RagJson => format_rag_json(result),
     }
 }
 
@@ -842,8 +924,9 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
         "box" => Ok(OutputFormat::Box),
         "md" | "markdown" => Ok(OutputFormat::Markdown),
         "structured" | "structured-json" | "doc" => Ok(OutputFormat::StructuredJson),
+        "rag" | "rag-json" | "chunks" => Ok(OutputFormat::RagJson),
         _ => Err(crate::OcrError::InvalidInput(format!(
-            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, markdown, structured-json",
+            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, markdown, structured-json, rag",
             s
         ))
         .into()),
@@ -1060,5 +1143,65 @@ mod tests {
         let json = format_structured_json(&result).unwrap();
         assert!(json.contains("\"elements\""));
         assert!(json.contains("\"Heading\""));
+    }
+
+    #[test]
+    fn test_rag_chunks_heading_context() {
+        let mut result = create_test_result();
+        // Note: the heading heuristic only fires for a non-all-caps heading
+        // when it directly follows paragraph text (no blank line in between).
+        result.text = "INTRO\n\nFirst paragraph.\nMore Details\n\nSecond paragraph.\n\n- item one\n- item two"
+            .to_string();
+        let chunks = rag_chunks(&result);
+
+        // heading, para, heading, para, list x2
+        assert_eq!(chunks.len(), 6);
+        assert_eq!(chunks[0].kind, "heading");
+        assert_eq!(chunks[0].text, "INTRO");
+        assert!(chunks[0].section.is_empty());
+        assert_eq!(chunks[1].kind, "paragraph");
+        assert_eq!(chunks[1].section, vec!["INTRO".to_string()]);
+        // "More Details" is not all-caps → level 2, nests under level-1 "INTRO"
+        assert_eq!(chunks[2].kind, "heading");
+        assert_eq!(chunks[2].section, vec!["INTRO".to_string()]);
+        assert_eq!(chunks[3].section, vec!["INTRO".to_string(), "More Details".to_string()]);
+        assert_eq!(chunks[4].kind, "list_item");
+        assert_eq!(chunks[4].text, "item one");
+        assert_eq!(chunks[5].text, "item two");
+        // ids are sequential
+        for (i, c) in chunks.iter().enumerate() {
+            assert_eq!(c.id, i);
+        }
+    }
+
+    #[test]
+    fn test_markdown_table() {
+        let md = markdown_table(&[vec!["A".into(), "B".into()], vec!["1".into(), "2".into()]]);
+        assert!(md.contains("| A | B |\n"));
+        assert!(md.contains("|---|---|\n"));
+        assert!(md.contains("| 1 | 2 |\n"));
+    }
+
+    #[test]
+    fn test_rag_chunks_sibling_heading_closes_section() {
+        let mut result = create_test_result();
+        result.text = "ONE\n\npara a\n\nTWO\n\npara b".to_string();
+        let chunks = rag_chunks(&result);
+        // "TWO" is a sibling of "ONE": para b's section must not contain "ONE"
+        assert_eq!(chunks[3].section, vec!["TWO".to_string()]);
+    }
+
+    #[test]
+    fn test_format_rag_json_output() {
+        let mut result = create_test_result();
+        result.text = "TITLE\n\nBody text.".to_string();
+        let json = format_rag_json(&result).unwrap();
+        assert!(json.contains("\"chunks\""));
+        assert!(json.contains("\"kind\": \"heading\""));
+        assert!(json.contains("\"section\": []"));
+        // Empty input yields an empty chunk list, not an error
+        result.text = String::new();
+        let json = format_rag_json(&result).unwrap();
+        assert_eq!(json.replace(char::is_whitespace, ""), r#"{"chunks":[]}"#);
     }
 }

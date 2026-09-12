@@ -1,8 +1,8 @@
-//! Train the bundled CRNN using the in-crate pure-Rust CTC + Adam (FC only).
+//! Train the bundled CRNN using the in-crate pure-Rust CTC + Adam with
+//! full BPTT through CNN + BiLSTM + FC (`CrnnTrainer::train_batch_full`).
 //!
 //! This example demonstrates that the training pipeline works end-to-end
-//! with the bundled model. CNN and BiLSTM weights are kept frozen (random
-//! init); only the FC readout layer is trained via Adam.
+//! with the bundled model and can write a re-trained `models/crnn-en.bin`.
 //!
 //! Run with:
 //!   cargo run --release --example train_pure_rust -- --epochs 10
@@ -42,7 +42,7 @@ fn run() -> Result<()> {
     println!("parameters: {}", trainer.model.parameter_count());
 
     // Synthetic data
-    let mut generator = TextLineGenerator::default();
+    let generator = TextLineGenerator::default();
     let distortion = match args.distortion.as_str() {
         "clean" => DistortionConfig::none(),
         "mild" => DistortionConfig::mild(),

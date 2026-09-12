@@ -43,10 +43,10 @@ pub fn ctc_loss_and_grad(
 
     // Forward variables (log space): alpha[t][s]
     let mut alpha = vec![f32::NEG_INFINITY; t * ext_len];
-    // Initialization at t = 0.
-    alpha[0 * ext_len + 0] = log_probs[0 * num_classes + blank];
+    // Initialization at t = 0 (row 0, i.e. indices without the t*ext_len offset).
+    alpha[0] = log_probs[blank];
     if s > 0 {
-        alpha[0 * ext_len + 1] = log_probs[0 * num_classes + targets[0]];
+        alpha[1] = log_probs[targets[0]];
     }
 
     // Forward recursion.
@@ -290,7 +290,7 @@ mod tests {
     fn test_ctc_converges_on_identity() {
         // Construct logits that perfectly predict the target.
         let t = 4usize;
-        let s = 1usize;
+        let _s = 1usize;
         let num_classes = 3usize;
         let blank = 0;
         let targets = vec![1usize];
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_alpha_beta_consistency() {
-        let t = 4usize;
+        let _t = 4usize;
         let num_classes = 3usize;
         let blank = 0;
         let targets = vec![1, 2];
