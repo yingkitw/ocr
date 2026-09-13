@@ -6,6 +6,9 @@ use tracing::debug;
 
 use crate::utils::error::*;
 
+/// Shared progress callback: invoked with completion fraction in [0.0, 1.0].
+pub type ProgressCallback = Arc<Mutex<Option<Box<dyn Fn(f32) + Send + Sync>>>>;
+
 /// Async semaphore for controlling concurrency
 pub struct ConcurrencyLimiter {
     semaphore: Arc<Semaphore>,
@@ -83,7 +86,7 @@ where
 pub struct AsyncProgressTracker {
     total: Arc<Mutex<usize>>,
     completed: Arc<Mutex<usize>>,
-    callback: Arc<Mutex<Option<Box<dyn Fn(f32) + Send + Sync>>>>,
+    callback: ProgressCallback,
 }
 
 impl AsyncProgressTracker {

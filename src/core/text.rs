@@ -509,29 +509,13 @@ impl BlobChoice {
             classifier,
         }
     }
-
-    /// Create a default blob choice
-    pub fn default() -> Self {
-        Self {
-            unichar_id: 32, // Space character
-            rating: 10.0,
-            certainty: -1.0,
-            fontinfo_id: -1,
-            fontinfo_id2: -1,
-            script_id: -1,
-            min_xheight: 0.0,
-            max_xheight: 0.0,
-            yshift: 0.0,
-            classifier: BlobChoiceClassifier::Fake,
-        }
-    }
 }
 
 /// Word choice containing multiple character possibilities
 ///
 /// This corresponds to Tesseract's `WERD_CHOICE` class.
 /// Represents a word with multiple possible character choices.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WordChoice {
     /// Character choices for each position
     pub blob_choices: Vec<Vec<BlobChoice>>,
@@ -552,15 +536,7 @@ pub struct WordChoice {
 impl WordChoice {
     /// Create a new word choice
     pub fn new() -> Self {
-        Self {
-            blob_choices: Vec::new(),
-            choices: Vec::new(),
-            rating: 0.0,
-            certainty: 0.0,
-            blanks: 0,
-            script_id: -1,
-            language_model_state: None,
-        }
+        Self::default()
     }
 
     /// Add a character choice to the word
@@ -605,6 +581,12 @@ pub struct Word {
     pub bounding_box: TBox,
     /// Individual character properties
     pub characters: Vec<CharacterResult>,
+}
+
+impl Default for Word {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Word {
@@ -677,68 +659,6 @@ impl Word {
     }
 }
 
-#[cfg(test)]
-mod tesseract_tests {
-    use super::*;
-
-    #[test]
-    fn test_blob_choice_creation() {
-        let choice = BlobChoice::new(
-            65, // 'A'
-            0.1,
-            0.9,
-            0, // Latin script
-            10.0,
-            20.0,
-            0.0,
-            BlobChoiceClassifier::StaticClassifier,
-        );
-
-        assert_eq!(choice.unichar_id, 65);
-        assert_eq!(choice.rating, 0.1);
-        assert_eq!(choice.certainty, 0.9);
-    }
-
-    #[test]
-    fn test_word_choice_creation() {
-        let mut word_choice = WordChoice::new();
-        word_choice.add_choice(vec![BlobChoice::new(
-            65,
-            0.1,
-            0.9,
-            0,
-            10.0,
-            20.0,
-            0.0,
-            BlobChoiceClassifier::StaticClassifier,
-        )]);
-        word_choice.add_choice(vec![BlobChoice::new(
-            66,
-            0.2,
-            0.8,
-            0,
-            10.0,
-            20.0,
-            0.0,
-            BlobChoiceClassifier::StaticClassifier,
-        )]);
-
-        assert_eq!(word_choice.text(), "AB");
-    }
-
-    #[test]
-    fn test_word_creation() {
-        let mut word = Word::new();
-        word.set_flag(WordFlag::Bold, true);
-        word.set_flag(WordFlag::Italic, false);
-        word.correct_text = "Hello".to_string();
-
-        assert!(word.has_flag(WordFlag::Bold));
-        assert!(!word.has_flag(WordFlag::Italic));
-        assert_eq!(word.correct_text, "Hello");
-    }
-}
-
 // ============================================================================
 // Output format serialization
 // ============================================================================
@@ -764,7 +684,7 @@ impl TextResult {
              xsi:schemaLocation='http://www.w3.org/1999/04/hocr http://www.w3.org/2001/04/hocr/hocr.xsd'>\n",
         );
         html.push_str("<head><meta charset='UTF-8' />\n");
-        html.push_str(&format!("<title>OCR Output</title>\n</head>\n<body>\n",));
+        html.push_str("<title>OCR Output</title>\n</head>\n<body>\n");
         html.push_str(&format!(
             "<div class='ocr_page' id='page_1' title='image' \
              style='width:{}px;height:{}px'>\n",
@@ -907,4 +827,66 @@ impl TextResult {
 
 fn format_confidence(confidence: f32) -> String {
     format!("{:.2}", (confidence * 100.0).min(100.0))
+}
+
+#[cfg(test)]
+mod tesseract_tests {
+    use super::*;
+
+    #[test]
+    fn test_blob_choice_creation() {
+        let choice = BlobChoice::new(
+            65, // 'A'
+            0.1,
+            0.9,
+            0, // Latin script
+            10.0,
+            20.0,
+            0.0,
+            BlobChoiceClassifier::StaticClassifier,
+        );
+
+        assert_eq!(choice.unichar_id, 65);
+        assert_eq!(choice.rating, 0.1);
+        assert_eq!(choice.certainty, 0.9);
+    }
+
+    #[test]
+    fn test_word_choice_creation() {
+        let mut word_choice = WordChoice::new();
+        word_choice.add_choice(vec![BlobChoice::new(
+            65,
+            0.1,
+            0.9,
+            0,
+            10.0,
+            20.0,
+            0.0,
+            BlobChoiceClassifier::StaticClassifier,
+        )]);
+        word_choice.add_choice(vec![BlobChoice::new(
+            66,
+            0.2,
+            0.8,
+            0,
+            10.0,
+            20.0,
+            0.0,
+            BlobChoiceClassifier::StaticClassifier,
+        )]);
+
+        assert_eq!(word_choice.text(), "AB");
+    }
+
+    #[test]
+    fn test_word_creation() {
+        let mut word = Word::new();
+        word.set_flag(WordFlag::Bold, true);
+        word.set_flag(WordFlag::Italic, false);
+        word.correct_text = "Hello".to_string();
+
+        assert!(word.has_flag(WordFlag::Bold));
+        assert!(!word.has_flag(WordFlag::Italic));
+        assert_eq!(word.correct_text, "Hello");
+    }
 }

@@ -6,6 +6,8 @@ pub mod geometry;
 pub mod image;
 pub mod layout;
 pub mod output;
+#[cfg(feature = "pdf")]
+pub mod pdf;
 pub mod recognition;
 pub mod text;
 

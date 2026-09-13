@@ -256,10 +256,10 @@ impl CrnnTrainer {
                 .collect();
             let n_chars = gt_indices.len().max(1);
             let mut targets = vec![0usize; t]; // blank = 0
-            for timestep in 0..t {
+            for (timestep, target_slot) in targets.iter_mut().enumerate().take(t) {
                 let slot = (timestep * n_chars) / t;
                 if slot < n_chars {
-                    targets[timestep] = gt_indices[slot];
+                    *target_slot = gt_indices[slot];
                 }
             }
 
@@ -272,12 +272,12 @@ impl CrnnTrainer {
                     .fold(f32::NEG_INFINITY, f32::max);
                 let mut exp_sum = 0.0f32;
                 let mut probs = vec![0.0f32; num_classes];
-                for j in 0..num_classes {
-                    probs[j] = (logits[[timestep, j]] - max_logit).exp();
-                    exp_sum += probs[j];
+                for (j, prob_slot) in probs.iter_mut().enumerate().take(num_classes) {
+                    *prob_slot = (logits[[timestep, j]] - max_logit).exp();
+                    exp_sum += *prob_slot;
                 }
-                for j in 0..num_classes {
-                    probs[j] /= exp_sum;
+                for prob_slot in probs.iter_mut().take(num_classes) {
+                    *prob_slot /= exp_sum;
                 }
 
                 // cross-entropy loss for this timestep
@@ -420,12 +420,6 @@ impl CrnnTrainer {
     /// end-to-end without requiring full BPTT through CNN+LSTM.
     pub fn train_batch_ctc(&mut self, samples: &[SyntheticSample], adam_state: &mut AdamState) -> f32 {
         let mut total_loss = 0.0f32;
-        let mut total_chars = 0usize;
-        let mut total_correct = 0usize;
-        let mut total_words = 0usize;
-        let mut word_correct = 0usize;
-
-        let _n_initial = samples.len();
         let mut n = 0;
         // Accumulate grads across the batch.
         let mut grad_w_acc = ndarray::Array2::<f32>::zeros(self.model.fc_weight.dim());
@@ -524,15 +518,6 @@ impl CrnnTrainer {
 
             total_loss += loss;
             n += 1;
-
-            // Greedy decode accuracy
-            let pred_text = self.model.decode_greedy_from_logits(&logits);
-            total_chars += gt.chars().count();
-            total_correct += pred_text.chars().zip(gt.chars()).filter(|(a, b)| a == b).count();
-            total_words += 1;
-            if pred_text.as_str() == gt.as_str() {
-                word_correct += 1;
-            }
         }
 
         // Apply Adam update with mean grad over the batch
@@ -546,18 +531,6 @@ impl CrnnTrainer {
             adam_state,
             self.learning_rate,
         );
-
-        // Aggregate metrics
-        EpochMetrics {
-            epoch: 0,
-            train_loss: total_loss / n as f32,
-            train_cer: 1.0 - total_correct as f32 / total_chars.max(1) as f32,
-            train_wer: 1.0 - word_correct as f32 / total_words.max(1) as f32,
-            val_loss: 0.0,
-            val_cer: 0.0,
-            val_wer: 0.0,
-            samples_per_sec: 0.0,
-        };
 
         total_loss / n as f32
     }
@@ -672,8 +645,8 @@ pub fn levenshtein_distance(a: &str, b: &str) -> usize {
 
     let mut prev = vec![0usize; n + 1];
     let mut curr = vec![0usize; n + 1];
-    for j in 0..=n {
-        prev[j] = j;
+    for (j, prev_slot) in prev.iter_mut().enumerate().take(n + 1) {
+        *prev_slot = j;
     }
 
     for i in 1..=m {
@@ -695,92 +668,6 @@ pub fn word_error_distance(a: &str, b: &str) -> usize {
     let a_words: Vec<&str> = a.split_whitespace().collect();
     let b_words: Vec<&str> = b.split_whitespace().collect();
     levenshtein_distance(&a_words.join(" "), &b_words.join(" "))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_trainer_creation() {
-        let config = CrnnConfig::default();
-        let model = CrnnModel::new(config);
-        let trainer = CrnnTrainer::new(model);
-        assert_eq!(trainer.learning_rate, 0.001);
-        assert_eq!(trainer.batch_size, 32);
-    }
-
-    #[test]
-    fn test_trainer_epoch() {
-        let config = CrnnConfig::default();
-        let model = CrnnModel::new(config);
-        let mut trainer = CrnnTrainer::new(model);
-        let metrics = trainer.train_epoch(2, 4);
-        assert!(metrics.train_loss >= 0.0);
-        assert!(metrics.samples_per_sec > 0.0);
-    }
-
-    #[test]
-    fn test_trainer_checkpoint() {
-        let config = CrnnConfig::default();
-        let model = CrnnModel::new(config);
-        let mut trainer = CrnnTrainer::new(model);
-        // Inject a distinctive FC weight so we can verify it round-trips.
-        trainer.model.fc_weight[[0, 0]] = 0.12345;
-        trainer.model.fc_bias[1] = -0.6789;
-        let temp_path = std::path::Path::new("/tmp/test_crnn_checkpoint.json");
-        trainer.save_checkpoint(temp_path).unwrap();
-        assert!(temp_path.exists());
-
-        let mut fresh = CrnnTrainer::new(CrnnModel::new(CrnnConfig::default()));
-        fresh.load_checkpoint(temp_path).unwrap();
-        assert!((fresh.model.fc_weight[[0, 0]] - 0.12345).abs() < 1e-6);
-        assert!((fresh.model.fc_bias[1] - -0.6789).abs() < 1e-6);
-        assert_eq!(fresh.model.fc_weight.shape(), trainer.model.fc_weight.shape());
-
-        let _ = std::fs::remove_file(temp_path);
-    }
-
-    /// Regression test: `train_batch_full` must actually update model parameters
-    /// using the computed gradients. Before the fix, `apply_full_adam` ignored
-    /// the gradient argument `g` and used parameter values as gradients — the
-    /// parameters still changed but not in the gradient direction. This test
-    /// verifies that FC weights change after a training step and that loss
-    /// decreases over multiple steps on the same batch.
-    #[test]
-    fn test_train_batch_full_updates_params() {
-        let config = CrnnConfig::default();
-        let model = CrnnModel::new(config);
-        let mut trainer = CrnnTrainer::new(model);
-        trainer.learning_rate = 0.01;
-
-        let generator = TextLineGenerator::default();
-        let samples = vec![generator.generate("HELLO")];
-
-        let fc_before = trainer.model.fc_weight.clone();
-
-        let mut adam = FullAdamState::new_like(&trainer.model);
-        let loss1 = trainer.train_batch_full(&samples, &mut adam);
-
-        // FC weights must change after a training step.
-        let fc_after = &trainer.model.fc_weight;
-        let changed = fc_before
-            .iter()
-            .zip(fc_after.iter())
-            .any(|(a, b)| (a - b).abs() > 1e-8);
-        assert!(changed, "FC weights did not change after train_batch_full");
-
-        // Loss should decrease over a few steps on the same batch.
-        let mut prev_loss = loss1;
-        for _ in 0..4 {
-            let loss = trainer.train_batch_full(&samples, &mut adam);
-            assert!(
-                loss <= prev_loss + 0.5,
-                "loss increased unexpectedly: {prev_loss} -> {loss}"
-            );
-            prev_loss = loss;
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1121,3 +1008,89 @@ fn apply_full_adam(
     adam!(g.fc_w, model.fc_weight, s.fcw_m, s.fcw_v);
     adam!(g.fc_b, model.fc_bias, s.fcb_m, s.fcb_v);
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_trainer_creation() {
+        let config = CrnnConfig::default();
+        let model = CrnnModel::new(config);
+        let trainer = CrnnTrainer::new(model);
+        assert_eq!(trainer.learning_rate, 0.001);
+        assert_eq!(trainer.batch_size, 32);
+    }
+
+    #[test]
+    fn test_trainer_epoch() {
+        let config = CrnnConfig::default();
+        let model = CrnnModel::new(config);
+        let mut trainer = CrnnTrainer::new(model);
+        let metrics = trainer.train_epoch(2, 4);
+        assert!(metrics.train_loss >= 0.0);
+        assert!(metrics.samples_per_sec > 0.0);
+    }
+
+    #[test]
+    fn test_trainer_checkpoint() {
+        let config = CrnnConfig::default();
+        let model = CrnnModel::new(config);
+        let mut trainer = CrnnTrainer::new(model);
+        // Inject a distinctive FC weight so we can verify it round-trips.
+        trainer.model.fc_weight[[0, 0]] = 0.12345;
+        trainer.model.fc_bias[1] = -0.6789;
+        let temp_path = std::path::Path::new("/tmp/test_crnn_checkpoint.json");
+        trainer.save_checkpoint(temp_path).unwrap();
+        assert!(temp_path.exists());
+
+        let mut fresh = CrnnTrainer::new(CrnnModel::new(CrnnConfig::default()));
+        fresh.load_checkpoint(temp_path).unwrap();
+        assert!((fresh.model.fc_weight[[0, 0]] - 0.12345).abs() < 1e-6);
+        assert!((fresh.model.fc_bias[1] - -0.6789).abs() < 1e-6);
+        assert_eq!(fresh.model.fc_weight.shape(), trainer.model.fc_weight.shape());
+
+        let _ = std::fs::remove_file(temp_path);
+    }
+
+    /// Regression test: `train_batch_full` must actually update model parameters
+    /// using the computed gradients. Before the fix, `apply_full_adam` ignored
+    /// the gradient argument `g` and used parameter values as gradients — the
+    /// parameters still changed but not in the gradient direction. This test
+    /// verifies that FC weights change after a training step and that loss
+    /// decreases over multiple steps on the same batch.
+    #[test]
+    fn test_train_batch_full_updates_params() {
+        let config = CrnnConfig::default();
+        let model = CrnnModel::new(config);
+        let mut trainer = CrnnTrainer::new(model);
+        trainer.learning_rate = 0.01;
+
+        let generator = TextLineGenerator::default();
+        let samples = vec![generator.generate("HELLO")];
+
+        let fc_before = trainer.model.fc_weight.clone();
+
+        let mut adam = FullAdamState::new_like(&trainer.model);
+        let loss1 = trainer.train_batch_full(&samples, &mut adam);
+
+        // FC weights must change after a training step.
+        let fc_after = &trainer.model.fc_weight;
+        let changed = fc_before
+            .iter()
+            .zip(fc_after.iter())
+            .any(|(a, b)| (a - b).abs() > 1e-8);
+        assert!(changed, "FC weights did not change after train_batch_full");
+
+        // Loss should decrease over a few steps on the same batch.
+        let mut prev_loss = loss1;
+        for _ in 0..4 {
+            let loss = trainer.train_batch_full(&samples, &mut adam);
+            assert!(
+                loss <= prev_loss + 0.5,
+                "loss increased unexpectedly: {prev_loss} -> {loss}"
+            );
+            prev_loss = loss;
+        }
+    }
+}
+

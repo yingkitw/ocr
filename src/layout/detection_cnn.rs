@@ -44,9 +44,9 @@ impl TextDetectionCNN {
                 6 => [[0.0, 1.0, 1.0], [-1.0, 0.0, 1.0], [-1.0, -1.0, 0.0]], // other diagonal
                 _ => {
                     let mut k = [[0.0f32; 3]; 3];
-                    for i in 0..3 {
-                        for j in 0..3 {
-                            k[i][j] = rand::random::<f32>() * 0.4 - 0.2;
+                    for row in k.iter_mut() {
+                        for cell in row.iter_mut() {
+                            *cell = rand::random::<f32>() * 0.4 - 0.2;
                         }
                     }
                     k

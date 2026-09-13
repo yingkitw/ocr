@@ -560,14 +560,14 @@ impl TBox {
     /// Pad the box by the given amounts
     pub fn pad(&mut self, xpad: TDimension, ypad: TDimension) {
         let pad = ICoord::new(xpad, ypad);
-        self.bot_left = self.bot_left - pad;
-        self.top_right = self.top_right + pad;
+        self.bot_left -= pad;
+        self.top_right += pad;
     }
 
     /// Move the box by a vector
     pub fn move_by(&mut self, vec: ICoord) {
-        self.bot_left = self.bot_left + vec;
-        self.top_right = self.top_right + vec;
+        self.bot_left += vec;
+        self.top_right += vec;
     }
 
     /// Move the box by a float vector

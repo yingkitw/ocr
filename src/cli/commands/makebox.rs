@@ -19,7 +19,7 @@ pub async fn handle_makebox(
         .context("image path is not valid UTF-8")?;
 
     // PSM 11 (SparseText) tends to retain character/word boxes useful for training.
-    let config = build_config(lang, preprocess, 11, 0.0, engine, false, "cpu", false);
+    let config = build_config(lang, preprocess, 11, 0.0, engine, false, "cpu", false, 300);
 
     let ocr = Ocr::with_config(config)?;
     ocr.initialize()

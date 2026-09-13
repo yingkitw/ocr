@@ -153,7 +153,7 @@ impl<'de> Deserialize<'de> for OcrImage {
             }
         }
 
-        const FIELDS: &'static [&'static str] =
+        const FIELDS: &[&str] =
             &["format", "width", "height", "dpi", "metadata", "image_data"];
         deserializer.deserialize_struct("OcrImage", FIELDS, OcrImageVisitor)
     }
@@ -192,7 +192,7 @@ impl OcrImage {
             ImageFormat::Grayscale => (width * height) as usize,
             ImageFormat::Rgb => (width * height * 3) as usize,
             ImageFormat::Rgba => (width * height * 4) as usize,
-            ImageFormat::Binary => ((width * height + 7) / 8) as usize,
+            ImageFormat::Binary => (width * height).div_ceil(8) as usize,
         };
 
         if pixels.len() != expected_size {

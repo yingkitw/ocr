@@ -51,6 +51,7 @@ pub fn build_config(
     dict_correct: bool,
     device: &str,
     osd: bool,
+    dpi: u32,
 ) -> ocr::core::config::OcrConfig {
     use ocr::core::config::{OcrConfig, PageSegMode};
 
@@ -71,11 +72,13 @@ pub fn build_config(
     config.recognition.confidence_threshold = confidence;
     config.recognition.engine = parse_engine(engine);
     config.recognition.enable_dictionary_correction = dict_correct;
+    config.recognition.parameters.insert("dpi".to_string(), dpi.to_string());
     config.image_processing.enable_preprocessing = preprocess;
     config.image_processing.enable_binarization = preprocess;
     config.image_processing.enable_noise_reduction = preprocess;
     config.image_processing.enable_contrast_enhancement = preprocess;
     config.image_processing.enable_deskewing = preprocess;
+    config.image_processing.target_dpi = dpi;
     config.layout_analysis.page_seg_mode = psm_mode;
     config.layout_analysis.enable_orientation_detection = osd || preprocess;
     config.performance.device = device.to_string();
@@ -86,8 +89,8 @@ pub fn format_result(result: &TextResult, format: &str) -> Result<String> {
     use ocr::core::output::{format_output, parse_output_format};
 
     // Route every format through the library dispatcher so CLI flags stay in
-    // sync with `OutputFormat` (text, json, hocr, tsv, alto, box, markdown,
-    // structured-json, rag). Warn on empty results but still emit valid
+    // sync with `OutputFormat` (text, json, hocr, tsv, csv, alto, box, markdown,
+    // structured-json, rag, page). Warn on empty results but still emit valid
     // structured output (e.g. `{"chunks": []}`).
     if result.text.is_empty() {
         tracing::warn!("No text recognized");

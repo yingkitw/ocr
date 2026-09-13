@@ -1221,7 +1221,7 @@ async fn test_result_average_character_confidence() {
     let result = engine.process_image(make_ocr_image(img)).await.unwrap();
     let avg = result.average_character_confidence();
     assert!(
-        avg >= 0.0 && avg <= 1.0,
+        (0.0..=1.0).contains(&avg),
         "Average char confidence should be in [0,1], got {}",
         avg
     );

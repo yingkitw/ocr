@@ -362,10 +362,10 @@ fn lstm_sequence_with_cache(
             }
             gates[j] += acc + b_hh[j];
         }
-        let i_gate: Array1<f32> = gates.slice(ndarray::s![0..hs]).mapv(|x| sigmoid(x));
-        let f_gate: Array1<f32> = gates.slice(ndarray::s![hs..2 * hs]).mapv(|x| sigmoid(x));
+        let i_gate: Array1<f32> = gates.slice(ndarray::s![0..hs]).mapv(sigmoid);
+        let f_gate: Array1<f32> = gates.slice(ndarray::s![hs..2 * hs]).mapv(sigmoid);
         let g_gate: Array1<f32> = gates.slice(ndarray::s![2 * hs..3 * hs]).mapv(|x| x.tanh());
-        let o_gate: Array1<f32> = gates.slice(ndarray::s![3 * hs..4 * hs]).mapv(|x| sigmoid(x));
+        let o_gate: Array1<f32> = gates.slice(ndarray::s![3 * hs..4 * hs]).mapv(sigmoid);
         c = &f_gate * &c + &i_gate * &g_gate;
         let tanh_c = c.mapv(|x| x.tanh());
         h = &o_gate * &tanh_c;
@@ -995,7 +995,7 @@ fn conv2d_backward(
     }
 
     // d_w[oc, ic, ky*k+kx] = sum over (oh, ow) where the kernel position (ky, kx) touches input[(ic, oh+ky-pad, ow+kx-pad)], of d_out[oc, oh, ow] * input[ic, oh+ky-pad, ow+kx-pad]
-    for oc in 0..out_c {
+    for (oc, db_slot) in d_b_slice.iter_mut().enumerate().take(out_c) {
         let mut db = 0.0f32;
         for oh in 0..in_h {
             for ow in 0..in_w {
@@ -1016,7 +1016,7 @@ fn conv2d_backward(
                 }
             }
         }
-        d_b_slice[oc] += db;
+        *db_slot += db;
     }
 
     // Return the input gradient (caller may want it)

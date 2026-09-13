@@ -5,7 +5,7 @@ use ocr::api::Ocr;
 pub async fn handle_list_languages() -> Result<()> {
     let ocr = Ocr::new()?;
     let base = ocr.get_supported_languages();
-    let mut languages: Vec<String> = base.iter().cloned().collect();
+    let mut languages: Vec<String> = base.to_vec();
 
     let cjk_codes = ["zh", "ja", "ko"];
     for code in &cjk_codes {

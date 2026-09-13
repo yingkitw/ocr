@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Main OCR configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct OcrConfig {
     /// Recognition configuration
     pub recognition: RecognitionConfig,
@@ -19,19 +19,6 @@ pub struct OcrConfig {
     pub performance: PerformanceConfig,
     /// Debug configuration
     pub debug: DebugConfig,
-}
-
-impl Default for OcrConfig {
-    fn default() -> Self {
-        Self {
-            recognition: RecognitionConfig::default(),
-            image_processing: ImageProcessingConfig::default(),
-            layout_analysis: LayoutAnalysisConfig::default(),
-            language: LanguageConfig::default(),
-            performance: PerformanceConfig::default(),
-            debug: DebugConfig::default(),
-        }
-    }
 }
 
 /// Recognition configuration

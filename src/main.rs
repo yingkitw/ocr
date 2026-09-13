@@ -27,6 +27,7 @@ async fn main() -> Result<()> {
             dict_correct,
             device,
             osd,
+            dpi,
         } => {
             handle_extract(
                 image_path,
@@ -40,6 +41,7 @@ async fn main() -> Result<()> {
                 dict_correct,
                 &device,
                 osd,
+                dpi,
             )
             .await?;
         }

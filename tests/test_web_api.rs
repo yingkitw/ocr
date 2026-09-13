@@ -152,4 +152,69 @@ mod tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn test_recognize_endpoint_csv_format() {
+        let port = find_available_port().await;
+        let config = ServerConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            max_upload_size_mb: 10,
+        };
+
+        tokio::spawn(async move {
+            run_server(config).await.ok();
+        });
+
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+
+        let png_data = generate_test_png();
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "image",
+                reqwest::multipart::Part::bytes(png_data)
+                    .file_name("test.png")
+                    .mime_str("image/png")
+                    .unwrap(),
+            )
+            .text("lang", "en")
+            .text("format", "csv");
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("http://127.0.0.1:{}/recognize", port))
+            .multipart(form)
+            .send()
+            .await;
+
+        match resp {
+            Ok(r) => {
+                let status = r.status();
+                let body_text = r.text().await.unwrap_or_default();
+                assert!(
+                    status.is_success(),
+                    "Expected success, got {}: {}",
+                    status,
+                    body_text
+                );
+                // Response is JSON containing a "csv" field
+                let json: serde_json::Value =
+                    serde_json::from_str(&body_text).expect("response should be JSON");
+                assert!(
+                    json.get("csv").is_some(),
+                    "response should include 'csv' field, got: {}",
+                    body_text
+                );
+                let csv_str = json["csv"].as_str().expect("csv should be a string");
+                assert!(
+                    csv_str.starts_with("page,line,word,text,confidence"),
+                    "csv should start with header row, got: {}",
+                    csv_str
+                );
+            }
+            Err(e) => {
+                panic!("Recognize endpoint request failed: {}", e);
+            }
+        }
+    }
 }

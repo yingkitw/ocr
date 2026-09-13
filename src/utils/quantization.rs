@@ -43,6 +43,11 @@ impl QuantizedTensor {
         self.weights.len()
     }
 
+    /// True if the tensor contains no parameters
+    pub fn is_empty(&self) -> bool {
+        self.weights.is_empty()
+    }
+
     /// Memory size in bytes
     pub fn size_bytes(&self) -> usize {
         self.weights.len() * std::mem::size_of::<i8>()

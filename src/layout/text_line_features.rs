@@ -84,7 +84,7 @@ pub fn estimate_baseline(binary_image: &GrayImage, line_bbox: &BoundingBox) -> B
     let mut bottom_y: Vec<Option<f32>> = vec![None; width];
     let mut has_content = false;
 
-    for x in 0..width {
+    for (x, bottom_y_slot) in bottom_y.iter_mut().enumerate().take(width) {
         let img_x = left + x;
         // Scan from bottom to top to find the first dark pixel
         for y_rel in (0..height).rev() {
@@ -96,7 +96,7 @@ pub fn estimate_baseline(binary_image: &GrayImage, line_bbox: &BoundingBox) -> B
             let pixel = binary_image.get_pixel(img_x as u32, img_y as u32);
             if pixel[0] < 128 {
                 // Found bottom of a character
-                bottom_y[x] = Some((img_y) as f32);
+                *bottom_y_slot = Some((img_y) as f32);
                 has_content = true;
                 break;
             }
@@ -434,7 +434,7 @@ mod tests {
         // Allow a wider range since we're sampling from the center (x=100) where there's no text
         // The algorithm should extrapolate from the text regions
         assert!(
-            y_at_center >= 20.0 && y_at_center <= 50.0,
+            (20.0..=50.0).contains(&y_at_center),
             "Baseline at center {} is not in expected range [20.0, 50.0]",
             y_at_center
         );
@@ -442,7 +442,7 @@ mod tests {
         // Check that baseline is more reasonable at the actual text positions
         let y_at_text = baseline.y_at_x(20.0);
         assert!(
-            y_at_text >= 25.0 && y_at_text <= 35.0,
+            (25.0..=35.0).contains(&y_at_text),
             "Baseline at text position {} is not in expected range [25.0, 35.0]",
             y_at_text
         );

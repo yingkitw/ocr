@@ -21,8 +21,10 @@ pub enum OutputFormat {
     Json,
     /// hOCR (HTML with OCR data)
     HOcr,
-    /// TSV (tab-separated values)
+    /// TSV (tab-separated values, Tesseract-style with bbox per word)
     Tsv,
+    /// CSV (comma-separated values, simpler per-word export for spreadsheets)
+    Csv,
     /// ALTO XML (standard library format)
     Alto,
     /// Box file for Tesseract training
@@ -33,6 +35,11 @@ pub enum OutputFormat {
     Markdown,
     /// RAG-friendly chunked JSON for LLM / embedding pipelines
     RagJson,
+    /// PRImA PAGE XML (document layout format)
+    Page,
+    /// Searchable PDF (image + invisible text layer, requires `pdf` feature)
+    #[cfg(feature = "pdf")]
+    Pdf,
 }
 
 /// JSON output structure
@@ -177,7 +184,6 @@ pub fn format_json(result: &TextResult) -> Result<String> {
     let json_output = to_json_output(result);
     serde_json::to_string_pretty(&json_output)
         .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)))
-        .into()
 }
 
 /// Generate hOCR (HTML OCR format) output
@@ -374,7 +380,49 @@ pub fn format_tsv(result: &TextResult) -> Result<String> {
 
 /// Escape text for TSV output (tab and newline)
 fn escape_tsv_text(s: &str) -> String {
-    s.replace('\t', " ").replace('\n', " ")
+    s.replace(['\t', '\n'], " ")
+}
+
+/// Generate CSV (RFC 4180) output: one row per word with metadata columns.
+///
+/// Distinct from TSV: TSV is Tesseract-training-style (5 levels, fixed column
+/// order matching `tesseract image.tsv`), while CSV is a simple flat per-word
+/// export designed for direct import into spreadsheets and databases.
+pub fn format_csv(result: &TextResult) -> Result<String> {
+    let mut output = String::new();
+
+    output.push_str("page,line,word,text,confidence,left,top,width,height\n");
+
+    let page = 1;
+    for (line_idx, line) in result.lines.iter().enumerate() {
+        for (word_idx, word) in line.words.iter().enumerate() {
+            let wb = &word.bounding_box;
+            output.push_str(&format!(
+                "{},{},{},{},{:.2},{},{},{},{}\n",
+                page,
+                line_idx + 1,
+                word_idx + 1,
+                escape_csv_field(&word.text),
+                word.confidence * 100.0,
+                wb.left,
+                wb.top,
+                wb.width(),
+                wb.height(),
+            ));
+        }
+    }
+
+    Ok(output)
+}
+
+/// Escape a CSV field per RFC 4180: wrap in quotes if it contains comma,
+/// quote, CR, or LF; double up internal quotes.
+fn escape_csv_field(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') || s.contains('\r') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
 }
 
 /// Generate ALTO XML output
@@ -389,7 +437,7 @@ pub fn format_alto(result: &TextResult) -> Result<String> {
     xml.push_str("    <OCRProcessing>\n");
     xml.push_str("      <ocrProcessingStep>\n");
     xml.push_str("        <processingSoftware>\n");
-    xml.push_str(&format!("          <softwareName>OCR</softwareName>\n"));
+    xml.push_str("          <softwareName>OCR</softwareName>\n");
     xml.push_str(&format!(
         "          <softwareVersion>{}</softwareVersion>\n",
         env!("CARGO_PKG_VERSION")
@@ -444,6 +492,101 @@ pub fn format_alto(result: &TextResult) -> Result<String> {
     xml.push_str("</alto>\n");
 
     Ok(xml)
+}
+
+/// Generate PRImA PAGE XML output
+///
+/// PAGE XML is a standard for representing document layout and OCR results,
+/// developed by the PRImA Research Lab.  Spec: http://www.primaresearch.org/PAGE
+///
+/// Structure: `PcGts` root → `Metadata` + `Page` → `TextRegion` → `TextLine` → `Word`,
+/// each with `Coords` (polygon points) and `TextEquiv` (Unicode text + confidence).
+pub fn format_page(result: &TextResult) -> Result<String> {
+    let mut xml = String::new();
+    let bbox = &result.bounding_box;
+    let now = Utc::now().to_rfc3339();
+
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str("<PcGts xmlns=\"http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15 http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15/pagecontent.xsd\">\n");
+    xml.push_str("  <Metadata>\n");
+    xml.push_str("    <Creator>OCR</Creator>\n");
+    xml.push_str(&format!("    <Created>{}</Created>\n", now));
+    xml.push_str(&format!("    <LastChange>{}</LastChange>\n", now));
+    xml.push_str("  </Metadata>\n");
+
+    xml.push_str(&format!(
+        "  <Page imageFilename=\"\" imageWidth=\"{}\" imageHeight=\"{}\">\n",
+        bbox.right, bbox.bottom
+    ));
+
+    // Single text region covering the full page
+    xml.push_str("    <TextRegion id=\"region_1\">\n");
+    xml.push_str(&format!(
+        "      <Coords points=\"{}\"/>\n",
+        coords_str(bbox.left, bbox.top, bbox.right, bbox.bottom)
+    ));
+
+    for (line_idx, line) in result.lines.iter().enumerate() {
+        let lb = &line.bounding_box;
+        xml.push_str(&format!(
+            "      <TextLine id=\"line_{}\">\n",
+            line_idx + 1
+        ));
+        xml.push_str(&format!(
+        "        <Coords points=\"{}\"/>\n",
+        coords_str(lb.left, lb.top, lb.right, lb.bottom)
+        ));
+
+        // Line-level text equivalent
+        xml.push_str("        <TextEquiv>\n");
+        xml.push_str(&format!(
+            "          <Unicode>{}</Unicode>\n",
+            xml_escape(&line.text)
+        ));
+        xml.push_str(&format!(
+            "          <Confidence>{:.4}</Confidence>\n",
+            line.confidence
+        ));
+        xml.push_str("        </TextEquiv>\n");
+
+        // Words
+        for (word_idx, word) in line.words.iter().enumerate() {
+            let wb = &word.bounding_box;
+            xml.push_str(&format!(
+                "        <Word id=\"word_{}_{}\">\n",
+                line_idx + 1,
+                word_idx + 1
+            ));
+            xml.push_str(&format!(
+                "          <Coords points=\"{}\"/>\n",
+                coords_str(wb.left, wb.top, wb.right, wb.bottom)
+            ));
+            xml.push_str("          <TextEquiv>\n");
+            xml.push_str(&format!(
+                "            <Unicode>{}</Unicode>\n",
+                xml_escape(&word.text)
+            ));
+            xml.push_str(&format!(
+                "            <Confidence>{:.4}</Confidence>\n",
+                word.confidence
+            ));
+            xml.push_str("          </TextEquiv>\n");
+            xml.push_str("        </Word>\n");
+        }
+
+        xml.push_str("      </TextLine>\n");
+    }
+
+    xml.push_str("    </TextRegion>\n");
+    xml.push_str("  </Page>\n");
+    xml.push_str("</PcGts>\n");
+
+    Ok(xml)
+}
+
+/// Format a bounding box as PAGE XML `points` attribute (clockwise polygon)
+fn coords_str(left: u32, top: u32, right: u32, bottom: u32) -> String {
+    format!("{},{} {},{} {},{} {},{}", left, top, right, top, right, bottom, left, bottom)
 }
 
 /// Generate box file output for Tesseract training
@@ -516,7 +659,7 @@ pub fn format_makebox(result: &TextResult, image_height: u32) -> Result<String> 
             let chars: Vec<(char, BoundingBox)> = if !word.characters.is_empty() {
                 word.characters
                     .iter()
-                    .map(|c| (c.character, c.bounding_box.clone()))
+                    .map(|c| (c.character, c.bounding_box))
                     .collect()
             } else if !word.text.is_empty() {
                 subdivide_word_box(&word.text, &word.bounding_box)
@@ -802,7 +945,7 @@ impl StructuredDocument {
 pub fn format_structured_json(result: &TextResult) -> Result<String> {
     let doc = StructuredDocument::from_text(&result.text);
     serde_json::to_string_pretty(&doc)
-        .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)).into())
+        .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)))
 }
 
 /// Render table rows as GitHub-flavored Markdown
@@ -889,7 +1032,7 @@ fn push_chunk(chunks: &mut Vec<RagChunk>, kind: &str, text: &str, section: &[(u8
 pub fn format_rag_json(result: &TextResult) -> Result<String> {
     let chunks = rag_chunks(result);
     serde_json::to_string_pretty(&serde_json::json!({ "chunks": chunks }))
-        .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)).into())
+        .map_err(|e| crate::OcrError::Internal(format!("JSON serialization error: {}", e)))
 }
 
 /// Generate Markdown output with document structure
@@ -905,11 +1048,17 @@ pub fn format_output(result: &TextResult, format: OutputFormat) -> Result<String
         OutputFormat::Json => format_json(result),
         OutputFormat::HOcr => format_hocr(result),
         OutputFormat::Tsv => format_tsv(result),
+        OutputFormat::Csv => format_csv(result),
         OutputFormat::Alto => format_alto(result),
         OutputFormat::Box => format_box(result),
         OutputFormat::StructuredJson => format_structured_json(result),
         OutputFormat::Markdown => format_markdown(result),
         OutputFormat::RagJson => format_rag_json(result),
+        OutputFormat::Page => format_page(result),
+        #[cfg(feature = "pdf")]
+        OutputFormat::Pdf => Err(crate::OcrError::InvalidInput(
+            "PDF output requires binary data — use format_searchable_pdf() with image bytes".to_string()
+        )),
     }
 }
 
@@ -920,16 +1069,20 @@ pub fn parse_output_format(s: &str) -> Result<OutputFormat> {
         "json" => Ok(OutputFormat::Json),
         "hocr" | "html" => Ok(OutputFormat::HOcr),
         "tsv" => Ok(OutputFormat::Tsv),
+        "csv" => Ok(OutputFormat::Csv),
         "alto" | "xml" => Ok(OutputFormat::Alto),
         "box" => Ok(OutputFormat::Box),
         "md" | "markdown" => Ok(OutputFormat::Markdown),
         "structured" | "structured-json" | "doc" => Ok(OutputFormat::StructuredJson),
         "rag" | "rag-json" | "chunks" => Ok(OutputFormat::RagJson),
+        "page" | "page-xml" | "primapage" => Ok(OutputFormat::Page),
+        #[cfg(feature = "pdf")]
+        "pdf" | "searchable-pdf" => Ok(OutputFormat::Pdf),
         _ => Err(crate::OcrError::InvalidInput(format!(
-            "Unknown output format: {}. Supported: text, json, hocr, tsv, alto, box, markdown, structured-json, rag",
-            s
-        ))
-        .into()),
+            "Unknown output format: {}. Supported: text, json, hocr, tsv, csv, alto, box, markdown, structured-json, rag, page{}",
+            s,
+            if cfg!(feature = "pdf") { ", pdf" } else { "" }
+        ))),
     }
 }
 
@@ -1006,6 +1159,35 @@ mod tests {
         // Should have tab-separated values
         assert!(tsv.contains('\t'));
         assert!(tsv.chars().filter(|&c| c == '\n').count() > 0);
+    }
+
+    #[test]
+    fn test_format_csv() {
+        let result = create_test_result();
+        let csv = format_csv(&result).unwrap();
+
+        // Header row
+        assert!(csv.starts_with("page,line,word,text,confidence,left,top,width,height\n"));
+        // One row per word (Hello + World = 2 words)
+        assert_eq!(csv.lines().count(), 3);
+        // Comma-separated, not tab-separated
+        assert!(csv.contains("Hello,95.00"));
+        assert!(csv.contains("World,85.00"));
+        assert!(!csv.contains('\t'));
+    }
+
+    #[test]
+    fn test_format_csv_rfc4180_escaping() {
+        // Fields containing commas, quotes, or newlines must be quoted
+        assert_eq!(escape_csv_field("hello"), "hello");
+        assert_eq!(escape_csv_field("hello,world"), "\"hello,world\"");
+        assert_eq!(escape_csv_field("she said \"hi\""), "\"she said \"\"hi\"\"\"");
+        assert_eq!(escape_csv_field("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn test_format_csv_alias() {
+        assert_eq!(parse_output_format("csv").unwrap(), OutputFormat::Csv);
     }
 
     #[test]
@@ -1203,5 +1385,71 @@ mod tests {
         result.text = String::new();
         let json = format_rag_json(&result).unwrap();
         assert_eq!(json.replace(char::is_whitespace, ""), r#"{"chunks":[]}"#);
+    }
+
+    #[test]
+    fn test_format_page() {
+        let result = create_test_result();
+        let page = format_page(&result).unwrap();
+
+        assert!(page.contains("<?xml version=\"1.0\""));
+        assert!(page.contains("<PcGts xmlns=\"http://schema.primaresearch.org/PAGE/gts/pagecontent/2019-07-15\""));
+        assert!(page.contains("<Metadata>"));
+        assert!(page.contains("<Creator>OCR</Creator>"));
+        assert!(page.contains("<Page imageFilename=\"\""));
+        assert!(page.contains("<TextRegion id=\"region_1\""));
+        assert!(page.contains("<TextLine id=\"line_1\""));
+        assert!(page.contains("<Word id=\"word_1_1\""));
+        assert!(page.contains("<Word id=\"word_1_2\""));
+        assert!(page.contains("<Unicode>Hello</Unicode>"));
+        assert!(page.contains("<Unicode>World</Unicode>"));
+        assert!(page.contains("<Confidence>0.9500</Confidence>"));
+        assert!(page.contains("<Confidence>0.8500</Confidence>"));
+        assert!(page.contains("</PcGts>"));
+    }
+
+    #[test]
+    fn test_format_page_coords_polygon() {
+        let result = create_test_result();
+        let page = format_page(&result).unwrap();
+        // Coords are clockwise polygon: left,top right,top right,bottom left,bottom
+        let lb = &result.lines[0].bounding_box;
+        let expected = format!(
+            "points=\"{},{} {},{} {},{} {},{}\"",
+            lb.left, lb.top, lb.right, lb.top, lb.right, lb.bottom, lb.left, lb.bottom
+        );
+        assert!(page.contains(&expected), "expected coords polygon not found");
+    }
+
+    #[test]
+    fn test_format_page_xml_escaping() {
+        let mut result = create_test_result();
+        let raw = "A & B < C > D";
+        result.lines[0].words[0].text = raw.to_string();
+        let page = format_page(&result).unwrap();
+        // The Unicode element must contain the XML-escaped text
+        let escaped = xml_escape(raw);
+        assert!(page.contains(&format!("<Unicode>{}</Unicode>", escaped)));
+        // Raw unescaped text must NOT appear
+        assert!(!page.contains(&format!("<Unicode>{}</Unicode>", raw)));
+    }
+
+    #[test]
+    fn test_parse_page_format() {
+        assert!(matches!(parse_output_format("page"), Ok(OutputFormat::Page)));
+        assert!(matches!(parse_output_format("page-xml"), Ok(OutputFormat::Page)));
+        assert!(matches!(parse_output_format("PAGE"), Ok(OutputFormat::Page)));
+    }
+
+    #[test]
+    fn test_format_page_empty_result() {
+        let result = TextResult::new(String::new(), 0.0, BoundingBox::new(0, 0, 100, 100));
+        let page = format_page(&result).unwrap();
+        assert!(page.contains("<PcGts"));
+        assert!(page.contains("<Page imageFilename=\"\" imageWidth=\"100\" imageHeight=\"100\">"));
+        assert!(page.contains("<TextRegion id=\"region_1\""));
+        // No lines → no TextLine elements
+        assert!(!page.contains("<TextLine"));
+        assert!(page.contains("</PcGts>"));
     }
 }

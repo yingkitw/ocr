@@ -26,6 +26,8 @@ pub struct OcrEngine {
     metadata: EngineMetadata,
     /// Compute backend for neural network operations
     compute_backend: Option<Box<dyn crate::compute::ComputeBackend>>,
+    /// Lazily-loaded bundled CRNN model (loaded once on first recognition)
+    model: std::sync::OnceLock<crate::recognition::crnn::CrnnModel>,
 }
 
 /// Engine state
@@ -190,6 +192,7 @@ impl OcrEngine {
                 ],
             },
             compute_backend,
+            model: std::sync::OnceLock::new(),
         };
 
         Ok(engine)
@@ -566,7 +569,7 @@ impl OcrEngine {
             return Ok(img);
         }
         // Detection rotated the page by +rotation_deg to find the text; undo it.
-        Ok(img.rotate((-rotation_deg).to_radians())?)
+        img.rotate((-rotation_deg).to_radians())
     }
 
     /// Upscale short recognition crops so CRNN/pattern matching see enough pixels.
@@ -630,7 +633,7 @@ impl OcrEngine {
                     crate::core::text::BoundingBox::new(0, 0, image.width, image.height),
                     String::new(),
                 ));
-                return Ok(result);
+                Ok(result)
             }
             PageSegMode::SingleWord => {
                 let mut result = LayoutResult::new(page_size);
@@ -639,7 +642,7 @@ impl OcrEngine {
                     crate::core::text::BoundingBox::new(0, 0, image.width, image.height),
                     String::new(),
                 ));
-                return Ok(result);
+                Ok(result)
             }
             PageSegMode::SingleChar => {
                 let mut result = LayoutResult::new(page_size);
@@ -648,7 +651,7 @@ impl OcrEngine {
                     crate::core::text::BoundingBox::new(0, 0, image.width, image.height),
                     String::new(),
                 ));
-                return Ok(result);
+                Ok(result)
             }
             PageSegMode::SingleBlock | PageSegMode::SingleColumn => {
                 let mut result = LayoutResult::new(page_size);
@@ -657,7 +660,7 @@ impl OcrEngine {
                     crate::core::text::BoundingBox::new(0, 0, image.width, image.height),
                     String::new(),
                 ));
-                return Ok(result);
+                Ok(result)
             }
             PageSegMode::SparseText | PageSegMode::SparseTextWithOsd | PageSegMode::Auto => {
                 Ok(crate::layout::LayoutAnalyzer::analyze_layout_with_options(
@@ -684,10 +687,18 @@ impl OcrEngine {
     ) -> Result<RecognitionResult> {
         use crate::lang::dictionary::DictionaryHandler;
         use crate::lang::load_english_ngram_model;
-        use crate::recognition::crnn::{CrnnConfig, CrnnModel};
 
-        let config = CrnnConfig::default();
-        let model = CrnnModel::new(config);
+        // Load the bundled trained model once and cache it for subsequent calls.
+        // Falls back to a fresh model only if the bundled weights can't be loaded.
+        let model = self.model.get_or_init(|| {
+            crate::recognition::loader::load_bundled()
+                .unwrap_or_else(|e| {
+                    tracing::warn!("Failed to load bundled model ({}); using random init", e);
+                    crate::recognition::crnn::CrnnModel::new(
+                        crate::recognition::crnn::CrnnConfig::default(),
+                    )
+                })
+        });
 
         let dict_handler = if self.config.recognition.enable_dictionary_correction {
             Some(DictionaryHandler::new_for_language(
@@ -859,16 +870,14 @@ impl OcrEngine {
                         if c.confidence < confidence_threshold {
                             return false;
                         }
-                        if let Some(allowed) = whitelist {
-                            if !allowed.contains(&c.character) {
+                        if let Some(allowed) = whitelist
+                            && !allowed.contains(&c.character) {
                                 return false;
                             }
-                        }
-                        if let Some(blocked) = blacklist {
-                            if blocked.contains(&c.character) {
+                        if let Some(blocked) = blacklist
+                            && blocked.contains(&c.character) {
                                 return false;
                             }
-                        }
                         true
                     })
                     .cloned()
@@ -910,8 +919,8 @@ impl OcrEngine {
                 }
 
                 // Font attribute detection
-                if enable_font_analysis {
-                    if let Ok((is_bold, is_italic, is_monospace)) =
+                if enable_font_analysis
+                    && let Ok((is_bold, is_italic, is_monospace)) =
                         crate::image::font_analysis::analyze_font_attributes(
                             &dynamic_img,
                             &word_result,
@@ -921,7 +930,6 @@ impl OcrEngine {
                         word_result.properties.is_italic = is_italic;
                         word_result.properties.is_monospace = is_monospace;
                     }
-                }
 
                 if !filtered_line_text.is_empty() {
                     filtered_line_text.push(' ');
@@ -1290,8 +1298,6 @@ mod tests {
     #[tokio::test]
     async fn test_ocr_engine_process_image_simple_text() {
         // Smoke test: pipeline should run end-to-end without panicking.
-        // Output is not asserted because the bundled model is currently
-        // a random-init placeholder until a training run replaces it.
         let mut config = crate::core::OcrConfig::default();
         config.image_processing.enable_preprocessing = false;
         config.layout_analysis.enable_layout_analysis = false;
@@ -1303,8 +1309,7 @@ mod tests {
         let ocr_image = OcrImage::new(DynamicImage::ImageLuma8(img), 300);
 
         let result = engine.process_image(ocr_image).await.unwrap();
-        // Just check the pipeline ran; we don't assert content because the
-        // bundled model is randomly-initialised.
+        // Pipeline ran successfully; the bundled model is loaded (not random init).
         let _ = result.text;
     }
 
@@ -1324,5 +1329,27 @@ mod tests {
 
         let result = engine.process_image(ocr_image).await.unwrap();
         let _ = result.text;
+    }
+
+    #[tokio::test]
+    async fn test_ocr_engine_loads_bundled_model() {
+        // Regression test: the engine must load the bundled trained model,
+        // not a random-init one. Two consecutive recognitions on the same
+        // image must produce identical output (a random model would give
+        // different results each time it's constructed).
+        let mut config = crate::core::OcrConfig::default();
+        config.image_processing.enable_preprocessing = false;
+        config.layout_analysis.enable_layout_analysis = false;
+
+        let engine = OcrEngine::with_config(config).unwrap();
+        engine.initialize().await.unwrap();
+
+        let img = render_text_5x7("TEST", 6, 6, 12);
+        let ocr_image = OcrImage::new(DynamicImage::ImageLuma8(img), 300);
+
+        let result1 = engine.process_image(ocr_image.clone()).await.unwrap();
+        let result2 = engine.process_image(ocr_image).await.unwrap();
+        // Same model → same output
+        assert_eq!(result1.text, result2.text);
     }
 }

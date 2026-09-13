@@ -332,10 +332,10 @@ impl TextRegionDetector {
             }
 
             let bbox = BoundingBox::new(
-                min_x as u32,
-                min_y as u32,
-                (max_x + 1) as u32,
-                (max_y + 1) as u32,
+                min_x,
+                min_y,
+                max_x + 1,
+                max_y + 1,
             );
 
             regions.push(TextRegion::new(
@@ -404,10 +404,10 @@ impl TextRegionDetector {
             }
 
             let char_bbox = BoundingBox::new(
-                region.bounding_box.left + min_x as u32,
-                region.bounding_box.top + min_y as u32,
-                region.bounding_box.left + max_x as u32 + 1,
-                region.bounding_box.top + max_y as u32 + 1,
+                region.bounding_box.left + min_x,
+                region.bounding_box.top + min_y,
+                region.bounding_box.left + max_x + 1,
+                region.bounding_box.top + max_y + 1,
             );
 
             char_boxes.push(char_bbox);
@@ -512,12 +512,7 @@ impl ImageRegionDetector {
 
             // Heuristic: Images are large
             if width > 100 && height > 100 {
-                let bbox = BoundingBox::new(
-                    min_x as u32,
-                    min_y as u32,
-                    (max_x + 1) as u32,
-                    (max_y + 1) as u32,
-                );
+let bbox = BoundingBox::new(min_x, min_y, max_x + 1, max_y + 1);
 
                 regions.push(ImageRegion::new(format!("img_{}", label), bbox));
             }

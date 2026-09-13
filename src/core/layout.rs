@@ -134,7 +134,7 @@ impl Block {
 
     /// Get block area
     pub fn area(&self) -> u32 {
-        self.bounding_box.area() as u32
+        self.bounding_box.area()
     }
 
     /// Get block center
@@ -367,7 +367,7 @@ impl Table {
 }
 
 /// Table structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TableStructure {
     /// Number of rows
     pub rows: usize,
@@ -377,17 +377,6 @@ pub struct TableStructure {
     pub cells: Vec<Vec<TableCell>>,
     /// Table headers
     pub headers: Vec<String>,
-}
-
-impl Default for TableStructure {
-    fn default() -> Self {
-        Self {
-            rows: 0,
-            columns: 0,
-            cells: Vec::new(),
-            headers: Vec::new(),
-        }
-    }
 }
 
 /// Table cell
@@ -609,7 +598,7 @@ impl Margins {
 }
 
 /// Borders structure
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Borders {
     /// Top border
     pub top: Border,
@@ -619,17 +608,6 @@ pub struct Borders {
     pub bottom: Border,
     /// Left border
     pub left: Border,
-}
-
-impl Default for Borders {
-    fn default() -> Self {
-        Self {
-            top: Border::default(),
-            right: Border::default(),
-            bottom: Border::default(),
-            left: Border::default(),
-        }
-    }
 }
 
 /// Border structure

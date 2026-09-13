@@ -52,7 +52,8 @@ Shared data structures and the central engine:
 | `engine.rs` | `OcrEngine` — state machine: init → load image → preprocess → segment → recognize → post-process |
 | `geometry.rs` | `TBox`, `Polygon`, `Point2D` — layout geometry types |
 | `layout.rs` | `LayoutResult`, `Block`, `TextRegion`, `Table`, `ReadingOrder` — layout analysis outputs |
-| `output.rs` | Formatters: text, JSON, hOCR, TSV, ALTO XML, box, Markdown, structured JSON, RAG chunks (`rag_chunks` + `format_rag_json`: one chunk per element with heading-path `section` context) |
+| `output.rs` | Formatters: text, JSON, hOCR, TSV, CSV (RFC 4180 per-word rows), ALTO XML, box, Markdown, structured JSON, RAG chunks (`rag_chunks` + `format_rag_json`: one chunk per element with heading-path `section` context), PAGE XML |
+| `pdf.rs` | Searchable PDF writer (feature `pdf`): zero-dependency — embeds image as JPEG XObject + invisible text layer (rendering mode 3) at word bounding boxes; built-in Helvetica + WinAnsiEncoding; multi-page support |
 | `recognition.rs` | `RecognitionResult`, `CharacterRecognition`, `WordRecognition`, `LineRecognition` |
 | `text.rs` | `TextResult` — final unified output with confidence, bounding boxes, lines, words |
 
@@ -96,7 +97,7 @@ Since v0.2 the rule-based recognizers (`PatternModel`, `BasicOcrEngine`, `LstmMo
 Supporting modules:
 
 - `model_format.rs` — `OCR1` binary format (magic + version 1) for model bundles and checkpoints
-- `loader.rs` — loads the bundled `models/crnn-en.bin` (3.07 MB, embedded via `include_bytes!`) on `Ocr::initialize()`, plus checkpoint I/O
+- `loader.rs` — loads the bundled `models/crnn-en.bin` (3.07 MB, embedded via `include_bytes!`) on first recognition (cached in `OcrEngine` via `OnceLock<CrnnModel>`), plus checkpoint I/O
 - `confidence.rs` — `ConfidenceCalibrator` (temperature-scaled CTC softmax → per-char/word scores)
 - `ctc_decoder.rs` — greedy + beam search with n-best output for dict/LM rescoring
 - `backward.rs` — full BPTT gradients through CNN + BiLSTM + FC (`ParamGrads`, consumed by `CrnnTrainer::train_batch_full`)
@@ -147,7 +148,7 @@ consumer arrives.
 1. CLI parses args → builds OcrConfig
 2. Ocr::with_config(config) → creates OcrEngine
 3. OcrEngine::initialize():
-   a. Load the bundled CRNN model (`models/crnn-en.bin` via `include_bytes!`)
+   a. Prepare the bundled CRNN model (`models/crnn-en.bin` via `include_bytes!`, loaded lazily on first recognition via `OnceLock`)
    b. Load language dictionaries
    c. Warm up image preprocessing pipeline
 4. Image loaded via image::open() → converted to OcrImage (Grayscale, 300 DPI)
@@ -177,7 +178,7 @@ consumer arrives.
    b. Dictionary correction (if enabled)
    c. Confidence score aggregation
 9. Output formatting:
-   a. Plain text, JSON, hOCR, TSV, ALTO XML, box, Markdown, structured JSON
+   a. Plain text, JSON, hOCR, TSV, CSV, ALTO XML, PAGE XML, box, Markdown, structured JSON, RAG JSON, searchable PDF (feature `pdf`)
    b. Write to stdout or file
 ```
 

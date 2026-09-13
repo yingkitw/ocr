@@ -166,10 +166,10 @@ impl DocumentGenerator {
             "C:/Windows/Fonts/consola.ttf",
         ];
         for path in &candidates {
-            if let Ok(data) = std::fs::read(path) {
-                if let Some(font) = Font::try_from_vec(data) {
-                    return Some(font);
-                }
+            if let Ok(data) = std::fs::read(path)
+                && let Some(font) = Font::try_from_vec(data)
+            {
+                return Some(font);
             }
         }
         None

@@ -241,7 +241,7 @@ impl FormExtractor {
                 let label_clean = text.trim_end_matches(':').trim_end_matches("：").to_string();
                 let value = best_value_region.map(|r| r.text.clone());
                 let field_bbox = best_value_region
-                    .map(|r| r.bounding_box.clone())
+                    .map(|r| r.bounding_box)
                     .unwrap_or_else(|| {
                         // If no value region found, estimate one to the right
                         let est_width = 150u32;

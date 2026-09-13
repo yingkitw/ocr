@@ -326,7 +326,7 @@ impl ModelManager {
             self.active_model = Some(model_type);
             Ok(())
         } else {
-            Err(OcrError::ModelNotFound(format!("Model {:?} not found", model_type)).into())
+            Err(OcrError::ModelNotFound(format!("Model {:?} not found", model_type)))
         }
     }
 

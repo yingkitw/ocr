@@ -116,8 +116,8 @@ impl TextSuperResolution {
         }
 
         // 2) Short line height (tiny rendered glyphs)
-        if let Some(line_h) = line_h {
-            if line_h > 0 && line_h < self.min_line_height_px {
+        if let Some(line_h) = line_h
+            && line_h > 0 && line_h < self.min_line_height_px {
                 let h_scale =
                     (self.min_line_height_px as f32 / line_h as f32).clamp(1.0, self.max_scale);
                 if h_scale > scale {
@@ -125,7 +125,6 @@ impl TextSuperResolution {
                     reason = UpscaleReason::ShortLineHeight;
                 }
             }
-        }
 
         // 3) Thin stroke — only reinforce when DPI is low or lines are already short
         if let Some(stroke) = stroke {
@@ -173,7 +172,7 @@ fn looks_like_noise(img: &OcrImage) -> bool {
     let step = ((w * h) / 10_000).max(1);
     let mut sampled = 0u64;
     for (i, p) in gray.pixels().enumerate() {
-        if (i as u32) % step != 0 {
+        if !(i as u32).is_multiple_of(step) {
             continue;
         }
         sampled += 1;

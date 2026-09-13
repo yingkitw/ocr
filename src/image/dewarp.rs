@@ -188,8 +188,8 @@ impl CurveRectifier {
         };
 
         let mut out = GrayImage::new(w as u32, h as u32);
-        for x in 0..w {
-            let shift = baseline[x] - mean_base;
+        for (x, &base_val) in baseline.iter().enumerate().take(w) {
+            let shift = base_val - mean_base;
             for y in 0..h {
                 let src_y = y as f32 + shift;
                 let sample = sample_bilinear(&gray, x as f32, src_y);
@@ -205,7 +205,7 @@ fn column_baselines(gray: &GrayImage, ink_threshold: u8) -> Vec<f32> {
     let (w, h) = (gray.width() as usize, gray.height() as usize);
     let mut baselines = vec![h as f32 * 0.75; w];
 
-    for x in 0..w {
+    for (x, base_slot) in baselines.iter_mut().enumerate().take(w) {
         let mut found = None;
         for y in (0..h).rev() {
             if gray.get_pixel(x as u32, y as u32)[0] < ink_threshold {
@@ -214,17 +214,17 @@ fn column_baselines(gray: &GrayImage, ink_threshold: u8) -> Vec<f32> {
             }
         }
         if let Some(y) = found {
-            baselines[x] = y;
+            *base_slot = y;
         }
     }
 
     // 5-tap moving average to damp noise
     let mut smoothed = baselines.clone();
-    for x in 0..w {
+    for (x, smooth_slot) in smoothed.iter_mut().enumerate().take(w) {
         let lo = x.saturating_sub(2);
         let hi = (x + 2).min(w - 1);
         let slice = &baselines[lo..=hi];
-        smoothed[x] = slice.iter().sum::<f32>() / slice.len() as f32;
+        *smooth_slot = slice.iter().sum::<f32>() / slice.len() as f32;
     }
     smoothed
 }
@@ -284,8 +284,8 @@ fn solve3(m: [[f64; 3]; 3], mut b: [f64; 3]) -> Option<[f64; 3]> {
         a.swap(col, pivot);
         b.swap(col, pivot);
         let div = a[col][col];
-        for j in col..3 {
-            a[col][j] /= div;
+        for slot in a[col].iter_mut().skip(col) {
+            *slot /= div;
         }
         b[col] /= div;
         for row in 0..3 {
@@ -293,8 +293,9 @@ fn solve3(m: [[f64; 3]; 3], mut b: [f64; 3]) -> Option<[f64; 3]> {
                 continue;
             }
             let factor = a[row][col];
-            for j in col..3 {
-                a[row][j] -= factor * a[col][j];
+            let col_vals = a[col];
+            for (j, slot) in a[row].iter_mut().enumerate().skip(col) {
+                *slot -= factor * col_vals[j];
             }
             b[row] -= factor * b[col];
         }

@@ -60,14 +60,14 @@ fn test_cli_list_languages_command() {
 #[test]
 fn test_cli_extract_with_nonexistent_file() {
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", "nonexistent.png"]);
+    cmd.args(["extract", "nonexistent.png"]);
     cmd.assert().failure();
 }
 
 #[test]
 fn test_cli_extract_with_unsupported_format() {
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", "test.xyz"]);
+    cmd.args(["extract", "test.xyz"]);
     cmd.assert().failure();
 }
 
@@ -75,7 +75,7 @@ fn test_cli_extract_with_unsupported_format() {
 fn test_cli_extract_with_valid_image() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap()]);
+    cmd.args(["extract", file.path().to_str().unwrap()]);
     cmd.assert().success();
 }
 
@@ -83,7 +83,7 @@ fn test_cli_extract_with_valid_image() {
 fn test_cli_extract_with_preprocessing() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--preprocess"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "--preprocess"]);
     cmd.assert().success();
 }
 
@@ -91,7 +91,7 @@ fn test_cli_extract_with_preprocessing() {
 fn test_cli_extract_with_lstm_engine() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--engine", "lstm"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "--engine", "lstm"]);
     cmd.assert().success();
 }
 
@@ -99,7 +99,7 @@ fn test_cli_extract_with_lstm_engine() {
 fn test_cli_extract_with_dict_correct() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--dict-correct"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "--dict-correct"]);
     cmd.assert().success();
 }
 
@@ -107,7 +107,7 @@ fn test_cli_extract_with_dict_correct() {
 fn test_cli_extract_with_cjk_lang() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "zh"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "--lang", "zh"]);
     cmd.assert().success();
 }
 
@@ -115,7 +115,7 @@ fn test_cli_extract_with_cjk_lang() {
 fn test_cli_extract_with_french_lang() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "fr"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "--lang", "fr"]);
     cmd.assert().success();
 }
 
@@ -123,7 +123,7 @@ fn test_cli_extract_with_french_lang() {
 fn test_cli_extract_with_german_lang() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--lang", "de"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "--lang", "de"]);
     cmd.assert().success();
 }
 
@@ -131,7 +131,7 @@ fn test_cli_extract_with_german_lang() {
 fn test_cli_extract_with_spanish_lang_and_dict_correct() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&[
+    cmd.args([
         "extract",
         file.path().to_str().unwrap(),
         "--lang",
@@ -145,7 +145,7 @@ fn test_cli_extract_with_spanish_lang_and_dict_correct() {
 fn test_cli_extract_with_device_cpu() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "--device", "cpu"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "--device", "cpu"]);
     cmd.assert().success();
 }
 
@@ -153,7 +153,7 @@ fn test_cli_extract_with_device_cpu() {
 fn test_cli_extract_with_json_format() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "-f", "json"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "-f", "json"]);
     cmd.assert().success();
 }
 
@@ -161,17 +161,60 @@ fn test_cli_extract_with_json_format() {
 fn test_cli_extract_with_rag_format() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["extract", file.path().to_str().unwrap(), "-f", "rag"]);
+    cmd.args(["extract", file.path().to_str().unwrap(), "-f", "rag"]);
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("\"chunks\""));
 }
 
 #[test]
+fn test_cli_extract_with_page_format() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(["extract", file.path().to_str().unwrap(), "-f", "page"]);
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains("<PcGts"))
+        .stdout(predicates::str::contains("primaresearch.org/PAGE"));
+}
+
+#[test]
+fn test_cli_extract_with_csv_format() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(["extract", file.path().to_str().unwrap(), "-f", "csv"]);
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "page,line,word,text,confidence,left,top,width,height",
+        ));
+}
+
+#[test]
+fn test_cli_extract_from_stdin() {
+    // Create a test image and read its bytes
+    let file = create_test_image_with_rectangles();
+    let image_bytes = std::fs::read(file.path()).unwrap();
+
+    let mut cmd = assert_cmd::Command::cargo_bin("ocr").unwrap();
+    cmd.args(["extract", "-"]);
+    cmd.write_stdin(image_bytes);
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_extract_from_stdin_empty() {
+    let mut cmd = assert_cmd::Command::cargo_bin("ocr").unwrap();
+    cmd.args(["extract", "-"]);
+    cmd.write_stdin(b"");
+    cmd.assert().failure();
+}
+
+#[test]
 fn test_cli_extract_with_all_options() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&[
+    cmd.args([
         "extract",
         file.path().to_str().unwrap(),
         "--lang",
@@ -191,6 +234,19 @@ fn test_cli_extract_with_all_options() {
 }
 
 #[test]
+fn test_cli_extract_with_dpi() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args([
+        "extract",
+        file.path().to_str().unwrap(),
+        "--dpi",
+        "150",
+    ]);
+    cmd.assert().success();
+}
+
+#[test]
 fn test_cli_info_command() {
     let mut cmd = Command::cargo_bin("ocr").unwrap();
     cmd.arg("info");
@@ -200,7 +256,7 @@ fn test_cli_info_command() {
 #[test]
 fn test_cli_validate_command() {
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&["validate", "nonexistent.json"]);
+    cmd.args(["validate", "nonexistent.json"]);
     cmd.assert().failure();
 }
 
@@ -221,7 +277,7 @@ fn test_cli_batch_processes_all_images() {
     }
 
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&[
+    cmd.args([
         "batch",
         "-i",
         input_dir.path().to_str().unwrap(),
@@ -260,7 +316,7 @@ fn test_cli_makebox_writes_box_file() {
     let out_base = out_dir.path().join("train");
 
     let mut cmd = Command::cargo_bin("ocr").unwrap();
-    cmd.args(&[
+    cmd.args([
         "makebox",
         file.path().to_str().unwrap(),
         "-o",
@@ -270,4 +326,67 @@ fn test_cli_makebox_writes_box_file() {
 
     let box_path = out_dir.path().join("train.box");
     assert!(box_path.exists(), "expected {}", box_path.display());
+}
+
+#[test]
+fn test_cli_extract_multi_page_tiff() {
+    use std::io::Cursor;
+
+    // Create a 2-page TIFF
+    let page1 = ImageBuffer::from_pixel(200, 50, Luma([255u8]));
+    let page2 = ImageBuffer::from_pixel(200, 50, Luma([255u8]));
+
+    let mut tiff_file = NamedTempFile::with_suffix(".tiff").unwrap();
+    let mut tiff_bytes = Cursor::new(Vec::new());
+    {
+        let mut encoder = tiff::encoder::TiffEncoder::new(&mut tiff_bytes).unwrap();
+        encoder
+            .write_image::<tiff::encoder::colortype::Gray8>(
+                page1.width(),
+                page1.height(),
+                page1.as_raw(),
+            )
+            .unwrap();
+        encoder
+            .write_image::<tiff::encoder::colortype::Gray8>(
+                page2.width(),
+                page2.height(),
+                page2.as_raw(),
+            )
+            .unwrap();
+    }
+    tiff_file
+        .write_all(&tiff_bytes.into_inner())
+        .unwrap();
+    tiff_file.flush().unwrap();
+
+    // Extract should succeed and output page separators for multi-page TIFF
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(["extract", tiff_file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains("--- Page 1 ---"))
+        .stdout(predicates::str::contains("--- Page 2 ---"));
+}
+
+#[cfg(feature = "pdf")]
+#[test]
+fn test_cli_extract_with_pdf_format() {
+    let file = create_test_image_with_rectangles();
+    let pdf_output = tempfile::NamedTempFile::new().unwrap();
+    let pdf_path = pdf_output.path().to_str().unwrap().to_string();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args([
+        "extract",
+        file.path().to_str().unwrap(),
+        "-f",
+        "pdf",
+        "-o",
+        &pdf_path,
+    ]);
+    cmd.assert().success();
+    let pdf_bytes = std::fs::read(&pdf_path).unwrap();
+    assert!(pdf_bytes.starts_with(b"%PDF-1.4"), "PDF should start with header");
+    assert!(pdf_bytes.ends_with(b"%%EOF\n") || pdf_bytes.ends_with(b"%%EOF"), "PDF should end with EOF marker");
+    assert!(pdf_bytes.windows(8).any(|w| w == b"/XObject"), "PDF should contain XObject");
 }

@@ -33,7 +33,7 @@ pub fn ctc_loss_and_grad(
     // Build extended label: [blank, l1, blank, l2, blank, ..., ls, blank]
     // Length 2*s + 1, with blanks at even indices.
     let mut ext = Vec::with_capacity(2 * s + 1);
-    for i in 0..=s {
+    for (i, _) in (0..=s).enumerate() {
         ext.push(blank);
         if i < s {
             ext.push(targets[i]);
@@ -212,8 +212,8 @@ fn log_softmax_2d(logits: &[f32], t: usize, c: usize) -> Vec<f32> {
         let row = &logits[ti * c..(ti + 1) * c];
         let max = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let mut sum = 0.0f32;
-        for ci in 0..c {
-            sum += (row[ci] - max).exp();
+        for v in row.iter().take(c) {
+            sum += (*v - max).exp();
         }
         let log_sum = max + sum.ln();
         for ci in 0..c {
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_logaddexp() {
-        assert!((logaddexp(0.0, 0.0) - 0.693147).abs() < 1e-4);
+        assert!((logaddexp(0.0, 0.0) - std::f32::consts::LN_2).abs() < 1e-4);
         assert!((logaddexp(1.0, 2.0) - 2.313262).abs() < 1e-4);
     }
 
@@ -296,20 +296,20 @@ mod tests {
         let targets = vec![1usize];
         // Make logits heavily favor [blank, l1, blank, blank] for the 4 timesteps
         let mut logits = vec![0.0f32; t * num_classes];
-        // t=0: blank strongly
-        logits[0 * num_classes + 0] = 5.0;
-        logits[0 * num_classes + 1] = 0.0;
-        logits[0 * num_classes + 2] = 0.0;
-        // t=1: l1 strongly
-        logits[1 * num_classes + 0] = 0.0;
-        logits[1 * num_classes + 1] = 5.0;
-        logits[1 * num_classes + 2] = 0.0;
-        // t=2: blank strongly
-        logits[2 * num_classes + 0] = 5.0;
+        // t=0: blank strongly (indices 0..num_classes)
+        logits[0] = 5.0;
+        logits[1] = 0.0;
+        logits[2] = 0.0;
+        // t=1: l1 strongly (indices num_classes..2*num_classes)
+        logits[num_classes] = 0.0;
+        logits[num_classes + 1] = 5.0;
+        logits[num_classes + 2] = 0.0;
+        // t=2: blank strongly (indices 2*num_classes..3*num_classes)
+        logits[2 * num_classes] = 5.0;
         logits[2 * num_classes + 1] = 0.0;
         logits[2 * num_classes + 2] = 0.0;
-        // t=3: blank strongly
-        logits[3 * num_classes + 0] = 5.0;
+        // t=3: blank strongly (indices 3*num_classes..4*num_classes)
+        logits[3 * num_classes] = 5.0;
         logits[3 * num_classes + 1] = 0.0;
         logits[3 * num_classes + 2] = 0.0;
 

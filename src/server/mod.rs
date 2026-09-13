@@ -16,7 +16,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::api::Ocr;
-use crate::core::output::{format_hocr, format_tsv, to_json_output};
+use crate::core::output::{format_csv, format_hocr, format_tsv, to_json_output};
 
 /// Server configuration
 #[derive(Debug, Clone)]
@@ -79,6 +79,8 @@ struct OcrResponse {
     hocr: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tsv: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    csv: Option<String>,
     processing_time_ms: u64,
 }
 
@@ -151,7 +153,7 @@ async fn list_languages(State(state): State<Arc<AppState>>) -> Json<serde_json::
 /// Accepts multipart form data with:
 /// - `image` (required): the image file (png, jpg, tiff, bmp, webp)
 /// - `lang` (optional): language code, default "en"
-/// - `format` (optional): output format "text", "json", "hocr", "tsv", default "text"
+/// - `format` (optional): output format "text", "json", "hocr", "tsv", "csv", default "text"
 /// - `preprocess` (optional): "true"/"false", default "false" (no-op: server uses default config)
 /// - `engine` (optional): "pattern", "lstm", default "pattern" (no-op: server uses default config)
 async fn recognize_text(
@@ -238,7 +240,7 @@ async fn recognize_text(
     let words_count = result.words.len();
     let lines_count = result.lines.len();
 
-    let (text, json_output, hocr, tsv) = match params.format.to_lowercase().as_str() {
+    let (text, json_output, hocr, tsv, csv) = match params.format.to_lowercase().as_str() {
         "json" => {
             let json_val = to_json_output(&result);
             (
@@ -246,17 +248,22 @@ async fn recognize_text(
                 Some(serde_json::to_value(&json_val).unwrap_or_default()),
                 None,
                 None,
+                None,
             )
         }
         "hocr" | "html" => {
             let hocr_str = format_hocr(&result).unwrap_or_default();
-            (result.text.clone(), None, Some(hocr_str), None)
+            (result.text.clone(), None, Some(hocr_str), None, None)
         }
         "tsv" => {
             let tsv_str = format_tsv(&result).unwrap_or_default();
-            (result.text.clone(), None, None, Some(tsv_str))
+            (result.text.clone(), None, None, Some(tsv_str), None)
         }
-        _ => (result.text.clone(), None, None, None),
+        "csv" => {
+            let csv_str = format_csv(&result).unwrap_or_default();
+            (result.text.clone(), None, None, None, Some(csv_str))
+        }
+        _ => (result.text.clone(), None, None, None, None),
     };
 
     Ok(Json(OcrResponse {
@@ -269,6 +276,7 @@ async fn recognize_text(
         json_output,
         hocr,
         tsv,
+        csv,
         processing_time_ms: elapsed,
     }))
 }

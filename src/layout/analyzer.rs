@@ -65,7 +65,7 @@ impl LayoutAnalyzer {
         for &idx in &reading_order {
             if let Some(partition) = column_partitions.get(idx) {
                 let mut regions = partition.text_regions.clone();
-                regions.sort_by(|a, b| a.bounding_box.top.cmp(&b.bounding_box.top));
+                regions.sort_by_key(|r| r.bounding_box.top);
                 sorted_text_regions.extend(regions);
             }
         }

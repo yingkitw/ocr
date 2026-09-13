@@ -5,7 +5,7 @@ use crate::core::config::OcrConfig;
 use serde::{Deserialize, Serialize};
 
 /// API configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ApiConfig {
     /// OCR configuration
     pub ocr: OcrConfig,
@@ -148,17 +148,6 @@ pub enum LogFormat {
     Json,
     /// Compact format
     Compact,
-}
-
-impl Default for ApiConfig {
-    fn default() -> Self {
-        Self {
-            ocr: OcrConfig::default(),
-            api: ApiSettings::default(),
-            performance: PerformanceSettings::default(),
-            logging: LoggingSettings::default(),
-        }
-    }
 }
 
 impl ApiConfig {

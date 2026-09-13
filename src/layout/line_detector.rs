@@ -106,11 +106,7 @@ impl LineDetector {
 
                 let other_center_y =
                     (text_regions[j].bounding_box.top + text_regions[j].bounding_box.bottom) / 2;
-                let y_diff = if center_y > other_center_y {
-                    center_y - other_center_y
-                } else {
-                    other_center_y - center_y
-                };
+                let y_diff = center_y.abs_diff(other_center_y);
 
                 if y_diff <= tolerance {
                     group.push(j);
@@ -141,7 +137,7 @@ impl LineDetector {
 
         // Sort regions horizontally (left to right)
         let mut sorted_regions = regions;
-        sorted_regions.sort_by(|a, b| a.bounding_box.left.cmp(&b.bounding_box.left));
+        sorted_regions.sort_by_key(|r| r.bounding_box.left);
 
         // Compute line bounding box
         let bounding_box = self.compute_line_bounding_box(&sorted_regions);

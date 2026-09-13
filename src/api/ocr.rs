@@ -111,13 +111,12 @@ impl Ocr {
         Ok(result)
     }
 
-    /// Recognize text from image file
-    pub async fn recognize_text_from_file<P: AsRef<std::path::Path>>(
-        &self,
-        path: P,
-    ) -> ApiResult<TextResult> {
-        let image_data = tokio::fs::read(path).await?;
-        let dynamic_image = image::load_from_memory(&image_data)
+    /// Recognize text from encoded image bytes (PNG, JPEG, etc.)
+    ///
+    /// For multi-page TIFF, only the first page is recognized. Use
+    /// `recognize_text_from_bytes_multi_page` to get all pages.
+    pub async fn recognize_text_from_bytes(&self, image_data: &[u8]) -> ApiResult<TextResult> {
+        let dynamic_image = image::load_from_memory(image_data)
             .map_err(|e| ApiError::ImageProcessing(format!("Failed to load image: {}", e)))?;
         let (width, height) = dynamic_image.dimensions();
 
@@ -126,6 +125,49 @@ impl Ocr {
         let raw_pixels: Vec<u8> = gray_image.pixels().map(|p| p[0]).collect();
 
         self.recognize_text(&raw_pixels, width, height).await
+    }
+
+    /// Recognize text from encoded image bytes, returning one `TextResult` per page.
+    ///
+    /// Multi-page TIFF files produce multiple results; all other formats produce
+    /// a single-element vector. Each page is recognized independently.
+    pub async fn recognize_text_from_bytes_multi_page(
+        &self,
+        image_data: &[u8],
+    ) -> ApiResult<Vec<TextResult>> {
+        // Try multi-page TIFF decoding first
+        if let Some(pages) = decode_multi_page_tiff(image_data)? {
+            let mut results = Vec::with_capacity(pages.len());
+            for (pixels, width, height) in pages {
+                results.push(self.recognize_text(&pixels, width, height).await?);
+            }
+            return Ok(results);
+        }
+
+        // Fall back to single-image decode for non-TIFF or single-page TIFF
+        let result = self.recognize_text_from_bytes(image_data).await?;
+        Ok(vec![result])
+    }
+
+    /// Recognize text from image file, returning one `TextResult` per page.
+    ///
+    /// Multi-page TIFF files produce multiple results; all other formats produce
+    /// a single-element vector.
+    pub async fn recognize_text_from_file_multi_page<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> ApiResult<Vec<TextResult>> {
+        let image_data = tokio::fs::read(path).await?;
+        self.recognize_text_from_bytes_multi_page(&image_data).await
+    }
+
+    /// Recognize text from image file
+    pub async fn recognize_text_from_file<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> ApiResult<TextResult> {
+        let image_data = tokio::fs::read(path).await?;
+        self.recognize_text_from_bytes(&image_data).await
     }
 
     /// Recognize text from image with custom configuration
@@ -255,6 +297,98 @@ impl Ocr {
 impl Default for Ocr {
     fn default() -> Self {
         Self::new().expect("Failed to create OCR instance")
+    }
+}
+
+/// One decoded TIFF page: (grayscale pixels, width, height).
+type TiffPage = (Vec<u8>, u32, u32);
+
+/// Decode a multi-page TIFF from raw bytes, returning one grayscale pixel buffer
+/// per page. Returns `None` if the data is not a TIFF or has only a single page
+/// (in which case the caller should fall back to `image::load_from_memory`).
+///
+/// Uses the `tiff` crate directly because `image::load_from_memory` only decodes
+/// the first frame of a multi-page TIFF.
+fn decode_multi_page_tiff(data: &[u8]) -> ApiResult<Option<Vec<TiffPage>>> {
+    use std::io::Cursor;
+    use tiff::decoder::{Decoder, DecodingResult};
+
+    // Quick magic-number check: TIFF starts with "II*\x00" (little-endian)
+    // or "MM\x00*" (big-endian).
+    if data.len() < 4 || !(data.starts_with(b"II*\x00") || data.starts_with(b"MM\x00*")) {
+        return Ok(None);
+    }
+
+    let cursor = Cursor::new(data);
+    let mut decoder = match Decoder::new(cursor) {
+        Ok(d) => d,
+        Err(_) => return Ok(None),
+    };
+
+    let mut pages = Vec::new();
+
+    loop {
+        let (width, height) = match decoder.dimensions() {
+            Ok(d) => d,
+            Err(_) => break,
+        };
+
+        let result = match decoder.read_image() {
+            Ok(r) => r,
+            Err(_) => break,
+        };
+
+        // Convert to grayscale u8 pixels
+        let pixels: Vec<u8> = match result {
+            DecodingResult::U8(v) => v,
+            DecodingResult::U16(v) => v.iter().map(|&x| (x >> 8) as u8).collect(),
+            DecodingResult::U32(v) => v.iter().map(|&x| (x >> 24) as u8).collect(),
+            DecodingResult::U64(v) => v.iter().map(|&x| (x >> 56) as u8).collect(),
+            DecodingResult::F32(v) => v.iter().map(|&x| (x * 255.0) as u8).collect(),
+            _ => Vec::new(),
+        };
+
+        // If the pixel count matches width*height*channels, take just the first
+        // channel of each pixel (grayscale conversion for RGB/RGBA).
+        let expected = (width as usize) * (height as usize);
+        let gray: Vec<u8> = if pixels.len() == expected {
+            pixels
+        } else if pixels.len() == expected * 3 {
+            // RGB → grayscale via luminance
+            pixels
+                .chunks_exact(3)
+                .map(|c| {
+                    (0.299 * c[0] as f32 + 0.587 * c[1] as f32 + 0.114 * c[2] as f32) as u8
+                })
+                .collect()
+        } else if pixels.len() == expected * 4 {
+            // RGBA → grayscale via luminance (ignore alpha)
+            pixels
+                .chunks_exact(4)
+                .map(|c| {
+                    (0.299 * c[0] as f32 + 0.587 * c[1] as f32 + 0.114 * c[2] as f32) as u8
+                })
+                .collect()
+        } else {
+            // Unexpected channel count — take first N pixels
+            pixels.into_iter().take(expected).collect()
+        };
+
+        pages.push((gray, width, height));
+
+        if !decoder.more_images() {
+            break;
+        }
+        match decoder.next_image() {
+            Ok(()) => {}
+            Err(_) => break,
+        }
+    }
+
+    if pages.len() <= 1 {
+        Ok(None) // single-page or failed — let caller use the normal path
+    } else {
+        Ok(Some(pages))
     }
 }
 

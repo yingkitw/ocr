@@ -79,11 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn load_system_font() -> Option<Vec<u8>> {
     for path in SYSTEM_FONT_PATHS {
-        if std::path::Path::new(path).exists() {
-            if let Ok(data) = std::fs::read(path) {
-                println!("Loaded font: {}", path);
-                return Some(data);
-            }
+        if std::path::Path::new(path).exists()
+            && let Ok(data) = std::fs::read(path)
+        {
+            println!("Loaded font: {}", path);
+            return Some(data);
         }
     }
     println!("No system font found, falling back to bitmap renderer");

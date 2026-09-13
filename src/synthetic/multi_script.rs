@@ -50,7 +50,7 @@ impl ScriptCharPool {
     /// Cyrillic characters (Russian + neighboring languages)
     pub fn cyrillic() -> Vec<char> {
         (0x0400..=0x0450)
-            .filter_map(|cp| std::char::from_u32(cp))
+            .filter_map(std::char::from_u32)
             .collect()
     }
 
@@ -71,7 +71,7 @@ impl ScriptCharPool {
     /// Hebrew characters
     pub fn hebrew() -> Vec<char> {
         (0x05D0..=0x05EA)
-            .filter_map(|cp| std::char::from_u32(cp))
+            .filter_map(std::char::from_u32)
             .collect()
     }
 
@@ -94,7 +94,7 @@ impl ScriptCharPool {
         (0x0904..=0x0939)
             .chain(0x093E..=0x094D)
             .chain(0x0950..=0x0957)
-            .filter_map(|cp| std::char::from_u32(cp))
+            .filter_map(std::char::from_u32)
             .collect()
     }
 

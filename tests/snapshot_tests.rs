@@ -8,7 +8,6 @@ use ocr::core::*;
 use ocr::lang::{CJKLanguage, CJKProcessor as LangCJKProcessor};
 use ocr::recognition::{ModelConfig, *};
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 // Define missing types for tests
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -280,7 +279,7 @@ fn test_text_structures_snapshot() {    let mut results = Vec::new();
 /// Test model configuration snapshots
 #[test]
 fn test_model_configuration_snapshot() {
-    let configs = vec![
+    let configs = [
         ModelConfig {
             model_type: ModelType::LSTM,
             model_path: "tesseract_lstm.lstm".to_string(),

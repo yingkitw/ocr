@@ -8,21 +8,11 @@ use image::{DynamicImage, GrayImage};
 use image::Luma;
 
 /// Detected font attributes for a text region
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FontAttributes {
     pub bold: bool,
     pub italic: bool,
     pub monospace: bool,
-}
-
-impl Default for FontAttributes {
-    fn default() -> Self {
-        Self {
-            bold: false,
-            italic: false,
-            monospace: false,
-        }
-    }
 }
 
 /// Analyzes text region images to detect font attributes
@@ -177,12 +167,10 @@ impl FontAttributeDetector {
         }
 
         let mean = projection.iter().sum::<i32>() as f32 / projection.len() as f32;
-        let variance = projection.iter().map(|&v| {
+        projection.iter().map(|&v| {
             let d = v as f32 - mean;
             d * d
-        }).sum::<f32>() / projection.len() as f32;
-
-        variance
+        }).sum::<f32>() / projection.len() as f32
     }
 
     /// Detect monospace by measuring character width consistency
@@ -203,9 +191,7 @@ impl FontAttributeDetector {
         }).sum::<f32>() / widths.len() as f32;
 
         let std_dev = variance.sqrt();
-        let cv = std_dev / mean;
-
-        cv < self.monospace_cv_threshold
+        std_dev / mean < self.monospace_cv_threshold
     }
 
     /// Estimate character widths by analyzing vertical projection profile peaks
@@ -219,9 +205,9 @@ impl FontAttributeDetector {
         // Vertical projection: sum of dark pixels per column
         let mut projection = vec![0usize; w];
         for y in 0..h {
-            for x in 0..w {
+            for (x, proj_slot) in projection.iter_mut().enumerate().take(w) {
                 if gray.get_pixel(x as u32, y as u32).0[0] < threshold {
-                    projection[x] += 1;
+                    *proj_slot += 1;
                 }
             }
         }
@@ -232,8 +218,8 @@ impl FontAttributeDetector {
         let mut start = 0usize;
         let min_gap = 2usize; // minimum gap between characters
 
-        for x in 0..w {
-            let has_ink = projection[x] > 0;
+        for (x, proj_val) in projection.iter().enumerate().take(w) {
+            let has_ink = *proj_val > 0;
             if has_ink && !in_char {
                 start = x;
                 in_char = true;

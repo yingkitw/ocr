@@ -117,10 +117,10 @@ impl CtcDecoder {
                 })
                 .unwrap_or(BLANK_LABEL);
 
-            if best_label != BLANK_LABEL && best_label != prev_label {
-                if best_label > 0 && best_label - 1 < vocab.len() {
-                    output.push(vocab[best_label - 1]);
-                }
+            if best_label != BLANK_LABEL && best_label != prev_label
+                && best_label > 0 && best_label - 1 < vocab.len()
+            {
+                output.push(vocab[best_label - 1]);
             }
             prev_label = best_label;
         }

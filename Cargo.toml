@@ -1,16 +1,16 @@
 [package]
 name = "ocr"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 authors = ["Ying Kit WONG"]
-description = "Pure Rust OCR engine and CLI for extracting printed text from images. Supports 25+ languages, CRNN/CTC recognition, table and form extraction, and output to text, JSON, Markdown, hOCR, TSV, and ALTO XML."
+description = "Pure Rust OCR engine and CLI for extracting printed text from images. Supports 25+ languages, CRNN/CTC recognition, multi-page TIFF, table and form extraction, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF."
 license = "Apache-2.0"
 repository = "https://github.com/yingkitw/ocr"
 homepage = "https://github.com/yingkitw/ocr"
 documentation = "https://docs.rs/ocr"
 readme = "README.md"
-keywords = ["ocr", "tesseract", "image-to-text", "document-ai", "pure-rust"]
-categories = ["command-line-utilities", "multimedia::images", "text-processing", "science"]
+keywords = ["ocr", "tesseract", "image-to-text", "text-recognition", "pure-rust", "crnn", "ctc", "document-ai", "image-processing"]
+categories = ["command-line-utilities", "multimedia::images", "text-processing", "science", "computer-vision"]
 exclude = [
     "examples/images/*",
     "target/*",
@@ -38,6 +38,7 @@ ndarray = "0.15"
 rand = "0.8"
 rayon = "1.8"
 rusttype = "0.9"
+tiff = "0.9"
 
 # Optional / heavy
 axum = { version = "0.7", features = ["multipart"], optional = true }
@@ -58,7 +59,9 @@ insta = "1.0"
 [features]
 default = ["simd"]
 simd = []
-# PDF feature placeholder (no external deps)
+# Searchable PDF output (image + invisible text layer, zero external deps)
+pdf = []
+# PDF feature placeholder (no external deps) — kept for backward compat, use `pdf` instead
 pdfrs = []
 web-api = ["dep:axum", "dep:tower", "dep:tower-http", "dep:multer", "dep:reqwest"]
 cuda = ["dep:cudarc"]

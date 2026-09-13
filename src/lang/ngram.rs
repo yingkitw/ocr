@@ -51,7 +51,7 @@ impl NGramModel {
         let text_lower: String = text.chars().flat_map(|c| c.to_lowercase()).collect();
 
         for n in 1..=max_n {
-            let ngram_map = self.char_ngrams.entry(n).or_insert_with(HashMap::new);
+            let ngram_map = self.char_ngrams.entry(n).or_default();
             let total = self.char_totals.entry(n).or_insert(0);
 
             for i in 0..text_lower.len().saturating_sub(n - 1) {

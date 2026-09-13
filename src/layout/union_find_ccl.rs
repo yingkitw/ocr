@@ -112,6 +112,11 @@ impl UnionFind {
         self.parent.len()
     }
 
+    /// True if the structure contains no elements
+    pub fn is_empty(&self) -> bool {
+        self.parent.is_empty()
+    }
+
     /// Compress all paths in the Union-Find structure
     /// This should be called after all unions are done
     pub fn compress_all(&mut self) {
@@ -265,20 +270,20 @@ pub fn connected_components_4connectivity(image: &GrayImage) -> CclResult {
                     // Only top neighbor has label
                     labels[y][x] = top_label;
                     let idx = (top_label - 1) as usize;
-                    if idx < temp_boxes.len() {
-                        if let Some(ref mut bbox) = temp_boxes[idx] {
-                            bbox.include(x as u32, y as u32);
-                        }
+                    if idx < temp_boxes.len()
+                        && let Some(ref mut bbox) = temp_boxes[idx]
+                    {
+                        bbox.include(x as u32, y as u32);
                     }
                 }
                 (false, true) => {
                     // Only left neighbor has label
                     labels[y][x] = left_label;
                     let idx = (left_label - 1) as usize;
-                    if idx < temp_boxes.len() {
-                        if let Some(ref mut bbox) = temp_boxes[idx] {
-                            bbox.include(x as u32, y as u32);
-                        }
+                    if idx < temp_boxes.len()
+                        && let Some(ref mut bbox) = temp_boxes[idx]
+                    {
+                        bbox.include(x as u32, y as u32);
                     }
                 }
                 (true, true) => {
@@ -299,10 +304,10 @@ pub fn connected_components_4connectivity(image: &GrayImage) -> CclResult {
                     // Update bounding boxes
                     if top_idx < temp_boxes.len() && left_idx < temp_boxes.len() {
                         let bbox_idx = labels[y][x] as usize - 1;
-                        if bbox_idx < temp_boxes.len() {
-                            if let Some(ref mut bbox) = temp_boxes[bbox_idx] {
-                                bbox.include(x as u32, y as u32);
-                            }
+                        if bbox_idx < temp_boxes.len()
+                            && let Some(ref mut bbox) = temp_boxes[bbox_idx]
+                        {
+                            bbox.include(x as u32, y as u32);
                         }
                     }
                 }
@@ -330,9 +335,9 @@ pub fn connected_components_4connectivity(image: &GrayImage) -> CclResult {
     let num_components = (current_final_label - 1) as usize;
     let mut final_boxes = vec![ComponentBoundingBox::default(); num_components + 1];
 
-    for y in 0..h {
-        for x in 0..w {
-            let old_label = labels[y][x];
+    for (y, row) in labels.iter_mut().enumerate().take(h) {
+        for (x, slot) in row.iter_mut().enumerate().take(w) {
+            let old_label = *slot;
             if old_label == 0 {
                 continue;
             }
@@ -344,7 +349,7 @@ pub fn connected_components_4connectivity(image: &GrayImage) -> CclResult {
                 old_label
             };
 
-            labels[y][x] = new_label;
+            *slot = new_label;
 
             if new_label > 0 {
                 let idx = new_label as usize;
@@ -442,10 +447,10 @@ pub fn connected_components_8connectivity(image: &GrayImage) -> CclResult {
 
                 // Update bounding box
                 let bbox_idx = (min_label - 1) as usize;
-                if bbox_idx < temp_boxes.len() {
-                    if let Some(ref mut bbox) = temp_boxes[bbox_idx] {
-                        bbox.include(x as u32, y as u32);
-                    }
+                if bbox_idx < temp_boxes.len()
+                    && let Some(ref mut bbox) = temp_boxes[bbox_idx]
+                {
+                    bbox.include(x as u32, y as u32);
                 }
             }
         }
@@ -471,9 +476,9 @@ pub fn connected_components_8connectivity(image: &GrayImage) -> CclResult {
     let num_components = (current_final_label - 1) as usize;
     let mut final_boxes = vec![ComponentBoundingBox::default(); num_components + 1];
 
-    for y in 0..h {
-        for x in 0..w {
-            let old_label = labels[y][x];
+    for (y, row) in labels.iter_mut().enumerate().take(h) {
+        for (x, slot) in row.iter_mut().enumerate().take(w) {
+            let old_label = *slot;
             if old_label == 0 {
                 continue;
             }
@@ -485,7 +490,7 @@ pub fn connected_components_8connectivity(image: &GrayImage) -> CclResult {
                 old_label
             };
 
-            labels[y][x] = new_label;
+            *slot = new_label;
 
             if new_label > 0 {
                 let idx = new_label as usize;

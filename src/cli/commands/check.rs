@@ -22,7 +22,10 @@ pub async fn handle_check() -> Result<()> {
     println!("  - Layout analysis (columns, lines, tables, forms)");
     println!("  - Dictionary-based post-correction (25+ languages)");
     println!("  - Multi-script support (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)");
-    println!("  - Output formats: text, json, hocr, tsv, alto, xml, markdown, structured-json");
+    #[cfg(feature = "pdf")]
+    println!("  - Output formats: text, json, hocr, tsv, csv, alto, xml, markdown, structured-json, rag, page, pdf");
+    #[cfg(not(feature = "pdf"))]
+    println!("  - Output formats: text, json, hocr, tsv, csv, alto, xml, markdown, structured-json, rag, page");
     println!("  - Training pipeline: synthetic data generation + CRNN training + checkpointing");
     println!("  - Per-script benchmarking: CER/WER evaluation");
     println!("  - Font attribute detection (bold, italic, monospace)");

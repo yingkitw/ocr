@@ -56,6 +56,7 @@ fn run() -> Result<()> {
     ocr::synthetic::distortion::augment_batch(&mut val_samples.clone(), &distortion);
 
     let mut best_cer = f32::INFINITY;
+    let mut best_loss = f32::INFINITY;
     for epoch in 1..=args.epochs {
         let texts = generator.generate_random_texts(args.samples, args.max_text_len);
         let mut samples = generator.generate_batch(&texts);
@@ -121,25 +122,34 @@ fn run() -> Result<()> {
             cer_total += max_len;
         }
         let val_cer = 1.0 - cer_correct as f32 / cer_total.max(1) as f32;
+        let epoch_loss = total_loss / n_batches.max(1) as f32;
 
         println!(
             "epoch {epoch:>3}/{}  train_loss={:.4}  train_acc={:.2}%  val_cer={:.2}%  ({} batches)",
             args.epochs,
-            total_loss / n_batches.max(1) as f32,
+            epoch_loss,
             correct as f32 / chars.max(1) as f32 * 100.0,
             val_cer * 100.0,
             n_batches,
         );
 
+        // Checkpoint on val_cer improvement OR on train_loss improvement.
+        // CTC accuracy often stays flat (100% CER) for many epochs while loss
+        // descends, then falls off a cliff — loss-based checkpoints guarantee we
+        // keep the best model during that pre-accuracy phase.
+        let improved = val_cer < best_cer || epoch_loss < best_loss;
         if val_cer < best_cer {
             best_cer = val_cer;
+        }
+        if epoch_loss < best_loss {
+            best_loss = epoch_loss;
+        }
+        if improved {
             save_model(&trainer.model, &vocab, &args.output);
         }
     }
 
-    if best_cer.is_finite() {
-        println!("best val_cer {:.2}%", best_cer * 100.0);
-    }
+    println!("best val_cer {:.2}%  best train_loss {:.4}", best_cer * 100.0, best_loss);
     Ok(())
 }
 
@@ -233,7 +243,7 @@ impl Args {
 }
 
 const USAGE: &str = "\
-Train the bundled CRNN with in-crate pure-Rust CTC (FC only).
+Train the bundled CRNN with in-crate pure-Rust CTC + full BPTT (CNN + BiLSTM + FC).
 
 Usage:
   cargo run --release --example train_pure_rust -- [OPTIONS]

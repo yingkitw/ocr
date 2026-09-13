@@ -160,8 +160,8 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     let mut prev = vec![0usize; n + 1];
     let mut curr = vec![0usize; n + 1];
 
-    for j in 0..=n {
-        prev[j] = j;
+    for (j, prev_slot) in prev.iter_mut().enumerate().take(n + 1) {
+        *prev_slot = j;
     }
 
     for i in 1..=m {
@@ -218,13 +218,15 @@ mod tests {
 
     #[test]
     fn test_benchmark_metrics() {
-        let mut metrics = BenchmarkMetrics::default();
-        metrics.total_samples = 100;
-        metrics.perfect_recognitions = 85;
-        metrics.total_chars = 1000;
-        metrics.char_errors = 50;
-        metrics.total_words = 200;
-        metrics.word_errors = 20;
+        let metrics = BenchmarkMetrics {
+            total_samples: 100,
+            perfect_recognitions: 85,
+            total_chars: 1000,
+            char_errors: 50,
+            total_words: 200,
+            word_errors: 20,
+            ..Default::default()
+        };
 
         assert_eq!(metrics.accuracy(), 85.0);
         assert_eq!(metrics.cer(), 0.05);

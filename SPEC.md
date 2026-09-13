@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested. 322+ tests passing, 0 failures.**
+**Current status: All five phases implemented and tested. 347+ tests passing, 0 failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero failures (322+ tests)
+- [x] `cargo test` passes with zero failures (347+ tests)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -23,7 +23,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 
 | Command | Description | Required Args | Optional Flags |
 |---------|-------------|---------------|--------------|
-| `extract` | Recognize text from an image | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--confidence`, `--engine`, `--dict-correct`, `--device`, `--osd` |
+| `extract` | Recognize text from an image (or `-` for stdin). Multi-page TIFF produces page-separated output. | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--confidence`, `--engine`, `--dict-correct`, `--device`, `--osd`, `--dpi` |
 | `batch` | Process a directory of images (prints `[n/total] % ETA` progress) | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct`, `--max-concurrent`, `--device` |
 | `layout` | Analyze page layout | `IMAGE_PATH` | `-o, --output` |
 | `list-languages` | Print supported language codes | — | — |
@@ -39,17 +39,18 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `IMAGE_PATH` | required | Path to the image file |
+| `IMAGE_PATH` | required | Path to the image file, or `-` to read from stdin |
 | `-o, --output` | stdout | Output file path |
 | `-l, --lang` | `en` | Language code (`en`, `fr`, `de`, `zh`, `ja`, `ko`, …) or `auto` (script + dictionary detection after recognition) |
 | `--preprocess` | false | Enable full preprocessing pipeline |
-| `-f, --format` | `text` | Output: text, json, hocr, tsv, alto, box, markdown, structured-json, rag |
+| `-f, --format` | `text` | Output: text, json, hocr, tsv, csv, alto, box, markdown, structured-json, rag, page |
 | `--psm` | `3` | Page segmentation mode (Tesseract-compatible) |
 | `--confidence` | `0.5` | Minimum confidence threshold (0.0–1.0) |
 | `--engine` | `pattern` | Legacy alias: only the CRNN engine exists; `pattern` is accepted and silently mapped to `lstm` |
 | `--dict-correct` | false | Enable dictionary post-correction |
 | `--device` | `auto` | Compute device: `cpu`, `gpu`, `auto` |
 | `--osd` | false | Enable orientation & script detection |
+| `--dpi` | `300` | Input image resolution in DPI (affects super-resolution and layout heuristics) |
 
 ### Library API
 
@@ -61,6 +62,9 @@ impl Ocr {
     pub fn with_config(config: OcrConfig) -> Result<Self>;
     pub async fn initialize(&self) -> Result<()>;
     pub async fn recognize_text_from_file(&self, path: &str) -> Result<TextResult>;
+    pub async fn recognize_text_from_bytes(&self, image_data: &[u8]) -> Result<TextResult>;
+    pub async fn recognize_text_from_file_multi_page(&self, path: &str) -> Result<Vec<TextResult>>;
+    pub async fn recognize_text_from_bytes_multi_page(&self, image_data: &[u8]) -> Result<Vec<TextResult>>;
     pub async fn recognize_text(&self, data: &[u8], width: u32, height: u32) -> Result<TextResult>;
     pub async fn analyze_layout(&self, data: &[u8], width: u32, height: u32) -> Result<LayoutResult>;
     pub fn get_supported_languages(&self) -> Vec<String>;
@@ -84,11 +88,14 @@ pub struct OcrConfig {
 | `json` | `{"text": "...", "confidence": 0.95, "lines": [...]}` | Bounding boxes per line/word/char |
 | `hocr` | HTML 4.01 with hOCR 4.1 classes | `ocr_page`, `ocr_line`, `ocrx_word` |
 | `tsv` | TSV with Tesseract-compatible columns | level, page_num, block_num, par_num, line_num, word_num, left, top, width, height, conf, text |
+| `csv` | RFC 4180 CSV with per-word metadata | page, line, word, text, confidence, left, top, width, height — fields containing comma/quote/newline are quoted per RFC 4180 |
 | `alto` | ALTO XML v4 | `<Page>`, `<TextBlock>`, `<TextLine>`, `<String>` |
 | `box` | Box file format | `char left top right bottom page` |
 | `markdown` | Markdown with headings, paragraphs, lists | `## Heading`, `- List item` |
 | `structured-json` | Hierarchical JSON with document elements | `{"elements": [{"Heading": {...}}, {"Paragraph": {...}}]}` |
 | `rag` | Chunked JSON for RAG / LLM pipelines (aliases: `rag-json`, `chunks`) | `{"chunks": [{"id": 0, "kind": "paragraph", "text": "...", "section": ["Heading"]}]}` — one chunk per element, `section` is the anchoring heading path; tables render as Markdown |
+| `page` | PRImA PAGE XML (aliases: `page-xml`, `primapage`) | `<PcGts>` → `<Page>` → `<TextRegion>` → `<TextLine>` → `<Word>`, each with `<Coords>` polygon and `<TextEquiv>` (Unicode + Confidence) |
+| `pdf` | Searchable PDF (requires `--features pdf`) | Original image as JPEG XObject + invisible text layer (rendering mode 3) at word bounding boxes; multi-page TIFF → multi-page PDF |
 
 ---
 
@@ -195,7 +202,7 @@ CTC Beam Search (+ optional dictionary / n-gram LM rescoring) → text string
 
 `CrnnConfig` defaults: `use_beam_search = true`, `beam_width = 10`. Set `use_beam_search = false` for greedy decode. When dictionary correction / language model are enabled in `RecognitionConfig`, `OcrEngine` rescores beam hypotheses via `DictLmRescorer`.
 
-**Model bundle:** `models/crnn-en.bin` (3.07 MB, `OCR1` format — magic + version 1) is embedded via `include_bytes!` (`src/recognition/loader.rs`) and auto-loaded on `Ocr::initialize()`. Replace the file to deploy a newly trained checkpoint.
+**Model bundle:** `models/crnn-en.bin` (3.07 MB, `OCR1` format — magic + version 1) is embedded via `include_bytes!` (`src/recognition/loader.rs`) and loaded on first recognition (cached in `OcrEngine` via `OnceLock<CrnnModel>`). Replace the file to deploy a newly trained checkpoint.
 
 ### Training API
 
@@ -393,3 +400,14 @@ impl FontAttributeDetector {
     pub fn detect(&self, image: &DynamicImage) -> FontAttributes;
 }
 ```
+
+### Feature Flags
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `simd` | yes | SIMD-accelerated kernels (scalar fallback on non-x86) |
+| `pdf` | no | Searchable PDF output (`-f pdf`) — zero external deps, built-in Helvetica + JPEG XObject |
+| `web-api` | no | HTTP API server (`ocr serve`) via axum |
+| `cuda` | no | CUDA compute backend (requires NVIDIA GPU + `cudarc`) |
+| `opencl` | no | OpenCL compute backend (requires `ocl`) |
+| `onnx` | no | ONNX weight import (`ocr onnx import`) |

@@ -23,7 +23,7 @@ fn main() {
 
     // Create a simple single character image
     let single_rgb = ImageBuffer::from_fn(50, 50, |x, y| {
-        if x >= 15 && x <= 25 && y >= 10 && y <= 40 {
+        if (15..=25).contains(&x) && (10..=40).contains(&y) {
             Rgb([0, 0, 0]) // Black rectangle to simulate a character
         } else {
             Rgb([255, 255, 255]) // White background
@@ -36,12 +36,12 @@ fn main() {
     // Create a simple text image
     let text_rgb = ImageBuffer::from_fn(200, 50, |x, y| {
         // Create multiple black rectangles to simulate text
-        if x >= 10 && x <= 20 && y >= 10 && y <= 30 {
-            Rgb([0, 0, 0]) // First character
-        } else if x >= 30 && x <= 40 && y >= 10 && y <= 30 {
-            Rgb([0, 0, 0]) // Second character
+        let is_text_col =
+            (10..=20).contains(&x) || (30..=40).contains(&x);
+        if is_text_col && (10..=30).contains(&y) {
+            Rgb([0, 0, 0])
         } else {
-            Rgb([255, 255, 255]) // White background
+            Rgb([255, 255, 255])
         }
     });
     let text_img = DynamicImage::ImageRgb8(text_rgb);
@@ -54,12 +54,14 @@ fn main() {
         if (x + y) % 7 == 0 {
             let gray = ((x * y) % 128) as u8;
             Rgb([gray, gray, gray])
-        } else if x >= 50 && x <= 60 && y >= 30 && y <= 50 {
-            Rgb([0, 0, 0]) // First character
-        } else if x >= 70 && x <= 80 && y >= 30 && y <= 50 {
-            Rgb([0, 0, 0]) // Second character
         } else {
-            Rgb([255, 255, 255]) // White background
+            let is_text_col =
+                (50..=60).contains(&x) || (70..=80).contains(&x);
+            if is_text_col && (30..=50).contains(&y) {
+                Rgb([0, 0, 0])
+            } else {
+                Rgb([255, 255, 255])
+            }
         }
     });
     let noisy_img = DynamicImage::ImageRgb8(noisy_rgb);

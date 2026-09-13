@@ -63,6 +63,12 @@ pub struct CJKSegment {
 /// CJK text processor
 pub struct CJKProcessor;
 
+impl Default for CJKProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CJKProcessor {
     /// Create a new CJK processor
     pub fn new() -> Self {

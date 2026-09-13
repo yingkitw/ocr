@@ -40,7 +40,7 @@ fn detect_bold(gray: &GrayImage) -> bool {
         return false;
     }
 
-    let total_pixels = (width * height) as u32;
+    let total_pixels = width * height;
     let dark_pixels: u32 = gray.pixels().map(|p| if p[0] < 128 { 1 } else { 0 }).sum();
 
     let density = dark_pixels as f32 / total_pixels as f32;

@@ -163,12 +163,11 @@ impl TextProcessor {
 
         let mut matrix = vec![vec![0; s2_len + 1]; s1_len + 1];
 
-        for i in 0..=s1_len {
-            matrix[i][0] = i;
+        for (i, row) in matrix.iter_mut().enumerate().take(s1_len + 1) {
+            row[0] = i;
         }
-
-        for j in 0..=s2_len {
-            matrix[0][j] = j;
+        for (j, slot) in matrix[0].iter_mut().enumerate().take(s2_len + 1) {
+            *slot = j;
         }
 
         for i in 1..=s1_len {
@@ -230,7 +229,7 @@ impl TextExporter {
         match format {
             TextExportFormat::PlainText => Ok(result.text.clone()),
             TextExportFormat::Json => {
-                serde_json::to_string_pretty(result).map_err(|e| ApiError::Serialization(e))
+                serde_json::to_string_pretty(result).map_err(ApiError::Serialization)
             }
             TextExportFormat::Xml => Self::export_to_xml(result),
             TextExportFormat::Csv => Self::export_to_csv(result),
@@ -279,7 +278,7 @@ impl TextExporter {
             result.confidence * 100.0
         ));
         md.push_str(&format!("**Text:**\n\n{}\n\n", result.text));
-        md.push_str(&format!("**Statistics:**\n"));
+        md.push_str("**Statistics:**\n");
         md.push_str(&format!("- Characters: {}\n", result.characters.len()));
         md.push_str(&format!("- Words: {}\n", result.words.len()));
         md.push_str(&format!("- Lines: {}\n", result.lines.len()));

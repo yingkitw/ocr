@@ -35,10 +35,10 @@ impl Default for TextLineGenerator {
     fn default() -> Self {
         let mut fonts = Vec::new();
         // Load built-in monospace font data if available, otherwise use empty vec
-        if let Some(font_data) = Self::default_font_data() {
-            if let Some(font) = Font::try_from_vec(font_data) {
-                fonts.push(font);
-            }
+        if let Some(font_data) = Self::default_font_data()
+            && let Some(font) = Font::try_from_vec(font_data)
+        {
+            fonts.push(font);
         }
 
         Self {
@@ -56,10 +56,11 @@ impl Default for TextLineGenerator {
 impl TextLineGenerator {
     /// Create with a specific font size and image height
     pub fn with_size(font_size: f32, image_height: u32) -> Self {
-        let mut generator = Self::default();
-        generator.font_size = font_size;
-        generator.image_height = image_height;
-        generator
+        Self {
+            font_size,
+            image_height,
+            ..Self::default()
+        }
     }
 
     /// Add a font from raw TTF/OTF bytes

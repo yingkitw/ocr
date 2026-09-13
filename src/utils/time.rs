@@ -70,7 +70,7 @@ impl Profiler {
             let duration = start.elapsed();
             self.operations
                 .entry(prev_name)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(duration);
         }
 
@@ -83,7 +83,7 @@ impl Profiler {
             let duration = start.elapsed();
             self.operations
                 .entry(name)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(duration);
         }
     }

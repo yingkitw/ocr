@@ -149,20 +149,15 @@ fn detect_latin(text: &str) -> LanguageGuess {
 
     // Accent heuristics as a light tie-breaker / boost
     let lower = text.to_lowercase();
-    if lower.contains('ñ') || lower.contains('¿') || lower.contains('¡') {
-        if best.0 == "es" || best.1 < 0.4 {
+    if (lower.contains('ñ') || lower.contains('¿') || lower.contains('¡'))
+        && (best.0 == "es" || best.1 < 0.4) {
             best = ("es", best.1.max(0.55));
         }
+    if (lower.contains('ß') || lower.contains("sch")) && (best.0 == "de" || best.1 < 0.4) {
+        best = ("de", best.1.max(0.55));
     }
-    if lower.contains('ß') || lower.contains("sch") {
-        if best.0 == "de" || best.1 < 0.4 {
-            best = ("de", best.1.max(0.55));
-        }
-    }
-    if lower.contains('ç') || lower.contains("ção") {
-        if best.0 == "pt" || best.1 < 0.4 {
-            best = ("pt", best.1.max(0.5));
-        }
+    if (lower.contains('ç') || lower.contains("ção")) && (best.0 == "pt" || best.1 < 0.4) {
+        best = ("pt", best.1.max(0.5));
     }
 
     LanguageGuess {

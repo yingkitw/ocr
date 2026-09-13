@@ -1,163 +1,173 @@
-# OCR — Pure Rust Optical Character Recognition
-
-**A pure-Rust OCR engine and CLI for extracting printed text from images.** Fast, dependency-free, supports 25+ languages, and runs entirely on CPU. Apache-2.0 licensed, with a Tesseract-compatible API and an async Rust library.
+# OCR — Pure Rust OCR Engine & CLI for Text Recognition from Images
 
 [![crates.io](https://img.shields.io/crates/v/ocr)](https://crates.io/crates/ocr)
 [![docs.rs](https://docs.rs/ocr/badge.svg)](https://docs.rs/ocr)
 [![License: Apache-2.0](https://img.shields.io/crates/l/ocr)](LICENSE)
 [![Rust Edition 2024](https://img.shields.io/badge/rust-2024-edition-orange.svg)](https://doc.rust-lang.org/edition-guide/)
-[![Tests](https://img.shields.io/badge/tests-322%2B_passing-brightgreen.svg)](#roadmap)
+[![Tests](https://img.shields.io/badge/tests-347%2B_passing-brightgreen.svg)](#roadmap)
 [![Build](https://img.shields.io/badge/build-zero_warnings-brightgreen.svg)](#)
 
-> **TL;DR.** `cargo install ocr` then `ocr extract document.png`. No C/C++ build deps, no Python, no GPU. CLI and library. Replaces Tesseract for embedded Rust workflows.
+> **Pure-Rust OCR engine and command-line tool for extracting printed text from images.** No C/C++ dependencies, no Python, no GPU required. Supports 25+ languages, multi-page TIFF, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF. Apache-2.0 licensed.
 
-## What is OCR?
+```bash
+cargo install ocr
+ocr extract document.png
+```
 
-OCR is an open-source, from-scratch OCR system written in pure Rust. It implements the full pipeline — image preprocessing, layout analysis, text detection, recognition, and post-processing — and ships as both a CLI binary and an embeddable async library (`use ocr::api::Ocr`).
+## Overview
 
-It is built for **printed text on clean scans**, similar to Tesseract's sweet spot. It is not a scene-text OCR (use EasyOCR/PaddleOCR for that) and it does not run on GPU by default (optional CUDA/OpenCL/ONNX features exist).
+**OCR** is an open-source optical character recognition system written entirely in [Rust](https://www.rust-lang.org/). It converts images of printed text into machine-readable text using a CRNN (Convolutional Recurrent Neural Network) with CTC decoding — the same architecture used by [Tesseract](https://github.com/tesseract-ocr/tesseract) and [EasyOCR](https://github.com/JaidedAI/EasyOCR), but implemented in pure Rust with zero C/C++ build dependencies.
 
-## Why Use OCR?
+The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **embeddable async library** (`use ocr::api::Ocr`), making it suitable for command-line workflows, server-side document processing, and embedded Rust applications.
 
-| If you want to… | Use |
-|---|---|
-| Replace Tesseract with a Rust-native API | **OCR** |
-| Embed OCR in a CLI/Rust tool without linking C++ | **OCR** |
-| Extract tables, forms, and document structure | **OCR** |
-| Run OCR on a server with no GPU | **OCR** |
-| Use a commercial-friendly Apache-2.0 license | **OCR** |
-| Train models on synthetic data | **OCR** |
-| Recognize scene text from natural photos | Tesseract, EasyOCR, PaddleOCR |
-| Run an end-to-end VLM with structured output | docTR, dots.ocr, surya (requires GPU) |
+### Key Highlights
 
-## Comparison with Other OCR Engines
+- **Pure Rust** — no C/C++ compiler, no Python runtime, no system libraries required
+- **25+ languages** — Latin, CJK (Chinese/Japanese/Korean), Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
+- **Multi-page TIFF** — recognizes every page, not just the first frame
+- **11 output formats** — text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, structured JSON, RAG JSON, searchable PDF
+- **CPU-first** — runs on any machine; optional CUDA/OpenCL/ONNX features for GPU acceleration
+- **Apache-2.0** — commercial use permitted, no copyleft restrictions
+- **< 5 MB model** — bundled CRNN model embedded at compile time via `include_bytes!`
 
-| Engine | Language | Detection | Recognition | Languages | Strengths |
+## Why Choose This OCR Engine?
+
+| You need… | This crate | Alternatives |
+|---|---|---|
+| OCR in Rust without C++ dependencies | ✅ | Tesseract (C++), EasyOCR (Python) |
+| Embeddable async OCR library | ✅ | Most engines are CLI-only or Python-only |
+| Multi-page TIFF processing | ✅ | Many engines decode only the first frame |
+| RAG-ready chunked output for LLMs | ✅ | Rare in OCR engines |
+| Table and form field extraction | ✅ | PaddleOCR (Python), docTR (Python) |
+| Apache-2.0 license for commercial use | ✅ | Some engines use GPL/copyleft |
+| CPU-only deployment (no GPU) | ✅ | TrOCR, surya, VLMs need GPU |
+
+### When to use something else
+
+- **Scene text** (natural photos, street signs): use [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) or [EasyOCR](https://github.com/JaidedAI/EasyOCR)
+- **End-to-end VLM** with structured reasoning: use [surya](https://github.com/VikParuchuri/surya) or [dots.ocr](https://github.com/rednotehilo/dots.ocr) (requires GPU)
+- **100+ language coverage**: use [Tesseract](https://github.com/tesseract-ocr/tesseract) (mature, 100+ trained models)
+
+## Comparison with Popular OCR Engines
+
+| Engine | Language | Detection | Recognition | Languages | Best For |
 |---|---|---|---|---|---|
-| **OCR (this crate)** | Pure Rust | CCL + lightweight CNN | CRNN + CTC | 25+ | No C deps, async API, Apache-2.0, embedded-friendly |
-| Tesseract | C++ | CCL + LSTM line finder | Conv + BiLSTM + CTC (VGSL) | 100+ | Mature, tiny binary, great for scanned docs |
-| EasyOCR | Python | CRAFT (CNN) | CRNN (ResNet + BiLSTM + CTC) | 80+ | Simple PyTorch API, good scene text |
-| PaddleOCR | Python / C++ | DB (differentiable binarization) | SVTR / CRNN | 80+ | Best speed/accuracy trade-off, ultra-light models |
-| TrOCR | Python | — | Transformer encoder-decoder | 100+ | Excellent on printed text, no detection stage |
+| **OCR (this crate)** | Pure Rust | CCL + CNN | CRNN + CTC | 25+ | Embedded Rust, no C deps, async API |
+| Tesseract | C++ | CCL + LSTM | Conv + BiLSTM + CTC | 100+ | Scanned documents, mature ecosystem |
+| EasyOCR | Python | CRAFT (CNN) | CRNN (ResNet + BiLSTM) | 80+ | Simple PyTorch API, scene text |
+| PaddleOCR | Python/C++ | DB | SVTR / CRNN | 80+ | Best speed/accuracy, ultra-light models |
+| TrOCR | Python | — | Transformer | 100+ | Printed text, no detection stage |
 | docTR / surya | Python | DB / CRAFT | Transformer / CRNN | 100+ | Document AI, structured output |
-| dots.ocr / VLMs | Python | End-to-end vision-language | 3B-param multimodal | 100+ | Structured output, needs GPU |
-
-### Architectural Lessons (from Tesseract, EasyOCR, PaddleOCR, TrOCR)
-
-1. **Two-stage pipeline** (detection → recognition) dominates for documents. End-to-end VLMs are promising but overkill for pure OCR.
-2. **CTC decoders** remove the need for per-character segmentation in sequence models.
-3. **Synthetic training data** (rendered fonts + realistic distortions) bootstraps accuracy before collecting real data.
-4. **Image preprocessing matters**: deskew, binarization, and contrast enhancement can improve accuracy 10–20%.
-5. **Post-processing dictionaries / language models** close the gap between raw recognition and human-level accuracy.
-6. **CPU deployment** still matters: Tesseract remains ubiquitous because it runs everywhere without GPU dependencies.
 
 ## Features
 
-### Image preprocessing
+### Image Preprocessing
 - Deskew, perspective dewarp, curved-line rectification
 - Super-resolution upscaling for tiny / low-DPI text
-- Auto-sharpen / contrast quality gate
+- Auto-sharpen and contrast quality gate
 - Binarization (Otsu, Sauvola)
-- Noise reduction, contrast enhancement
+- Noise reduction and contrast enhancement
 - Auto-rotate (0° / 90° / 180° / 270°)
 
-### Layout analysis
-- Union-Find Connected Components (CCL)
-- Multi-angle oriented detection (±45° sweep)
-- Column / line detection, reading-order resolution
-- Table detection (grid-line scan + cell reconstruction with row/column span inference)
+### Layout Analysis
+- Union-Find Connected Components labeling (CCL)
+- Multi-angle oriented text detection (±45° sweep)
+- Column and line detection with reading-order resolution
+- Table detection (grid-line scan + cell reconstruction with span inference)
 - Form field extraction (checkboxes, key-value pairs, underline fields)
 - Document structure classification (headings, paragraphs, lists, captions)
 
-### Text detection
-- `TextDetector` trait with `CclDetector` and `CnnDetector` implementations
-- 3-layer detection CNN in pure Rust (ndarray)
-- IoU-based evaluation harness on synthetic documents
-
-### Recognition
-- CRNN (5-layer CNN + 2-layer BiLSTM) with CTC decoding — greedy + beam search with dictionary / LM rescoring
-- Bundled model (`models/crnn-en.bin`, 3.07 MB, `OCR1` binary format) embedded via `include_bytes!`
-- Calibrated per-character / word confidence (`ConfidenceCalibrator`)
-- `--engine` flag accepted for compatibility (`pattern` is mapped to the CRNN engine)
+### Text Recognition
+- **CRNN architecture**: 5-layer CNN feature extractor + 2-layer BiLSTM + CTC decoder
+- **Greedy and beam search decoding** with dictionary / n-gram LM rescoring
+- **Bundled model** (`models/crnn-en.bin`, 3.07 MB) embedded via `include_bytes!`
+- **Calibrated confidence** per character and word (`ConfidenceCalibrator`)
 - Model size < 5 MB
 
-### Multi-language
-- Unicode script detection (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)
+### Multi-Language Support
+- Unicode script detection: Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
 - Dictionaries for 25+ languages
 - `--lang auto` for mixed-script documents
 - Per-script CRNN vocabularies (`ScriptModelRegistry`)
 - `ScriptLineGenerator` for multi-script synthetic training
 
-### Output formats
-- Plain text, JSON, hOCR, TSV, ALTO XML
-- **Markdown** with headings, paragraphs, lists
-- **Structured JSON** with bounding boxes, confidence, hierarchy
-- **RAG JSON** (`-f rag`): retrieval-friendly chunks with heading-path context for LLM / embedding pipelines
-- Tesseract-compatible `.box` files for training (`ocr makebox`)
+### Output Formats
 
-### Post-processing
-- Dictionary-based spell correction
+| Format | Flag | Description |
+|---|---|---|
+| Plain text | `-f text` | Raw recognized text |
+| JSON | `-f json` | Text + confidence + line/word bounding boxes |
+| Markdown | `-f markdown` | Headings, paragraphs, lists |
+| hOCR | `-f hocr` | HTML 4.01 with hOCR 4.1 classes (Tesseract-compatible) |
+| TSV | `-f tsv` | Tesseract-style 5-level format with bbox per word |
+| CSV | `-f csv` | RFC 4180 per-word rows for spreadsheets/databases |
+| ALTO XML | `-f alto` | Standard library/archive format |
+| PAGE XML | `-f page` | PRImA PAGE XML 2019-07-15 (document layout) |
+| Structured JSON | `-f structured-json` | Bounding boxes, confidence, hierarchy |
+| RAG JSON | `-f rag` | Retrieval-friendly chunks with heading-path context for LLM / embedding pipelines |
+| Searchable PDF | `-f pdf` | Image + invisible text layer (requires `--features pdf`) |
+| Box file | `-f box` | Tesseract-compatible `.box` for training (`ocr makebox`) |
+
+### Post-Processing
+- Dictionary-based spell correction (25+ languages)
 - N-gram language model rescoring
 - Document structure classification
 
-### Training and benchmarking
-- `CrnnTrainer` with full BPTT (CNN + BiLSTM + FC) through a pure-Rust CTC loss (forward-backward + gradient), Adam updates, checkpoint save/load
-- `ocr train --engine lstm --epochs 10` for CRNN training
-- `examples/train_pure_rust.rs` — standalone trainer that writes a new `models/crnn-en.bin`
-- `ocr benchmark --samples 10` for per-script CER/WER
+### Training and Benchmarking
+- `CrnnTrainer` with full BPTT (CNN + BiLSTM + FC) through pure-Rust CTC loss
+- Adam optimizer with checkpoint save/load
+- `ocr train --engine lstm --epochs 10` CLI
+- `ocr benchmark --samples 10` for per-script CER/WER evaluation
 - INT8 per-tensor symmetric quantization for FC layer (4× memory reduction)
 
-### Optional features
-- **ONNX import** (`--features onnx`): load PaddleOCR / EasyOCR weights via `OnnxLoader`
+### Optional Features
+- **ONNX import** (`--features onnx`): load PaddleOCR / EasyOCR weights
 - **Web API** (`--features web-api`): HTTP server with multipart upload
 - **CUDA** (`--features cuda`): GPU acceleration via `cudarc`
 - **OpenCL** (`--features opencl`): GPU acceleration via `ocl`
 - **SIMD** (default): CPU SIMD optimizations
 
-Note: PDF input/output is not currently supported (the `pdfrs` feature is an empty placeholder).
-
-### Font attributes
-- Bold / italic / monospace detection from stroke analysis (`FontAttributeDetector`)
-
 ## Supported Languages
 
 Run `ocr list-languages` for the full list. Highlights:
 
-- **Latin**: English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Swedish, Norwegian, Danish, Finnish, Czech, Hungarian, Romanian, Turkish, Vietnamese, Indonesian
+- **Latin script**: English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Swedish, Norwegian, Danish, Finnish, Czech, Hungarian, Romanian, Turkish, Vietnamese, Indonesian
 - **CJK**: Chinese (Simplified + Traditional), Japanese, Korean
-- **Other**: Arabic, Cyrillic (Russian, Ukrainian, Bulgarian, …), Greek, Hebrew, Thai, Devanagari (Hindi, Marathi, …)
+- **Other scripts**: Arabic, Russian, Ukrainian, Bulgarian, Greek, Hebrew, Thai, Hindi, Marathi
 
-Use `--lang auto` to auto-detect scripts on mixed documents.
+Use `--lang auto` to auto-detect scripts on mixed-language documents.
 
 ## Installation
 
 ```bash
-# Default build (CRNN engine + SIMD)
+# Install from crates.io (default build: CRNN engine + SIMD)
 cargo install ocr
 
 # Or build from source
+git clone https://github.com/yingkitw/ocr.git
+cd ocr
 cargo build --release
 
-# With all features
+# With all optional features
 cargo build --release --all-features
 
-# Run tests
+# Run the test suite
 cargo test
 ```
 
 ### Requirements
 
 - Rust 1.85+ (edition 2024)
-- No C/C++ compiler required for the default build
+- No C/C++ compiler required
 - No GPU required
 - No Python dependency
 
-## Usage
+## CLI Usage
 
-### CLI
+### Extract Text from an Image
 
 ```bash
-# Recognize text from an image
+# Basic text extraction
 ocr extract document.png
 
 # JSON output with bounding boxes and confidence
@@ -169,41 +179,61 @@ ocr extract document.png -f markdown
 # Structured JSON with headings, paragraphs, lists
 ocr extract document.png -f structured-json
 
-# RAG-ready chunks with heading context (for LLM / embedding pipelines)
+# RAG-ready chunks for LLM / embedding pipelines
 ocr extract document.png -f rag
 
-# hOCR (Tesseract-compatible)
+# hOCR (Tesseract-compatible HTML format)
 ocr extract document.png -f hocr
+
+# PRImA PAGE XML (document layout format)
+ocr extract document.png -f page
+
+# CSV per-word export (for spreadsheets/databases)
+ocr extract document.png -f csv
+
+# Read image from stdin (Unix pipe)
+cat document.png | ocr extract -
+
+# Multi-page TIFF (each page recognized independently)
+ocr extract multipage_scan.tiff
 
 # Enable preprocessing pipeline (deskew, contrast, etc.)
 ocr extract document.png --preprocess
 
-# Explicitly select the CRNN engine (`pattern` is a legacy alias for the same engine)
-ocr extract document.png --engine lstm
+# Specify input DPI (affects super-resolution and layout)
+ocr extract document.png --dpi 150
 
-# Auto-detect language (mixed-script documents)
+# Auto-detect language on mixed-script documents
 ocr extract document.png --lang auto
+```
 
-# Batch process a directory
+### Batch Processing
+
+```bash
+# Process a directory of images
 ocr batch -i ./images -o ./results --lang en
 
 # List supported languages
 ocr list-languages
 
-# Analyze image layout only (no recognition)
+# Analyze layout only (no recognition)
 ocr layout document.png -o layout.json
+```
 
+### Training and Benchmarking
+
+```bash
 # Train CRNN on synthetic data
 ocr train --engine lstm --epochs 10 --batch-size 8 --learning-rate 0.001
 
 # Benchmark per-script recognition accuracy
 ocr benchmark --samples 10 --distortion clean
 
-# Generate Tesseract-style training .box file from a real image
+# Generate Tesseract-style training .box file
 ocr makebox scan.png -o train/page001
 ```
 
-### Library
+## Library API
 
 ```rust
 use ocr::api::Ocr;
@@ -215,32 +245,46 @@ async fn main() -> anyhow::Result<()> {
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await?;
 
+    // Recognize text from a file
     let result = ocr.recognize_text_from_file("document.png").await?;
     println!("{}", result.text);
+
+    // Or from encoded bytes (PNG, JPEG, TIFF, etc.)
+    let bytes = std::fs::read("document.png")?;
+    let result = ocr.recognize_text_from_bytes(&bytes).await?;
+
+    // Multi-page TIFF: returns one result per page
+    let pages = ocr.recognize_text_from_bytes_multi_page(&bytes).await?;
+    println!("{} pages recognized", pages.len());
+
     Ok(())
 }
 ```
 
-### Web API
+## Web API
 
 ```bash
+# Build with web-api feature
 cargo build --release --features web-api
+
+# Start the server
 ./target/release/ocr serve --port 8080
 
-# Upload an image
+# Upload an image for OCR
 curl -F "image=@document.png" http://localhost:8080/ocr
 ```
 
 ## Use Cases
 
-- **Document digitization**: convert scanned PDFs and images into searchable text or Markdown
+- **Document digitization**: convert scanned images into searchable text or Markdown
 - **Receipt and invoice parsing**: extract structured data with the table detector
 - **Form processing**: detect checkboxes, key-value pairs, and underline fields
 - **CLI toolchains**: embed OCR in Rust binaries without linking Tesseract's C++ runtime
-- **Offline OCR**: run on air-gapped machines — no cloud, no API calls
+- **Offline OCR**: run on air-gapped machines — no cloud API calls, no network needed
 - **Self-hosted OCR service**: deploy the Web API behind a reverse proxy
-- **Synthetic training data**: generate labeled text images for ML pipelines
-- **Mixed-script documents**: process Arabic + Latin, CJK + Latin, etc. on a single page
+- **RAG pipelines**: generate chunked JSON with heading context for LLM retrieval
+- **Mixed-script documents**: process Arabic + Latin, CJK + Latin on a single page
+- **Multi-page scanning**: process multi-page TIFF files page-by-page
 
 ## Architecture
 
@@ -251,10 +295,10 @@ src/
 ├── core/         Core OCR engine (config, engine, geometry, layout, output, text)
 ├── image/        Image preprocessing pipeline (binarization, enhancement, quality)
 ├── lang/         Language support (CJK, detection, dictionary, N-gram, unicode)
-├── layout/       Layout analysis (column/line detection, text ordering, CCL, detection CNN, table/form extractors, classifier)
-├── recognition/  Recognition models (CRNN, CTC decoder, per-script registry, model loader)
-├── synthetic/    Synthetic data generation (fonts, distortion, multi-script, document layouts, template training)
-├── training/     Model training pipeline (data, losses, metrics, optimizers, CRNN trainer)
+├── layout/       Layout analysis (column/line detection, text ordering, CCL, tables, forms)
+├── recognition/  Recognition models (CRNN, CTC decoder, model loader, confidence)
+├── synthetic/    Synthetic data generation (fonts, distortion, multi-script, documents)
+├── training/     Model training pipeline (CTC loss, BPTT, Adam, checkpointing)
 ├── compute/      GPU compute backends (CUDA, OpenCL)
 ├── onnx/         ONNX model loader
 ├── server/       Web API server
@@ -265,17 +309,15 @@ src/
 
 ### Phase 0 — Baseline (DONE)
 - [x] End-to-end pipeline: image → preprocess → layout → recognize → output
-- [x] Rule-based recognition for Latin glyphs (superseded by the CRNN-only pipeline in v0.2)
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with `extract`, `batch`, `layout`, `list-languages`
-- [x] 322+ tests passing
+- [x] 347+ tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback
 - [x] Distortion pipeline (rotation, blur, noise, contrast, shear)
 - [x] CER/WER benchmark harness with clean / mild / heavy test sets
-- [x] Train pattern-matching templates from synthetic renders (`TemplateTrainer`) (superseded in v0.2 — pattern engine removed)
 
 ### Phase 2 — Robust Text Detection (DONE)
 - [x] `TextDetector` trait with `CclDetector` and `CnnDetector`
@@ -287,55 +329,55 @@ src/
 - [x] CNN feature extractor (5 conv layers + maxpool)
 - [x] 2-layer bidirectional LSTM (64 hidden)
 - [x] CTC decoder (greedy + beam search + dictionary/LM rescoring)
-- [x] Calibrated per-character / word confidence (`ConfidenceCalibrator`)
+- [x] Calibrated per-character / word confidence
 - [x] Perspective dewarp + curved-line rectification
-- [x] Arbitrary-angle text detection (`OrientedCclDetector`)
+- [x] Arbitrary-angle text detection
 - [x] Super-resolution upscaling for tiny / low-DPI text
 - [x] `ocr makebox` — Tesseract-compatible training `.box` export
 - [x] CTC loss with forward-backward algorithm
 - [x] `CrnnTrainer` with synthetic data + checkpoint saving
-- [x] Wired into `OcrEngine` via `--engine lstm`
 - [x] Model size < 5 MB (bundled `models/crnn-en.bin`, 3.07 MB)
 
 ### Phase 4 — Multi-Language Scale (DONE)
 - [x] Unicode script detection and routing (8 scripts)
 - [x] Dictionaries for 25+ languages
-- [x] Multi-script synthetic data generation (`ScriptLineGenerator`)
-- [x] Per-script CRNN models (`ScriptModelRegistry`)
+- [x] Multi-script synthetic data generation
+- [x] Per-script CRNN models
 
 ### Phase 5 — Advanced Layout & Structure (DONE)
 - [x] Table detection with grid line scan and cell reconstruction
-- [x] Row/column span inference via pixel-density checks
+- [x] Row/column span inference
 - [x] Form field extraction (checkboxes, key-value pairs, underline fields)
 - [x] Document structure classification (headings, paragraphs, lists, captions)
 - [x] Hierarchical Markdown and structured JSON output
 
-### Next Steps (blocked on training execution / hardware)
-- [x] Training CLI wired up (`ocr train --engine lstm --epochs 10`)
-- [x] Benchmark CLI wired up (`ocr benchmark --samples 10`)
-- [x] CRNN inference optimized (rayon-parallel convolutions, ndarray FC layer)
-- [x] Full BPTT training through CNN + BiLSTM + FC with pure-Rust CTC loss (`CrnnTrainer::train_batch_full`)
+### Next Steps
+- [x] Training CLI wired up (`ocr train --engine lstm`)
+- [x] Benchmark CLI wired up (`ocr benchmark`)
+- [x] Full BPTT training through CNN + BiLSTM + FC with pure-Rust CTC loss
+- [x] Multi-page TIFF input
+- [x] CSV and PAGE XML output formats
 - [ ] Train CRNN to CER < 5% on clean synthetic test
 - [ ] Train CRNN to CER < 15% on distorted synthetic test
 - [ ] Evaluate per-language accuracy on synthetic benchmarks
 
 ## FAQ
 
-### How does OCR compare to Tesseract?
+### How does this compare to Tesseract?
 
-OCR is a pure-Rust alternative to Tesseract for printed text on clean images. The API is different (async Rust library vs. CLI + C++ bindings), the license is Apache-2.0 (Tesseract is Apache-2.0 as well, but OCR bundles no C++ runtime), and the language coverage is narrower (25+ vs. 100+). For most printed-document workflows, OCR achieves comparable accuracy on supported languages.
+This crate is a pure-Rust alternative to Tesseract for printed text on clean images. Key differences: the API is async Rust (vs. C++ bindings), it bundles no C++ runtime, the license is Apache-2.0, and language coverage is narrower (25+ vs. 100+). For most printed-document workflows on supported languages, accuracy is comparable.
 
-### Does OCR run on GPU?
+### Does it run on GPU?
 
-By default, no — OCR is CPU-only. Optional features (`cuda`, `opencl`, `onnx`) provide GPU acceleration paths, but the default build and the test suite both run on CPU.
+By default, no — the engine is CPU-only. Optional features (`cuda`, `opencl`, `onnx`) provide GPU acceleration paths, but the default build and test suite run entirely on CPU.
 
-### Can OCR handle handwritten text?
+### Can it handle handwritten text?
 
-Not yet. OCR is optimized for printed text. Handwriting recognition is on the roadmap and will likely be a separate transformer-based model.
+Not yet. The engine is optimized for printed text. Handwriting recognition is on the roadmap and will likely use a separate transformer-based model.
 
 ### What image formats are supported?
 
-PNG, JPEG, GIF, BMP, TIFF, and WebP (via the `image` crate). PDF is not currently supported (the `pdfrs` feature is an empty placeholder).
+PNG, JPEG, GIF, BMP, TIFF, and WebP (via the `image` crate). **Multi-page TIFF is supported** — each page is recognized independently and output is separated by `--- Page N ---` markers. PDF is not currently supported.
 
 ### Can I embed OCR in my Rust application?
 
@@ -347,19 +389,19 @@ Yes. Use `ocr::api::Ocr` for the high-level async API. The crate is published on
 # Via the built-in trainer (full BPTT + CTC loss)
 cargo run --release -- train --engine lstm --epochs 100 --batch-size 8 --learning-rate 0.001
 
-# Or via the standalone example, which writes a new models/crnn-en.bin
+# Or via the standalone example
 cargo run --release --example train_pure_rust -- --epochs 100
 ```
 
 Training requires multi-hour `--release` runs. Synthetic data is generated automatically.
 
-### Is OCR production-ready?
+### Is it production-ready?
 
-OCR is feature-complete for printed text on clean scans and has 322+ passing tests. The CRNN training pipeline (full BPTT + CTC loss) is implemented, but the bundled model is not yet trained to target accuracy (CER < 5% on clean / < 15% on distorted synthetic tests). Accuracy will improve once a trained checkpoint replaces `models/crnn-en.bin`.
+The engine is feature-complete for printed text on clean scans with 347+ passing tests. The CRNN training pipeline (full BPTT + CTC loss) is implemented, and the bundled model is loaded at runtime. Accuracy will improve as trained checkpoints replace the current model.
 
 ### What is the license?
 
-Apache-2.0. Commercial use is permitted.
+Apache-2.0. Commercial use is permitted with no copyleft restrictions.
 
 ### How do I report a bug or request a feature?
 
@@ -367,7 +409,7 @@ Open an issue at <https://github.com/yingkitw/ocr/issues>.
 
 ## Contributing
 
-Contributions are welcome. Read the [AGENTS.md](AGENTS.md) file for the development loop, and [ARCHITECTURE.md](ARCHITECTURE.md) for module dependencies. The project follows a TODO → test → ship cadence: every new feature ships with integration tests in `tests/integration_tests.rs`.
+Contributions are welcome. Read the [AGENTS.md](AGENTS.md) file for the development loop, and [ARCHITECTURE.md](ARCHITECTURE.md) for module dependencies. The project follows a TODO → test → ship cadence: every new feature ships with integration tests.
 
 ## License
 

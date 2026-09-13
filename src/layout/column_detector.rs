@@ -107,7 +107,7 @@ impl ColumnDetector {
             let y_center = (region.bounding_box.top + region.bounding_box.bottom) / 2;
             let group_key = (y_center / self.grid_size) * self.grid_size;
 
-            groups.entry(group_key).or_insert_with(Vec::new).push(idx);
+            groups.entry(group_key).or_default().push(idx);
         }
 
         groups
@@ -413,7 +413,7 @@ impl ColumnDetector {
         }
 
         // Alternate between vertical (columns) and horizontal (rows/sections) cuts
-        if depth % 2 == 0 {
+        if depth.is_multiple_of(2) {
             // Vertical cut: look for column gaps
             if let Some(cut_x) = self.find_best_vertical_cut(regions, x, w, min_gap) {
                 let (left_regions, right_regions): (Vec<_>, Vec<_>) =

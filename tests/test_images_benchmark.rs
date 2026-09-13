@@ -207,18 +207,18 @@ fn test_simd_projections() {
     assert_eq!(h_proj.len(), height);
     assert_eq!(v_proj.len(), width);
 
-    for y in 0..height {
+    for (y, h_val) in h_proj.iter().enumerate().take(height) {
         if y < height / 2 {
-            assert!(h_proj[y] > 0, "Row {} should have dark pixels", y);
+            assert!(*h_val > 0, "Row {} should have dark pixels", y);
         } else {
-            assert_eq!(h_proj[y], 0, "Row {} should have no dark pixels", y);
+            assert_eq!(*h_val, 0, "Row {} should have no dark pixels", y);
         }
     }
-    for x in 0..width {
+    for (x, v_val) in v_proj.iter().enumerate().take(width) {
         if x < width / 2 {
-            assert!(v_proj[x] > 0, "Col {} should have dark pixels", x);
+            assert!(*v_val > 0, "Col {} should have dark pixels", x);
         } else {
-            assert_eq!(v_proj[x], 0, "Col {} should have no dark pixels", x);
+            assert_eq!(*v_val, 0, "Col {} should have no dark pixels", x);
         }
     }
 }

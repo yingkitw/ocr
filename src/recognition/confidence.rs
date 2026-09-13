@@ -134,15 +134,17 @@ pub fn greedy_path_confidence(
             .map(|(i, _)| i)
             .unwrap_or(0);
 
-        if best_label != 0 && best_label != prev_label {
-            if best_label > 0 && best_label - 1 < vocab.len() {
-                let raw = probs[best_label];
-                chars.push(CharConfidence {
-                    character: vocab[best_label - 1],
-                    confidence: calibrator.calibrate_prob(raw),
-                    raw_prob: raw,
-                });
-            }
+        if best_label != 0
+            && best_label != prev_label
+            && best_label > 0
+            && best_label - 1 < vocab.len()
+        {
+            let raw = probs[best_label];
+            chars.push(CharConfidence {
+                character: vocab[best_label - 1],
+                confidence: calibrator.calibrate_prob(raw),
+                raw_prob: raw,
+            });
         }
         prev_label = best_label;
     }

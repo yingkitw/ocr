@@ -176,20 +176,18 @@ impl RegionClassifier {
             }
         }
         // Single letter followed by .
-        if first.is_ascii_alphabetic() {
-            if let Some(second) = text.chars().nth(1) {
-                if second == '.' {
-                    return true;
-                }
-            }
+        if first.is_ascii_alphabetic()
+            && let Some(second) = text.chars().nth(1)
+            && second == '.'
+        {
+            return true;
         }
         // Roman numerals i. I. v. V. x. X. followed by .
-        if "iIvVxX".contains(first) {
-            if let Some(second) = text.chars().nth(1) {
-                if second == '.' {
-                    return true;
-                }
-            }
+        if "iIvVxX".contains(first)
+            && let Some(second) = text.chars().nth(1)
+            && second == '.'
+        {
+            return true;
         }
         // Parenthesized number: (1)
         if first == '(' {

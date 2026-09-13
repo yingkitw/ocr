@@ -40,29 +40,24 @@ impl ImageQualityAssessor {
     /// 4. Default value (300 DPI)
     pub fn estimate_dpi(img: &OcrImage) -> DpiEstimate {
         // Try metadata first
-        if let Some(estimate) = Self::estimate_dpi_from_metadata(img) {
-            if estimate.confidence > 0.7 {
+        if let Some(estimate) = Self::estimate_dpi_from_metadata(img)
+            && estimate.confidence > 0.7 {
                 return estimate;
             }
-        }
 
         // Try stroke width analysis for binary/grayscale images
-        if img.format == crate::core::image::ImageFormat::Binary
-            || img.format == crate::core::image::ImageFormat::Grayscale
-        {
-            if let Some(estimate) = Self::estimate_dpi_from_stroke_width(img) {
-                if estimate.confidence > 0.5 {
+        if (img.format == crate::core::image::ImageFormat::Binary
+            || img.format == crate::core::image::ImageFormat::Grayscale)
+            && let Some(estimate) = Self::estimate_dpi_from_stroke_width(img)
+                && estimate.confidence > 0.5 {
                     return estimate;
                 }
-            }
-        }
 
         // Try font size analysis
-        if let Some(estimate) = Self::estimate_dpi_from_font_size(img) {
-            if estimate.confidence > 0.4 {
+        if let Some(estimate) = Self::estimate_dpi_from_font_size(img)
+            && estimate.confidence > 0.4 {
                 return estimate;
             }
-        }
 
         // Default to 300 DPI
         DpiEstimate {
@@ -88,15 +83,14 @@ impl ImageQualityAssessor {
         }
 
         // Check metadata for resolution information
-        if let Some(dpi_str) = img.metadata.get("dpi") {
-            if let Ok(dpi) = dpi_str.parse::<u32>() {
+        if let Some(dpi_str) = img.metadata.get("dpi")
+            && let Ok(dpi) = dpi_str.parse::<u32>() {
                 return Some(DpiEstimate {
                     dpi,
                     confidence: 0.8,
                     method: DpiEstimationMethod::Metadata,
                 });
             }
-        }
 
         None
     }
@@ -108,11 +102,7 @@ impl ImageQualityAssessor {
     fn estimate_dpi_from_stroke_width(img: &OcrImage) -> Option<DpiEstimate> {
 
         // Convert to grayscale if needed
-        let gray = if img.format == crate::core::image::ImageFormat::Grayscale {
-            img.data.to_luma8()
-        } else {
-            img.data.to_luma8()
-        };
+        let gray = img.data.to_luma8();
 
         // Sample horizontal strokes (e.g., from '-', 'E', 'T', etc.)
         let mut stroke_widths = Vec::new();
@@ -157,7 +147,7 @@ impl ImageQualityAssessor {
             }
 
             // Only count rows with reasonable number of transitions (text lines)
-            if transition_count >= 4 && transition_count <= 50 {
+            if (4..=50).contains(&transition_count) {
                 // This row likely contains text
             }
         }
@@ -224,11 +214,7 @@ impl ImageQualityAssessor {
     fn estimate_dpi_from_font_size(img: &OcrImage) -> Option<DpiEstimate> {
 
         // Convert to grayscale if needed
-        let gray = if img.format == crate::core::image::ImageFormat::Grayscale {
-            img.data.to_luma8()
-        } else {
-            img.data.to_luma8()
-        };
+        let gray = img.data.to_luma8();
 
         let (_width, _height) = gray.dimensions();
 

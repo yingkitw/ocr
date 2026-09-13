@@ -38,6 +38,7 @@ pub async fn handle_batch(
         dict_correct,
         device,
         false,
+        300,
     );
     let ocr = Ocr::with_config(config)?;
     ocr.initialize()
@@ -50,13 +51,13 @@ pub async fn handle_batch(
 
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if matches!(
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && matches!(
                 ext.to_lowercase().as_str(),
                 "png" | "jpg" | "jpeg" | "tiff" | "tif" | "bmp" | "webp"
-            ) {
-                image_files.push(path);
-            }
+            )
+        {
+            image_files.push(path);
         }
     }
 

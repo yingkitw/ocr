@@ -168,12 +168,12 @@ impl ImageThresholder {
         }
 
         // Calculate Otsu threshold
-        let total_pixels = (width * height) as u32;
+        let total_pixels = width * height;
 
         // Calculate total sum first
         let mut sum = 0u32;
-        for i in 0..256 {
-            sum += histogram[i] * (i as u32);
+        for (i, &count) in histogram.iter().enumerate() {
+            sum += count * (i as u32);
         }
 
         let mut sum_b = 0u32;
@@ -182,8 +182,8 @@ impl ImageThresholder {
         let mut max_variance = 0f64;
         let mut threshold = 0u8;
 
-        for i in 0..256 {
-            w_b += histogram[i];
+        for (i, &count) in histogram.iter().enumerate() {
+            w_b += count;
             if w_b == 0 {
                 continue;
             }
@@ -192,7 +192,7 @@ impl ImageThresholder {
                 break;
             }
 
-            sum_b += (i as u32) * histogram[i];
+            sum_b += (i as u32) * count;
             let m_b = sum_b as f64 / w_b as f64;
             let sum_f = sum - sum_b;
             let m_f = sum_f as f64 / w_f as f64;

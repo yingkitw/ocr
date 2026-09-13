@@ -16,7 +16,7 @@ pub struct Cli {
 pub enum Commands {
     /// Recognize text from an image file
     Extract {
-        /// Path to the image file
+        /// Path to the image file, or `-` to read from stdin
         #[arg(value_name = "IMAGE_PATH")]
         image_path: PathBuf,
 
@@ -32,7 +32,7 @@ pub enum Commands {
         #[arg(long)]
         preprocess: bool,
 
-        /// Output format: text, json, hocr, tsv, alto, box, markdown, structured-json, rag
+        /// Output format: text, json, hocr, tsv, csv, alto, box, markdown, structured-json, rag, page, pdf (requires --features pdf)
         #[arg(short, long, default_value = "text")]
         format: String,
 
@@ -59,6 +59,10 @@ pub enum Commands {
         /// Enable orientation and script detection (OSD)
         #[arg(long)]
         osd: bool,
+
+        /// Input image resolution in DPI (default: 300; affects super-resolution and layout heuristics)
+        #[arg(long, default_value = "300")]
+        dpi: u32,
     },
 
     /// Batch process multiple images from a directory

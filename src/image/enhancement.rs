@@ -30,8 +30,8 @@ impl ImageEnhancer {
 
     /// Sharpen image
     pub fn sharpen(img: &OcrImage) -> Result<OcrImage> {
-        let mut sharpened = img.data.clone();
-        imageops::unsharpen(&mut sharpened, 1.0, 1);
+        let sharpened = img.data.clone();
+        imageops::unsharpen(&sharpened, 1.0, 1);
         Ok(OcrImage::new(sharpened, img.dpi))
     }
 
@@ -334,10 +334,10 @@ impl ImageEnhancer {
             histogram[pixel[0] as usize] += 1;
         }
 
-        let total = (width * height) as u32;
+        let total = width * height;
         let mut sum = 0u32;
-        for i in 0..256 {
-            sum += histogram[i] * (i as u32);
+        for (i, &count) in histogram.iter().enumerate() {
+            sum += count * (i as u32);
         }
 
         let mut sum_b = 0u32;
@@ -345,8 +345,8 @@ impl ImageEnhancer {
         let mut max_variance = 0f64;
         let mut threshold = 128u8;
 
-        for i in 0..256 {
-            w_b += histogram[i];
+        for (i, &count) in histogram.iter().enumerate() {
+            w_b += count;
             if w_b == 0 {
                 continue;
             }
@@ -354,7 +354,7 @@ impl ImageEnhancer {
             if w_f == 0 {
                 break;
             }
-            sum_b += (i as u32) * histogram[i];
+            sum_b += (i as u32) * count;
             let m_b = sum_b as f64 / w_b as f64;
             let m_f = (sum - sum_b) as f64 / w_f as f64;
             let v = (w_b as f64) * (w_f as f64) * (m_b - m_f) * (m_b - m_f);
@@ -389,13 +389,13 @@ impl ImageEnhancer {
         }
 
         let mean = row_sums.iter().sum::<f64>() / row_sums.len() as f64;
-        let variance = row_sums
+        
+
+        row_sums
             .iter()
             .map(|s| (s - mean) * (s - mean))
             .sum::<f64>()
-            / row_sums.len() as f64;
-
-        variance
+            / row_sums.len() as f64
     }
 
     fn rotate_90_cw(img: &GrayImage) -> GrayImage {
@@ -455,15 +455,15 @@ impl ImageEnhancer {
         }
 
         let mean = row_sums.iter().sum::<f64>() / row_sums.len() as f64;
-        let variance = row_sums
+        
+
+        row_sums
             .iter()
             .map(|s| {
                 let diff = s - mean;
                 diff * diff
             })
             .sum::<f64>()
-            / row_sums.len() as f64;
-
-        variance
+            / row_sums.len() as f64
     }
 }

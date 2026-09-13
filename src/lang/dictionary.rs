@@ -135,8 +135,8 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
     let mut prev = vec![0usize; b_len + 1];
     let mut curr = vec![0usize; b_len + 1];
 
-    for j in 0..=b_len {
-        prev[j] = j;
+    for (j, prev_slot) in prev.iter_mut().enumerate().take(b_len + 1) {
+        *prev_slot = j;
     }
 
     for i in 1..=a_len {
