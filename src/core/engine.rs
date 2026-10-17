@@ -330,8 +330,44 @@ impl OcrEngine {
 
     /// Internal method to process image
     async fn process_image_internal(&self, image: OcrImage) -> Result<TextResult> {
+        use crate::core::config::PageSegMode;
+
         let mut profiler = self.profiler.clone();
         profiler.start_operation("total");
+
+        let psm = self.config.layout_analysis.page_seg_mode;
+
+        // PSM 0 (osd_only): orientation + script detection only — short-circuit
+        // before any preprocessing or layout (Tesseract `PSM_OSD_ONLY`).
+        if psm == PageSegMode::OsdOnly {
+            profiler.stop_operation(); // total
+            return self.detect_osd_only(image).await;
+        }
+
+        // OSD metadata for PSM 1/12: detect on the raw input so the report
+        // reflects the page as loaded (preprocessing may auto-rotate later).
+        let osd_info =
+            if matches!(psm, PageSegMode::AutoOsd | PageSegMode::SparseTextWithOsd) {
+                Some(crate::image::ImageEnhancer::detect_orientation_with_confidence(
+                    &image,
+                ))
+            } else {
+                None
+            };
+
+        // PSM 5 (vertical text): rotate the page 90° anticlockwise, mirroring
+        // Tesseract's `to_block->rotate(anticlockwise90)` (`textord.cpp:201-217`).
+        // PSM 9 (circle word): strip an enclosing ring first, mirroring
+        // Tesseract's `RemoveEnclosingCircle` (`pagesegmain.cpp:61-94`).
+        let image = match psm {
+            PageSegMode::SingleBlockVertText => {
+                image.rotate(-std::f32::consts::FRAC_PI_2)?
+            }
+            PageSegMode::CircleWord => {
+                crate::image::ImageEnhancer::remove_enclosing_circle(&image)?
+            }
+            _ => image,
+        };
 
         // Step 1: Image preprocessing
         profiler.start_operation("preprocessing");
@@ -355,6 +391,39 @@ impl OcrEngine {
         };
         profiler.stop_operation();
 
+        // PSM 2 (auto_only): layout analysis only — Tesseract prints
+        // orientation information without running recognition
+        // (`tesseract.cpp:762-791`). We append the region count.
+        if psm == PageSegMode::AutoOnly {
+            profiler.stop_operation(); // total
+            let (deg, conf) =
+                crate::image::ImageEnhancer::detect_orientation_with_confidence(
+                    &preprocessed_image,
+                );
+            let mut result = TextResult::new(
+                format!(
+                    "Orientation in degrees: {}\nOrientation confidence: {:.2}\nLayout regions: {}\n",
+                    deg,
+                    conf,
+                    layout_result.text_regions.len()
+                ),
+                conf / 100.0,
+                crate::core::text::BoundingBox::new(
+                    0,
+                    0,
+                    preprocessed_image.width,
+                    preprocessed_image.height,
+                ),
+            );
+            result.metadata.insert("psm".into(), psm.psm_number().to_string());
+            result.metadata
+                .insert("layout_regions".into(), layout_result.text_regions.len().to_string());
+            result.metadata.insert("orientation".into(), deg.to_string());
+            result.metadata
+                .insert("orientation_confidence".into(), format!("{:.2}", conf));
+            return Ok(result);
+        }
+
         // Step 3: Text recognition
         profiler.start_operation("recognition");
         let recognition_result = self
@@ -364,12 +433,35 @@ impl OcrEngine {
 
         // Step 4: Post-processing
         profiler.start_operation("post_processing");
-        let text_result = self
+        let mut text_result = self
             .post_process_result(recognition_result, &preprocessed_image)
             .await?;
         profiler.stop_operation();
 
         profiler.stop_operation(); // total
+
+        // Attach PSM + OSD metadata (Tesseract exposes orientation/script via
+        // `DetectOrientationScript` and hOCR attributes when OSD is enabled).
+        text_result
+            .metadata
+            .insert("psm".into(), psm.psm_number().to_string());
+        if let Some((deg, conf)) = osd_info {
+            let guess = crate::lang::detector::LanguageDetector::detect(&text_result.text);
+            text_result
+                .metadata
+                .insert("orientation".into(), deg.to_string());
+            text_result.metadata.insert(
+                "orientation_confidence".into(),
+                format!("{:.2}", conf),
+            );
+            text_result
+                .metadata
+                .insert("script".into(), format!("{:?}", guess.script));
+            text_result.metadata.insert(
+                "script_confidence".into(),
+                format!("{:.2}", guess.confidence * 100.0),
+            );
+        }
 
         // Log profiling info
         if self.config.debug.enable_profiling {
@@ -619,6 +711,74 @@ impl OcrEngine {
         }
     }
 
+    /// PSM 0 (`--psm 0` / `osd_only`): orientation and script detection only.
+    ///
+    /// Tesseract samples 50–250 character blobs through its legacy adaptive
+    /// classifier (`ccmain/osdetect.cpp:266-354`); we score horizontal-
+    /// projection variance across the four rotations and detect the script
+    /// from a fast single-block recognition pass fed to `LanguageDetector`.
+    /// The result `text` is a Tesseract-shaped OSD report; details land in
+    /// `metadata` (`orientation`, `orientation_confidence`, `script`,
+    /// `script_confidence`).
+    async fn detect_osd_only(&self, image: OcrImage) -> Result<TextResult> {
+        let (orientation, oconf) =
+            crate::image::ImageEnhancer::detect_orientation_with_confidence(&image);
+
+        // Rotate upright using the same convention as `correct_orientation`,
+        // then run a minimal single-block pass to obtain text for script
+        // detection (no OSD-specific model data needed).
+        let upright = match orientation {
+            90 => image.rotate(std::f32::consts::FRAC_PI_2)?,
+            180 => image.rotate(std::f32::consts::PI)?,
+            270 => image.rotate(-std::f32::consts::FRAC_PI_2)?,
+            _ => image,
+        };
+        let preprocessed = self.preprocess_image(&upright).await?;
+        let mut layout = LayoutResult::new(crate::core::layout::PageSize::new(
+            preprocessed.width,
+            preprocessed.height,
+            preprocessed.dpi,
+        ));
+        layout.text_regions.push(TextRegion::new(
+            "single_block".to_string(),
+            crate::core::text::BoundingBox::new(
+                0,
+                0,
+                preprocessed.width,
+                preprocessed.height,
+            ),
+            String::new(),
+        ));
+        let recognition = self.recognize_text(&preprocessed, &layout).await?;
+        let recognized = self.post_process_result(recognition, &preprocessed).await?;
+
+        let guess = crate::lang::detector::LanguageDetector::detect(&recognized.text);
+        let script_name = format!("{:?}", guess.script);
+        let sconf = guess.confidence * 100.0;
+
+        let mut result = TextResult::new(
+            format!(
+                "Orientation in degrees: {}\nOrientation confidence: {:.2}\nScript: {}\nScript confidence: {:.2}\n",
+                orientation, oconf, script_name, sconf
+            ),
+            (oconf / 100.0).clamp(0.0, 1.0),
+            crate::core::text::BoundingBox::new(0, 0, upright.width, upright.height),
+        );
+        result.language = Some(guess.language);
+        result.metadata.insert("psm".into(), "0".to_string());
+        result
+            .metadata
+            .insert("orientation".into(), orientation.to_string());
+        result
+            .metadata
+            .insert("orientation_confidence".into(), format!("{:.2}", oconf));
+        result.metadata.insert("script".into(), script_name);
+        result
+            .metadata
+            .insert("script_confidence".into(), format!("{:.2}", sconf));
+        Ok(result)
+    }
+
     /// Analyze layout
     async fn analyze_layout(&self, image: &OcrImage) -> Result<LayoutResult> {
         use crate::core::config::PageSegMode;
@@ -653,7 +813,10 @@ impl OcrEngine {
                 ));
                 Ok(result)
             }
-            PageSegMode::SingleBlock | PageSegMode::SingleColumn => {
+            PageSegMode::SingleBlock
+            | PageSegMode::SingleColumn
+            // Image was pre-rotated upright for PSM 5; treat as one block
+            | PageSegMode::SingleBlockVertText => {
                 let mut result = LayoutResult::new(page_size);
                 result.text_regions.push(TextRegion::new(
                     "full_page".to_string(),
@@ -662,7 +825,22 @@ impl OcrEngine {
                 ));
                 Ok(result)
             }
-            PageSegMode::SparseText | PageSegMode::SparseTextWithOsd | PageSegMode::Auto => {
+            PageSegMode::CircleWord => {
+                // Ring was pre-removed; treat as a single word
+                let mut result = LayoutResult::new(page_size);
+                result.text_regions.push(TextRegion::new(
+                    "single_word".to_string(),
+                    crate::core::text::BoundingBox::new(0, 0, image.width, image.height),
+                    String::new(),
+                ));
+                Ok(result)
+            }
+            PageSegMode::OsdOnly
+            | PageSegMode::AutoOsd
+            | PageSegMode::AutoOnly
+            | PageSegMode::SparseText
+            | PageSegMode::SparseTextWithOsd
+            | PageSegMode::Auto => {
                 Ok(crate::layout::LayoutAnalyzer::analyze_layout_with_options(
                     image,
                     self.config.layout_analysis.enable_arbitrary_angle_detection,
@@ -822,6 +1000,8 @@ impl OcrEngine {
         let confidence_threshold = self.config.recognition.confidence_threshold;
         let enable_dict_correction = self.config.recognition.enable_dictionary_correction;
         let enable_font_analysis = self.config.recognition.enable_font_attribute_detection;
+        let preserve_layout_text = self.config.recognition.preserve_layout_text;
+        let enable_confusion_correction = self.config.recognition.enable_confusion_correction;
 
         // Resolve `--lang auto` from recognized text (script + dictionary hit-rates).
         let mut resolved_lang = self.config.recognition.language.clone();
@@ -848,7 +1028,21 @@ impl OcrEngine {
             recognition.confidence,
             crate::core::text::BoundingBox::new(0, 0, 0, 0),
         );
-        text_result.language = Some(resolved_lang);
+        // Tesseract-style charset filters apply to the plain-text output too:
+        // the structured fields below are filtered per character, so mirror
+        // that on `text` (whitespace survives to keep line structure).
+        text_result.text = recognition
+            .text
+            .chars()
+            .filter(|c| {
+                if c.is_whitespace() {
+                    return true;
+                }
+                whitelist.as_ref().map(|w| w.contains(c)).unwrap_or(true)
+                    && blacklist.as_ref().map(|b| !b.contains(c)).unwrap_or(true)
+            })
+            .collect();
+        text_result.language = Some(resolved_lang.clone());
 
         for line_rec in &recognition.lines {
             let line_bbox = line_rec
@@ -1063,6 +1257,26 @@ impl OcrEngine {
             if max_x > min_x && max_y > min_y {
                 text_result.bounding_box =
                     crate::core::text::BoundingBox::new(min_x, min_y, max_x, max_y);
+            }
+        }
+
+        if preserve_layout_text && !text_result.lines.is_empty() {
+            let cjk = crate::core::layout_text::use_cjk_spacing(&text_result);
+            text_result.text = crate::core::layout_text::reassemble_plain_text(&text_result, cjk);
+        }
+
+        if enable_confusion_correction {
+            use crate::lang::unicode::Script;
+            let lang = resolved_lang.to_lowercase();
+            let latin = matches!(
+                lang.as_str(),
+                "en" | "de" | "fr" | "es" | "it" | "pt" | "nl" | "auto"
+            ) || Script::detect(&text_result.text) == Script::Latin;
+            if latin {
+                let fallback_dict = DictionaryHandler::new_for_language("en");
+                let handler = dict.as_ref().unwrap_or(&fallback_dict);
+                text_result.text =
+                    crate::lang::confusion_correct::correct_latin(&text_result.text, handler);
             }
         }
 

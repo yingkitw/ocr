@@ -40,6 +40,10 @@ pub struct RecognitionConfig {
     pub enable_language_model: bool,
     /// Enable font attribute detection (bold, italic, monospace)
     pub enable_font_attribute_detection: bool,
+    /// Rebuild plain text from line geometry (paragraph gaps, indent, wide spaces)
+    pub preserve_layout_text: bool,
+    /// Latin O/0, l/1/I, … swaps gated on dictionary hits (WebOCR-style)
+    pub enable_confusion_correction: bool,
     /// Additional parameters
     pub parameters: HashMap<String, String>,
 }
@@ -55,6 +59,8 @@ impl Default for RecognitionConfig {
             enable_dictionary_correction: true,
             enable_language_model: true,
             enable_font_attribute_detection: true,
+            preserve_layout_text: true,
+            enable_confusion_correction: true,
             parameters: HashMap::new(),
         }
     }
@@ -189,26 +195,96 @@ impl Default for LayoutAnalysisConfig {
 /// Page segmentation mode (Tesseract --psm equivalent)
 ///
 /// Controls how the page is segmented into text regions before recognition.
+///
+/// The variants are ordered by decreasing layout-analysis work, mirroring
+/// Tesseract's `PageSegMode` enum (`publictypes.h:157-178`); Tesseract's
+/// predicate helpers (`PSM_COL_FIND_ENABLED` etc.) rely on that ordering, and
+/// ours does the same — keep new modes in the right place.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PageSegMode {
+    /// PSM 0: Orientation and script detection only (no text output)
+    OsdOnly,
+    /// PSM 1: Automatic page segmentation with orientation correction (OSD)
+    AutoOsd,
+    /// PSM 2: Automatic page segmentation, layout only (no recognition)
+    AutoOnly,
     /// PSM 3: Fully automatic page segmentation (default)
     Auto,
-    /// PSM 6: Assume a single uniform block of text
-    SingleBlock,
     /// PSM 4: Assume a single column of text of variable sizes
     SingleColumn,
+    /// PSM 5: Assume a single uniform block of vertically aligned text
+    SingleBlockVertText,
+    /// PSM 6: Assume a single uniform block of text
+    SingleBlock,
+    /// PSM 7: Treat the image as a single text line
+    SingleLine,
+    /// PSM 8: Treat the image as a single word
+    SingleWord,
+    /// PSM 9: Treat the image as a single word in a circle
+    CircleWord,
+    /// PSM 10: Treat the image as a single character
+    SingleChar,
     /// PSM 11: Sparse text — find as much text as possible with no ordering
     SparseText,
     /// PSM 12: Sparse text with orientation and script detection
     SparseTextWithOsd,
-    /// PSM 13: Raw line mode — treat input as a single text line
-    SingleLine,
-    /// PSM 7: Treat the image as a single text line (skip segmentation)
+    /// PSM 13: Raw line — treat the image as a single text line, bypassing
+    /// Tesseract-specific row heuristics (same pipeline as PSM 7 here)
     SingleLineRaw,
-    /// PSM 8: Treat the image as a single word
-    SingleWord,
-    /// PSM 10: Treat the image as a single character
-    SingleChar,
+}
+
+impl PageSegMode {
+    /// Tesseract-compatible PSM parsing: accepts the numeric form (`"0"`–`"13"`)
+    /// and the symbolic names used by `stringToPSM` in Tesseract's CLI
+    /// (`src/tesseract.cpp:331-364`), case-insensitively.
+    pub fn parse_psm(s: &str) -> Result<Self, String> {
+        let lowered = s.trim().to_lowercase();
+        let mode = match lowered.as_str() {
+            "0" | "osd_only" | "osd" => PageSegMode::OsdOnly,
+            "1" | "auto_osd" => PageSegMode::AutoOsd,
+            "2" | "auto_only" => PageSegMode::AutoOnly,
+            "3" | "auto" => PageSegMode::Auto,
+            "4" | "single_column" => PageSegMode::SingleColumn,
+            "5" | "single_block_vert_text" => PageSegMode::SingleBlockVertText,
+            "6" | "single_block" | "block" => PageSegMode::SingleBlock,
+            "7" | "single_line" | "line" => PageSegMode::SingleLine,
+            "8" | "single_word" | "word" => PageSegMode::SingleWord,
+            "9" | "circle_word" => PageSegMode::CircleWord,
+            "10" | "single_char" | "char" => PageSegMode::SingleChar,
+            "11" | "sparse_text" | "sparse" => PageSegMode::SparseText,
+            "12" | "sparse_text_osd" => PageSegMode::SparseTextWithOsd,
+            "13" | "raw_line" => PageSegMode::SingleLineRaw,
+            other => {
+                return Err(format!(
+                    "Invalid PSM '{}': use 0-13 or a name like auto, single_block, \
+                     single_line, single_word, circle_word, single_char, sparse_text, \
+                     raw_line, osd_only (see TESSERACT_PARITY.md §2)",
+                    other
+                ))
+            }
+        };
+        Ok(mode)
+    }
+
+    /// Numeric PSM value (Tesseract `--psm` numbering).
+    pub fn psm_number(&self) -> u8 {
+        match self {
+            PageSegMode::OsdOnly => 0,
+            PageSegMode::AutoOsd => 1,
+            PageSegMode::AutoOnly => 2,
+            PageSegMode::Auto => 3,
+            PageSegMode::SingleColumn => 4,
+            PageSegMode::SingleBlockVertText => 5,
+            PageSegMode::SingleBlock => 6,
+            PageSegMode::SingleLine => 7,
+            PageSegMode::SingleWord => 8,
+            PageSegMode::CircleWord => 9,
+            PageSegMode::SingleChar => 10,
+            PageSegMode::SparseText => 11,
+            PageSegMode::SparseTextWithOsd => 12,
+            PageSegMode::SingleLineRaw => 13,
+        }
+    }
 }
 
 /// Language configuration
@@ -464,5 +540,111 @@ impl OcrConfig {
     pub fn set_parameter(&mut self, key: &str, value: String) {
         // Set in recognition parameters by default
         self.recognition.parameters.insert(key.to_string(), value);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_psm_numeric() {
+        assert_eq!(PageSegMode::parse_psm("0"), Ok(PageSegMode::OsdOnly));
+        assert_eq!(PageSegMode::parse_psm("1"), Ok(PageSegMode::AutoOsd));
+        assert_eq!(PageSegMode::parse_psm("2"), Ok(PageSegMode::AutoOnly));
+        assert_eq!(PageSegMode::parse_psm("3"), Ok(PageSegMode::Auto));
+        assert_eq!(PageSegMode::parse_psm("4"), Ok(PageSegMode::SingleColumn));
+        assert_eq!(
+            PageSegMode::parse_psm("5"),
+            Ok(PageSegMode::SingleBlockVertText)
+        );
+        assert_eq!(PageSegMode::parse_psm("6"), Ok(PageSegMode::SingleBlock));
+        assert_eq!(PageSegMode::parse_psm("7"), Ok(PageSegMode::SingleLine));
+        assert_eq!(PageSegMode::parse_psm("8"), Ok(PageSegMode::SingleWord));
+        assert_eq!(PageSegMode::parse_psm("9"), Ok(PageSegMode::CircleWord));
+        assert_eq!(PageSegMode::parse_psm("10"), Ok(PageSegMode::SingleChar));
+        assert_eq!(PageSegMode::parse_psm("11"), Ok(PageSegMode::SparseText));
+        assert_eq!(
+            PageSegMode::parse_psm("12"),
+            Ok(PageSegMode::SparseTextWithOsd)
+        );
+        assert_eq!(PageSegMode::parse_psm("13"), Ok(PageSegMode::SingleLineRaw));
+    }
+
+    #[test]
+    fn test_parse_psm_symbolic_tesseract_names() {
+        // Tesseract's stringToPSM names (src/tesseract.cpp:331-364)
+        assert_eq!(PageSegMode::parse_psm("osd_only"), Ok(PageSegMode::OsdOnly));
+        assert_eq!(PageSegMode::parse_psm("auto_osd"), Ok(PageSegMode::AutoOsd));
+        assert_eq!(
+            PageSegMode::parse_psm("auto_only"),
+            Ok(PageSegMode::AutoOnly)
+        );
+        assert_eq!(PageSegMode::parse_psm("auto"), Ok(PageSegMode::Auto));
+        assert_eq!(
+            PageSegMode::parse_psm("single_column"),
+            Ok(PageSegMode::SingleColumn)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("single_block_vert_text"),
+            Ok(PageSegMode::SingleBlockVertText)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("single_block"),
+            Ok(PageSegMode::SingleBlock)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("single_line"),
+            Ok(PageSegMode::SingleLine)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("single_word"),
+            Ok(PageSegMode::SingleWord)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("circle_word"),
+            Ok(PageSegMode::CircleWord)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("single_char"),
+            Ok(PageSegMode::SingleChar)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("sparse_text"),
+            Ok(PageSegMode::SparseText)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("sparse_text_osd"),
+            Ok(PageSegMode::SparseTextWithOsd)
+        );
+        assert_eq!(
+            PageSegMode::parse_psm("raw_line"),
+            Ok(PageSegMode::SingleLineRaw)
+        );
+    }
+
+    #[test]
+    fn test_parse_psm_case_and_whitespace_insensitive() {
+        assert_eq!(
+            PageSegMode::parse_psm("  Sparse_Text  "),
+            Ok(PageSegMode::SparseText)
+        );
+        assert_eq!(PageSegMode::parse_psm("AUTO"), Ok(PageSegMode::Auto));
+    }
+
+    #[test]
+    fn test_parse_psm_invalid() {
+        assert!(PageSegMode::parse_psm("14").is_err());
+        assert!(PageSegMode::parse_psm("bogus").is_err());
+        assert!(PageSegMode::parse_psm("").is_err());
+        assert!(PageSegMode::parse_psm("-1").is_err());
+    }
+
+    #[test]
+    fn test_psm_number_round_trip() {
+        for n in 0u8..=13 {
+            let mode = PageSegMode::parse_psm(&n.to_string()).expect("valid psm");
+            assert_eq!(mode.psm_number(), n);
+        }
     }
 }

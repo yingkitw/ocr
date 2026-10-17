@@ -58,6 +58,16 @@ impl Dictionary {
         self.words.contains(&lower)
     }
 
+    /// Iterate the stored words (lowercase, alphanumeric only).
+    pub fn words(&self) -> impl Iterator<Item = &str> {
+        self.words.iter().map(String::as_str)
+    }
+
+    /// Build the set of every prefix of every word in this dictionary.
+    pub fn word_prefix_set(&self) -> WordPrefixSet {
+        WordPrefixSet::from_dictionary(self)
+    }
+
     pub fn word_count(&self) -> usize {
         self.words.len()
     }
@@ -118,8 +128,47 @@ impl Default for Dictionary {
     }
 }
 
-pub fn edit_distance(a: &str, b: &str) -> usize {
-    let a_len = a.chars().count();
+/// Set of every prefix of a [`Dictionary`]'s words, for O(1) word-prefix
+/// queries during dictionary-constrained beam decoding. Tesseract advances
+/// DAWG positions for the same purpose during its LSTM beam search
+/// (`recodebeam.cpp` `ContinueDawg`) — see TESSERACT_PARITY.md §DAWG.
+pub struct WordPrefixSet {
+    prefixes: HashSet<String>,
+}
+
+impl WordPrefixSet {
+    pub fn from_dictionary(dict: &Dictionary) -> Self {
+        let mut prefixes = HashSet::new();
+        for word in dict.words() {
+            for (len, _) in word.char_indices().skip(1) {
+                prefixes.insert(word[..len].to_string());
+            }
+            prefixes.insert(word.to_string());
+        }
+        Self { prefixes }
+    }
+
+    /// True when `word` (case/punctuation-insensitive, like
+    /// [`Dictionary::contains`]) is a proper prefix of some dictionary word.
+    pub fn is_prefix(&self, word: &str) -> bool {
+        let lower: String = word
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect();
+        self.prefixes.contains(&lower)
+    }
+
+    pub fn len(&self) -> usize {
+        self.prefixes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.prefixes.is_empty()
+    }
+}
+
+pub fn edit_distance(a: &str, b: &str) -> usize {    let a_len = a.chars().count();
     let b_len = b.chars().count();
 
     if a_len == 0 {
@@ -373,6 +422,8 @@ pub fn load_english_dictionary() -> Dictionary {
         "right",
         "study",
         "book",
+        "box",
+        "dozen",
         "eye",
         "job",
         "word",
@@ -2453,6 +2504,30 @@ impl Default for DictionaryHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_word_prefix_set() {
+        let mut dict = Dictionary::new();
+        dict.load_words(&["the", "there"]);
+        let prefixes = dict.word_prefix_set();
+
+        assert!(prefixes.is_prefix("t"));
+        assert!(prefixes.is_prefix("th"));
+        assert!(prefixes.is_prefix("the"));
+        assert!(prefixes.is_prefix("ther"));
+        assert!(prefixes.is_prefix("T"), "case-insensitive");
+        assert!(!prefixes.is_prefix("x"));
+        assert!(!prefixes.is_prefix("eh"));
+        assert_eq!(prefixes.len(), 5); // t, th, the, ther, there
+    }
+
+    #[test]
+    fn test_word_prefix_set_empty_dictionary() {
+        let dict = Dictionary::new();
+        let prefixes = dict.word_prefix_set();
+        assert!(prefixes.is_empty());
+        assert!(!prefixes.is_prefix("a"));
+    }
 
     #[test]
     fn test_edit_distance_identical() {

@@ -390,3 +390,71 @@ fn test_cli_extract_with_pdf_format() {
     assert!(pdf_bytes.ends_with(b"%%EOF\n") || pdf_bytes.ends_with(b"%%EOF"), "PDF should end with EOF marker");
     assert!(pdf_bytes.windows(8).any(|w| w == b"/XObject"), "PDF should contain XObject");
 }
+
+// ---- Tesseract-parity: --psm (symbolic + numeric) and --whitelist ----
+
+#[test]
+fn test_cli_psm_osd_only_outputs_orientation_report() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--psm")
+        .arg("osd_only");
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains("Orientation in degrees:"))
+        .stdout(predicates::str::contains("Script:"));
+}
+
+#[test]
+fn test_cli_psm_numeric_still_works() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract").arg(img.path()).arg("--psm").arg("6");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_psm_invalid_name_fails_with_helpful_error() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract").arg(img.path()).arg("--psm").arg("bogus");
+    cmd.assert()
+        .failure()
+        .stderr(predicates::str::contains("Invalid PSM"));
+}
+
+#[test]
+fn test_cli_psm_auto_only_layout_report() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract").arg(img.path()).arg("--psm").arg("2");
+    cmd.assert()
+        .success()
+        .stdout(predicates::str::contains("Layout regions:"));
+}
+
+#[test]
+fn test_cli_psm_circle_word_symbolic() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--psm")
+        .arg("circle_word");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_whitelist_flag_accepted() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--whitelist")
+        .arg("0123456789")
+        .arg("--psm")
+        .arg("single_block");
+    cmd.assert().success();
+}

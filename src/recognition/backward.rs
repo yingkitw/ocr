@@ -169,6 +169,8 @@ impl CrnnModel {
         for i in 0..logits.nrows() {
             for j in 0..logits.ncols() {
                 logits[[i, j]] += self.fc_bias[j];
+                // Clamp logits to prevent numerical instability in CTC loss
+                logits[[i, j]] = logits[[i, j]].clamp(-10.0, 10.0);
             }
         }
 

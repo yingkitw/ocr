@@ -5,6 +5,7 @@ pub mod engine;
 pub mod geometry;
 pub mod image;
 pub mod layout;
+pub mod layout_text;
 pub mod output;
 #[cfg(feature = "pdf")]
 pub mod pdf;

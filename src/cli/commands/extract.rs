@@ -15,13 +15,14 @@ pub async fn handle_extract(
     lang: &str,
     preprocess: bool,
     format: &str,
-    psm: u8,
+    psm: &str,
     confidence: f32,
     engine: &str,
     dict_correct: bool,
     device: &str,
     osd: bool,
     dpi: u32,
+    whitelist: Option<String>,
 ) -> Result<()> {
     info!(
         "Starting OCR extraction for: {:?} (psm={}, format={}, engine={}, dpi={})",
@@ -31,14 +32,15 @@ pub async fn handle_extract(
     let config = build_config(
         lang,
         preprocess,
-        psm,
+        &psm,
         confidence,
         engine,
         dict_correct,
         device,
         osd,
         dpi,
-    );
+        whitelist.as_deref(),
+    )?;
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;
 

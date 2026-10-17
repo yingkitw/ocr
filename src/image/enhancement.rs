@@ -117,38 +117,156 @@ impl ImageEnhancer {
         estimated.clamp(72, 1200).max(img.dpi)
     }
 
-    /// Detect image orientation (0, 90, 180, 270 degrees)
+    /// Orientation projection scores for the four rotations.
     ///
-    /// Uses horizontal projection variance: upright text has higher
-    /// variance because text lines create distinct dark bands separated
-    /// by white space.
-    pub fn detect_orientation(img: &OcrImage) -> u32 {
+    /// Returns `[score_0, score_90, score_180, score_270]` — upright text has
+    /// high horizontal-projection variance (distinct dark text-line bands).
+    fn orientation_scores(img: &OcrImage) -> [f64; 4] {
         let gray = img.data.to_luma8();
         let (width, height) = gray.dimensions();
 
         if width < 50 || height < 50 {
-            return 0;
+            return [0.0; 4];
         }
 
         let binary = Self::simple_threshold(&gray);
 
-        let score_0 = Self::orientation_score(&binary, width, height);
-        let score_90 = Self::orientation_score(&Self::rotate_90_cw(&binary), height, width);
-        let score_180 = Self::orientation_score(&Self::rotate_180(&binary), width, height);
-        let score_270 = Self::orientation_score(&Self::rotate_90_ccw(&binary), height, width);
+        [
+            Self::orientation_score(&binary, width, height),
+            Self::orientation_score(&Self::rotate_90_cw(&binary), height, width),
+            Self::orientation_score(&Self::rotate_180(&binary), width, height),
+            Self::orientation_score(&Self::rotate_90_ccw(&binary), height, width),
+        ]
+    }
 
-        let scores = [
-            (0u32, score_0),
-            (90, score_90),
-            (180, score_180),
-            (270, score_270),
-        ];
-        let best = scores
-            .iter()
-            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-            .unwrap();
+    /// Detect image orientation (0, 90, 180, 270 degrees)
+    ///
+    /// Delegates to [`Self::detect_orientation_with_confidence`] and drops the
+    /// confidence. Uses horizontal projection variance for the axis and a
+    /// left-alignment cue for the polarity (see that method's docs).
+    pub fn detect_orientation(img: &OcrImage) -> u32 {
+        Self::detect_orientation_with_confidence(img).0
+    }
 
-        best.0
+    /// Detect image orientation with a confidence estimate.
+    ///
+    /// Returns `(orientation_degrees, confidence)` where confidence is in
+    /// `0.0..=100.0`. Two-stage scoring, because per-row projection variance
+    /// is invariant under 180° rotation (row sums are flip-symmetric), so a
+    /// pure projection method can pick the text-line *axis* but not the
+    /// polarity:
+    ///
+    /// 1. **Axis** (0/180 vs 90/270): horizontal-projection variance across
+    ///    the four rotations (`orientation_scores`), mirroring Tesseract's
+    ///    OSD confidence = gap between the best two orientation votes
+    ///    (`ccmain/osdetect.cpp:51-71`), rescaled to `0..=100`.
+    /// 2. **Polarity** (0 vs 180, 90 vs 270): vertical mass bias — where the
+    ///    dark-pixel centroid sits inside the content band. The statistic
+    ///    flips sign exactly under a 180° rotation, but on short or
+    ///    symmetric lines it is noise, so a flip is applied **only** when
+    ///    |bias| exceeds `POLARITY_EVIDENCE_MIN`; weaker evidence keeps the
+    ///    lower angle. This mirrors Tesseract's "upside-down Latin text is
+    ///    improbable" guard (`pagesegmain.cpp:390-405`): a wrong 180° flip
+    ///    destroys recognition, so commission errors are avoided at the cost
+    ///    of occasional missed corrections.
+    pub fn detect_orientation_with_confidence(img: &OcrImage) -> (u32, f32) {
+        /// Minimum |vertical mass bias| required to flip polarity.
+        const POLARITY_EVIDENCE_MIN: f64 = 0.25;
+
+        let gray = img.data.to_luma8();
+        let (width, height) = gray.dimensions();
+        if width < 50 || height < 50 {
+            return (0, 0.0);
+        }
+        let binary = Self::simple_threshold(&gray);
+
+        let scores = Self::orientation_scores(img);
+        let s_h = scores[0].max(scores[2]);
+        let s_v = scores[1].max(scores[3]);
+
+        // Stage 1: axis.
+        let axis_conf = if s_h >= s_v {
+            Self::normalized_margin(s_h, s_v)
+        } else {
+            Self::normalized_margin(s_v, s_h)
+        };
+
+        // Stage 2: polarity via vertical mass bias. Positive bias means the
+        // candidate variant is upright, where the variant is the original
+        // image for the horizontal axis and the CW-90° rotation for the
+        // vertical axis — matching `correct_orientation`'s mapping
+        // (90 → rotate(+π/2), 270 → rotate(−π/2)).
+        let (orientation, pair_conf) = if s_h >= s_v {
+            let b = Self::vertical_mass_bias(&binary, width, height);
+            if b > POLARITY_EVIDENCE_MIN {
+                (0, b)
+            } else if b < -POLARITY_EVIDENCE_MIN {
+                (180, -b)
+            } else {
+                (0, 0.0) // weak evidence: don't flip (improbability guard)
+            }
+        } else {
+            let cw = Self::rotate_90_cw(&binary);
+            let b = Self::vertical_mass_bias(&cw, height, width);
+            if b > POLARITY_EVIDENCE_MIN {
+                (90, b)
+            } else if b < -POLARITY_EVIDENCE_MIN {
+                (270, -b)
+            } else {
+                (90, 0.0)
+            }
+        };
+
+        let confidence = ((axis_conf + pair_conf) * 0.5 * 100.0).clamp(0.0, 100.0);
+        (orientation, confidence as f32)
+    }
+
+    /// Normalized top-1/top-2 margin in `0.0..=1.0` (0 when the best score
+    /// is non-positive or the scores tie).
+    fn normalized_margin(best: f64, second: f64) -> f64 {
+        if best <= 0.0 {
+            0.0
+        } else {
+            ((best - second) / best).clamp(0.0, 1.0)
+        }
+    }
+
+    /// Vertical mass bias: where the dark-pixel centroid sits inside the
+    /// content band, normalized to `−1..=1`. Positive = centroid above the
+    /// band center (ascender/cap-heavy upright layout); negative = below.
+    /// The sign flips exactly under a 180° rotation; ≈0 for symmetric or
+    /// single-line content where polarity is genuinely ambiguous.
+    fn vertical_mass_bias(binary: &GrayImage, width: u32, height: u32) -> f64 {
+        let mut row_counts = vec![0u64; height as usize];
+        for y in 0..height {
+            let mut count = 0u64;
+            for x in 0..width {
+                if binary.get_pixel(x, y)[0] < 128 {
+                    count += 1;
+                }
+            }
+            row_counts[y as usize] = count;
+        }
+        let Some(first) = row_counts.iter().position(|&c| c > 0) else {
+            return 0.0;
+        };
+        let last = row_counts.iter().rposition(|&c| c > 0).unwrap_or(first);
+        if last <= first {
+            return 0.0;
+        }
+        let mut mass = 0u64;
+        let mut weighted = 0u64;
+        for (i, &c) in row_counts.iter().enumerate().skip(first) {
+            mass += c;
+            weighted += c * (i as u64);
+        }
+        if mass == 0 {
+            return 0.0;
+        }
+        let centroid = weighted as f64 / mass as f64;
+        let center = (first + last) as f64 / 2.0;
+        let half_band = (last - first) as f64 / 2.0;
+        ((center - centroid) / half_band).clamp(-1.0, 1.0)
     }
 
     /// Rotate image to correct orientation based on detected text direction
@@ -166,6 +284,103 @@ impl ImageEnhancer {
                 .map_err(OcrError::from),
             _ => Ok(img.clone()),
         }
+    }
+
+    /// Remove an enclosing circle/ring around the page content (PSM 9,
+    /// Tesseract `--psm circle_word`).
+    ///
+    /// Tesseract's `RemoveEnclosingCircle` (`pagesegmain.cpp:61-94`) erodes
+    /// the binary image up to 8× so glyph strokes vanish before the ring,
+    /// reconstructs the ring at full scale, and subtracts it. We use a
+    /// simpler connected-component heuristic: find a large, sparse
+    /// (ring-shaped) dark component whose bounding box spans most of the
+    /// page and erase its pixels. Returns the image unchanged when no such
+    /// ring is present. The returned image is grayscale.
+    pub fn remove_enclosing_circle(img: &OcrImage) -> Result<OcrImage> {
+        let gray = img.data.to_luma8();
+        let (width, height) = gray.dimensions();
+        if width < 20 || height < 20 {
+            return Ok(img.clone());
+        }
+
+        let binary = Self::simple_threshold(&gray);
+
+        // Connected components over dark pixels (4-connectivity BFS).
+        let mut label = vec![0u32; (width as usize) * (height as usize)];
+        let mut bounds: Vec<(u32, u32, u32, u32, usize)> = Vec::new(); // min_x, min_y, max_x, max_y, count
+        let mut next_label = 0u32;
+        let mut queue = std::collections::VecDeque::new();
+        for sy in 0..height {
+            for sx in 0..width {
+                let start = (sy * width + sx) as usize;
+                if binary.get_pixel(sx, sy)[0] == 0 || label[start] != 0 {
+                    continue;
+                }
+                next_label += 1;
+                label[start] = next_label;
+                queue.push_back((sx, sy));
+                let mut min_x = sx;
+                let mut min_y = sy;
+                let mut max_x = sx;
+                let mut max_y = sy;
+                let mut count = 0usize;
+                while let Some((x, y)) = queue.pop_front() {
+                    count += 1;
+                    min_x = min_x.min(x);
+                    min_y = min_y.min(y);
+                    max_x = max_x.max(x);
+                    max_y = max_y.max(y);
+                    for (nx, ny) in [
+                        (x.wrapping_sub(1), y),
+                        (x + 1, y),
+                        (x, y.wrapping_sub(1)),
+                        (x, y + 1),
+                    ] {
+                        if nx >= width || ny >= height {
+                            continue;
+                        }
+                        let idx = (ny * width + nx) as usize;
+                        if binary.get_pixel(nx, ny)[0] == 0 && label[idx] == 0 {
+                            label[idx] = next_label;
+                            queue.push_back((nx, ny));
+                        }
+                    }
+                }
+                bounds.push((min_x, min_y, max_x, max_y, count));
+            }
+        }
+
+        // Ring candidate: spans ≥60% of both dimensions and is sparse
+        // (a ring encloses mostly background; a solid blob would be dense).
+        let ring_label = bounds
+            .iter()
+            .enumerate()
+            .filter(|&(_, &(min_x, min_y, max_x, max_y, count))| {
+                let bw = (max_x - min_x + 1) as f64;
+                let bh = (max_y - min_y + 1) as f64;
+                let fill = count as f64 / (bw * bh);
+                bw >= 0.6 * width as f64 && bh >= 0.6 * height as f64 && fill <= 0.30 && count >= 100
+            })
+            .map(|(i, _)| i as u32 + 1)
+            .next();
+
+        let Some(rl) = ring_label else {
+            return Ok(img.clone());
+        };
+
+        // Erase ring pixels (set to white) in a grayscale copy.
+        let mut out = img.clone().to_grayscale();
+        let mut gray_out = out.data.to_luma8();
+        for y in 0..height {
+            for x in 0..width {
+                let idx = (y * width + x) as usize;
+                if label[idx] == rl {
+                    gray_out.put_pixel(x, y, image::Luma([255u8]));
+                }
+            }
+        }
+        out.data = image::DynamicImage::ImageLuma8(gray_out);
+        Ok(out)
     }
 
     /// Remove document borders/margins
@@ -465,5 +680,101 @@ impl ImageEnhancer {
             })
             .sum::<f64>()
             / row_sums.len() as f64
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Three horizontal bars whose lengths shrink top-to-bottom (90/70/30):
+    /// top-heavy like upright Latin text (cap/ascender mass above the band
+    /// center), so the vertical-mass polarity cue is unambiguous.
+    fn bars_image() -> OcrImage {
+        let mut g = GrayImage::from_pixel(100, 100, Luma([255u8]));
+        for &(y0, x1) in &[(20u32, 100u32), (45, 80), (70, 40)] {
+            for y in y0..y0 + 5 {
+                for x in 10..x1 {
+                    g.put_pixel(x, y, Luma([0u8]));
+                }
+            }
+        }
+        OcrImage::new(DynamicImage::ImageLuma8(g), 300)
+    }
+
+    fn rotate180(img: &OcrImage) -> OcrImage {
+        img.rotate(std::f32::consts::PI).unwrap()
+    }
+
+    #[test]
+    fn test_detect_orientation_upright_and_upside_down() {
+        let upright = bars_image();
+        let (deg, conf) = ImageEnhancer::detect_orientation_with_confidence(&upright);
+        assert_eq!(deg, 0, "left-aligned bars should read as upright");
+        assert!(conf > 0.0, "asymmetric bars should give nonzero confidence");
+
+        let flipped = rotate180(&upright);
+        let (deg180, _) = ImageEnhancer::detect_orientation_with_confidence(&flipped);
+        assert_eq!(deg180, 180, "180°-rotated bars should be detected");
+    }
+
+    #[test]
+    fn test_orientation_confidence_blank_is_zero() {
+        let blank = OcrImage::new(
+            DynamicImage::ImageLuma8(GrayImage::from_pixel(100, 100, Luma([255u8]))),
+            300,
+        );
+        let (deg, conf) = ImageEnhancer::detect_orientation_with_confidence(&blank);
+        assert_eq!(deg, 0);
+        assert_eq!(conf, 0.0, "no content → no orientation confidence");
+    }
+
+    #[test]
+    fn test_remove_enclosing_circle_keeps_inner_content() {
+        let mut g = GrayImage::from_pixel(100, 100, Luma([255u8]));
+        // Ring: circle of radius 40 ± 1.2 px around (50, 50).
+        for y in 0..100u32 {
+            for x in 0..100u32 {
+                let dx = x as f64 - 50.0;
+                let dy = y as f64 - 50.0;
+                let r = (dx * dx + dy * dy).sqrt();
+                if (r - 40.0).abs() < 1.2 {
+                    g.put_pixel(x, y, Luma([0u8]));
+                }
+            }
+        }
+        // Inner "text" rectangle at the center.
+        for y in 44..56u32 {
+            for x in 40..60u32 {
+                g.put_pixel(x, y, Luma([0u8]));
+            }
+        }
+        let img = OcrImage::new(DynamicImage::ImageLuma8(g), 300);
+        let cleaned = ImageEnhancer::remove_enclosing_circle(&img).unwrap();
+
+        let out = cleaned.data.to_luma8();
+        // Ring stroke pixels become white…
+        assert_eq!(out.get_pixel(50, 10)[0], 255, "ring top should be erased");
+        assert_eq!(out.get_pixel(90, 50)[0], 255, "ring right should be erased");
+        // …while the inner rectangle survives.
+        assert_eq!(out.get_pixel(50, 50)[0], 0, "inner content must survive");
+    }
+
+    #[test]
+    fn test_remove_enclosing_circle_noop_without_ring() {
+        let mut g = GrayImage::from_pixel(100, 100, Luma([255u8]));
+        for y in 40..60u32 {
+            for x in 20..80u32 {
+                g.put_pixel(x, y, Luma([0u8]));
+            }
+        }
+        let img = OcrImage::new(DynamicImage::ImageLuma8(g), 300);
+        let cleaned = ImageEnhancer::remove_enclosing_circle(&img).unwrap();
+        // A solid rectangle is not a ring: image must be unchanged.
+        assert_eq!(
+            cleaned.data.to_luma8().get_pixel(50, 50)[0],
+            0,
+            "plain rect must not be erased"
+        );
     }
 }

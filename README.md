@@ -4,7 +4,7 @@
 [![docs.rs](https://docs.rs/ocr/badge.svg)](https://docs.rs/ocr)
 [![License: Apache-2.0](https://img.shields.io/crates/l/ocr)](LICENSE)
 [![Rust Edition 2024](https://img.shields.io/badge/rust-2024-edition-orange.svg)](https://doc.rust-lang.org/edition-guide/)
-[![Tests](https://img.shields.io/badge/tests-347%2B_passing-brightgreen.svg)](#roadmap)
+[![Tests](https://img.shields.io/badge/tests-368_passing-brightgreen.svg)](#roadmap)
 [![Build](https://img.shields.io/badge/build-zero_warnings-brightgreen.svg)](#)
 
 > **Pure-Rust OCR engine and command-line tool for extracting printed text from images.** No C/C++ dependencies, no Python, no GPU required. Supports 25+ languages, multi-page TIFF, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF. Apache-2.0 licensed.
@@ -205,6 +205,16 @@ ocr extract document.png --dpi 150
 
 # Auto-detect language on mixed-script documents
 ocr extract document.png --lang auto
+
+# Page segmentation modes (Tesseract --psm: numbers or symbolic names)
+ocr extract document.png --psm 6              # single uniform block
+ocr extract receipt.png --psm 6 --whitelist 0123456789.,-  # digits only
+ocr extract line.png --psm single_line        # whole image = one text line
+ocr extract form.png --psm circle_word        # strip enclosing circle first
+ocr extract scan.png --psm osd_only           # orientation + script report
+
+# Orientation & script detection report (Tesseract OSD)
+ocr extract rotated.png --psm 0
 ```
 
 ### Batch Processing
@@ -312,7 +322,7 @@ src/
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with `extract`, `batch`, `layout`, `list-languages`
-- [x] 347+ tests passing
+- [x] 368 tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback
@@ -397,7 +407,7 @@ Training requires multi-hour `--release` runs. Synthetic data is generated autom
 
 ### Is it production-ready?
 
-The engine is feature-complete for printed text on clean scans with 347+ passing tests. The CRNN training pipeline (full BPTT + CTC loss) is implemented, and the bundled model is loaded at runtime. Accuracy will improve as trained checkpoints replace the current model.
+The engine is feature-complete for printed text on clean scans with 368 passing tests. The CRNN training pipeline (full BPTT + CTC loss) is implemented, and the bundled model is loaded at runtime. Accuracy will improve as trained checkpoints replace the current model.
 
 ### What is the license?
 

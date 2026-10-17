@@ -43,10 +43,25 @@ pub fn ctc_loss_and_grad(
 
     // Forward variables (log space): alpha[t][s]
     let mut alpha = vec![f32::NEG_INFINITY; t * ext_len];
+    // Accumulated log normalization constant (for numerical stability)
+    let mut log_norm_accum = 0.0f32;
     // Initialization at t = 0 (row 0, i.e. indices without the t*ext_len offset).
     alpha[0] = log_probs[blank];
     if s > 0 {
         alpha[1] = log_probs[targets[0]];
+    }
+    // Normalize t=0
+    {
+        let row = &mut alpha[0..ext_len];
+        let norm = log_sum_exp(row);
+        if norm > f32::NEG_INFINITY {
+            for v in row.iter_mut() {
+                if *v > f32::NEG_INFINITY {
+                    *v -= norm;
+                }
+            }
+            log_norm_accum += norm;
+        }
     }
 
     // Forward recursion.
@@ -76,16 +91,27 @@ pub fn ctc_loss_and_grad(
             };
             alpha[ti * ext_len + si] = lp + sum;
         }
+        // Normalize this timestep to prevent numerical drift
+        let row = &mut alpha[ti * ext_len..(ti + 1) * ext_len];
+        let norm = log_sum_exp(row);
+        if norm > f32::NEG_INFINITY {
+            for v in row.iter_mut() {
+                if *v > f32::NEG_INFINITY {
+                    *v -= norm;
+                }
+            }
+            log_norm_accum += norm;
+        }
     }
 
-    // Loss = -log P(target | input) = -log(alpha[t-1][2s] + alpha[t-1][2s+1])
+    // Loss = -log P(target | input) = -(log_norm_accum + log(alpha[t-1][2s] + alpha[t-1][2s+1]))
     let last_row = &alpha[(t - 1) * ext_len..];
     let last_two = if ext_len >= 2 {
         vec![last_row[ext_len - 1], last_row[ext_len - 2]]
     } else {
         vec![last_row[ext_len - 1]]
     };
-    let log_z = log_sum_exp(&last_two);
+    let log_z = log_norm_accum + log_sum_exp(&last_two);
     let loss = -log_z;
 
     // Backward variables (log space): beta[t][s]
@@ -124,18 +150,43 @@ pub fn ctc_loss_and_grad(
                 log_sum_exp(&vals)
             };
         }
+        // Normalize this timestep to prevent numerical drift
+        let row = &mut beta[ti * ext_len..(ti + 1) * ext_len];
+        let norm = log_sum_exp(row);
+        if norm > f32::NEG_INFINITY {
+            for v in row.iter_mut() {
+                if *v > f32::NEG_INFINITY {
+                    *v -= norm;
+                }
+            }
+        }
     }
 
-    // Posterior gamma[t][c] = sum over s where L[s] == c: alpha[t][s] * beta[t][s] / Z
-    // In log space: log gamma[t][c] = logaddexp over s: alpha[t][s] + beta[t][s] - log_z
+    // Posterior gamma[t][c] = sum over s where L[s] == c: alpha[t][s] * beta[t][s] / Z_t
+    // where Z_t = sum over all s of alpha[t][s] * beta[t][s] (per-timestep normalization).
+    // This ensures gamma sums to 1 at each timestep (gradient sum = 0).
     let mut log_gamma = vec![f32::NEG_INFINITY; t * num_classes];
     for ti in 0..t {
+        // Compute per-timestep normalization Z_t = logaddexp over all s of (alpha[t][s] + beta[t][s])
+        let mut log_z_t = f32::NEG_INFINITY;
         for si in 0..ext_len {
             let a = alpha[ti * ext_len + si];
             let b = beta[ti * ext_len + si];
             if a > f32::NEG_INFINITY && b > f32::NEG_INFINITY {
+                log_z_t = if log_z_t > f32::NEG_INFINITY {
+                    logaddexp(log_z_t, a + b)
+                } else {
+                    a + b
+                };
+            }
+        }
+        // Compute gamma[t][c] = sum over s where ext[s]==c of exp(alpha[t][s] + beta[t][s] - log_z_t)
+        for si in 0..ext_len {
+            let a = alpha[ti * ext_len + si];
+            let b = beta[ti * ext_len + si];
+            if a > f32::NEG_INFINITY && b > f32::NEG_INFINITY && log_z_t > f32::NEG_INFINITY {
                 let c = ext[si];
-                let new_val = a + b - log_z;
+                let new_val = a + b - log_z_t;
                 let cur = log_gamma[ti * num_classes + c];
                 log_gamma[ti * num_classes + c] = if cur > f32::NEG_INFINITY {
                     logaddexp(cur, new_val)

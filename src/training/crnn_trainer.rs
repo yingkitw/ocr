@@ -66,6 +66,7 @@ pub fn adam_update_fc(
     let bc1 = 1.0 - 0.9f32.powi(state.t as i32);
     let bc2 = 1.0 - 0.999f32.powi(state.t as i32);
     let eps = 1e-8f32;
+    let wd = 1e-5f32; // weight decay to prevent logit explosion
     for j in 0..model.fc_weight.nrows() {
         for k in 0..model.fc_weight.ncols() {
             let g = grad_w[[j, k]];
@@ -73,7 +74,7 @@ pub fn adam_update_fc(
             state.v_w[[j, k]] = 0.999 * state.v_w[[j, k]] + 0.001 * g * g;
             let m_hat = state.m_w[[j, k]] / bc1;
             let v_hat = state.v_w[[j, k]] / bc2;
-            model.fc_weight[[j, k]] -= learning_rate * m_hat / (v_hat.sqrt() + eps);
+            model.fc_weight[[j, k]] -= learning_rate * (m_hat / (v_hat.sqrt() + eps) + wd * model.fc_weight[[j, k]]);
         }
     }
     for j in 0..model.fc_bias.len() {
@@ -82,7 +83,7 @@ pub fn adam_update_fc(
         state.v_b[j] = 0.999 * state.v_b[j] + 0.001 * g * g;
         let m_hat = state.m_b[j] / bc1;
         let v_hat = state.v_b[j] / bc2;
-        model.fc_bias[j] -= learning_rate * m_hat / (v_hat.sqrt() + eps);
+        model.fc_bias[j] -= learning_rate * (m_hat / (v_hat.sqrt() + eps) + wd * model.fc_bias[j]);
     }
 }
 
@@ -409,6 +410,7 @@ impl CrnnTrainer {
         }
         let mean = 1.0 / n as f32;
         scale_grads(&mut grads_acc, mean);
+        clip_grads(&mut grads_acc, 1.0);
         apply_full_adam(&mut self.model, &grads_acc, adam_states, self.learning_rate);
 
         total_loss / n as f32
@@ -457,7 +459,8 @@ impl CrnnTrainer {
                     for k in 0..lstm_dim {
                         sum += self.model.fc_weight[[j, k]] * lstm2_out[[i, k]];
                     }
-                    logits[[i, j]] = sum;
+                    // Clamp logits to prevent numerical instability in CTC loss
+                    logits[[i, j]] = sum.clamp(-10.0, 10.0);
                 }
             }
 
@@ -524,6 +527,15 @@ impl CrnnTrainer {
         let mean: f32 = 1.0 / n as f32;
         grad_w_acc.mapv_inplace(|v| v * mean);
         grad_b_acc.mapv_inplace(|v| v * mean);
+        // Clip gradients to prevent explosion
+        let norm = (grad_w_acc.iter().map(|v| v * v).sum::<f32>()
+            + grad_b_acc.iter().map(|v| v * v).sum::<f32>())
+        .sqrt();
+        if norm > 1.0 {
+            let scale = 1.0 / norm;
+            grad_w_acc.mapv_inplace(|v| v * scale);
+            grad_b_acc.mapv_inplace(|v| v * scale);
+        }
         adam_update_fc(
             &mut self.model,
             &grad_w_acc,
@@ -947,6 +959,44 @@ fn scale_grads(g: &mut FullParamGrads, s: f32) {
     g.fc_b *= s;
 }
 
+/// Compute the global L2 norm of all gradients.
+fn grad_norm(g: &FullParamGrads) -> f32 {
+    let mut sq_sum = 0.0f32;
+    // Array3 grads (conv weights)
+    for arr in [&g.conv1_w, &g.conv2_w, &g.conv3_w, &g.conv4_w, &g.conv5_w] {
+        sq_sum += arr.iter().map(|v| v * v).sum::<f32>();
+    }
+    // Array2 grads (LSTM + FC weights)
+    for arr in [
+        &g.lstm1_wf_ih, &g.lstm1_wf_hh, &g.lstm1_wb_ih, &g.lstm1_wb_hh,
+        &g.lstm2_wf_ih, &g.lstm2_wf_hh, &g.lstm2_wb_ih, &g.lstm2_wb_hh,
+        &g.fc_w,
+    ] {
+        sq_sum += arr.iter().map(|v| v * v).sum::<f32>();
+    }
+    // Array1 grads (biases, BN params)
+    for arr in [
+        &g.conv1_b, &g.conv2_b, &g.conv3_b, &g.conv4_b, &g.conv5_b,
+        &g.bn1_s, &g.bn1_p, &g.bn2_s, &g.bn2_p, &g.bn3_s, &g.bn3_p,
+        &g.bn4_s, &g.bn4_p, &g.bn5_s, &g.bn5_p,
+        &g.lstm1_bf_ih, &g.lstm1_bf_hh, &g.lstm1_bb_ih, &g.lstm1_bb_hh,
+        &g.lstm2_bf_ih, &g.lstm2_bf_hh, &g.lstm2_bb_ih, &g.lstm2_bb_hh,
+        &g.fc_b,
+    ] {
+        sq_sum += arr.iter().map(|v| v * v).sum::<f32>();
+    }
+    sq_sum.sqrt()
+}
+
+/// Clip gradients to a maximum global L2 norm (prevents exploding gradients).
+fn clip_grads(g: &mut FullParamGrads, max_norm: f32) {
+    let norm = grad_norm(g);
+    if norm > max_norm && norm > 0.0 {
+        let scale = max_norm / norm;
+        scale_grads(g, scale);
+    }
+}
+
 fn apply_full_adam(
     model: &mut CrnnModel,
     g: &FullParamGrads,
@@ -957,6 +1007,7 @@ fn apply_full_adam(
     let bc1 = 1.0 - 0.9f32.powi(s.t as i32);
     let bc2 = 1.0 - 0.999f32.powi(s.t as i32);
     let eps = 1e-8f32;
+    let wd = 1e-5f32; // weight decay (L2 regularization) to prevent logit explosion
     macro_rules! adam {
         ($grad:expr, $param:expr, $m:expr, $v:expr) => {{
             for ix in $grad.iter().zip($param.iter_mut().zip($m.iter_mut().zip($v.iter_mut()))) {
@@ -965,7 +1016,7 @@ fn apply_full_adam(
                 *vv = 0.999 * *vv + 0.001 * *gv * *gv;
                 let mh = *mm / bc1;
                 let vh = *vv / bc2;
-                *pv -= lr * mh / (vh.sqrt() + eps);
+                *pv -= lr * (mh / (vh.sqrt() + eps) + wd * *pv);
             }
         }};
     }

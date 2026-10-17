@@ -500,6 +500,42 @@ fn test_quality_gate_config_default() {
     assert!(OcrConfig::default().image_processing.enable_quality_gate);
 }
 
+/// WebOCR-style layout text reassembly (paragraph gap)
+#[test]
+fn test_layout_text_reassembly_integration() {
+    use ocr::core::layout_text::reassemble_plain_text;
+    use ocr::core::text::{BoundingBox, LineResult, TextResult, WordResult};
+
+    let mut result = TextResult::new(String::new(), 1.0, BoundingBox::new(0, 0, 0, 0));
+    let mut line1 = LineResult::new(String::new(), 1.0, BoundingBox::new(10, 10, 80, 28));
+    line1.words.push(WordResult::new(
+        "Hello".into(),
+        1.0,
+        BoundingBox::new(10, 10, 80, 28),
+    ));
+    let mut line2 = LineResult::new(String::new(), 1.0, BoundingBox::new(10, 70, 80, 88));
+    line2.words.push(WordResult::new(
+        "World".into(),
+        1.0,
+        BoundingBox::new(10, 70, 80, 88),
+    ));
+    result.lines.push(line1);
+    result.lines.push(line2);
+
+    let text = reassemble_plain_text(&result, false);
+    assert!(text.contains("\n\n"), "expected paragraph break: {text:?}");
+}
+
+/// WebOCR-style Latin confusion correction
+#[test]
+fn test_confusion_correction_integration() {
+    use ocr::lang::confusion_correct::correct_latin;
+    use ocr::lang::dictionary::DictionaryHandler;
+
+    let dict = DictionaryHandler::new_for_language("en");
+    assert_eq!(correct_latin("w0rd", &dict), "word");
+}
+
 /// Multi-angle oriented text detection finds regions on rotated content
 #[test]
 fn test_oriented_angle_detection_integration() {

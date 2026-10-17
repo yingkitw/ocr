@@ -36,9 +36,17 @@ pub enum Commands {
         #[arg(short, long, default_value = "text")]
         format: String,
 
-        /// Page segmentation mode (Tesseract PSM): 3=Auto, 4=SingleColumn, 6=SingleBlock, 11=SparseText, 13=SingleLine
+        /// Page segmentation mode (Tesseract --psm): 0-13 or a name
+        /// (osd_only, auto_osd, auto_only, auto, single_column,
+        /// single_block_vert_text, single_block, single_line, single_word,
+        /// circle_word, single_char, sparse_text, sparse_text_osd, raw_line)
         #[arg(long, default_value = "3")]
-        psm: u8,
+        psm: String,
+
+        /// Restrict recognition to these characters only (Tesseract
+        /// tessedit_char_whitelist), e.g. --whitelist 0123456789
+        #[arg(long)]
+        whitelist: Option<String>,
 
         /// Confidence threshold (0.0 to 1.0)
         #[arg(long, default_value = "0.5")]

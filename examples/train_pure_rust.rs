@@ -13,7 +13,7 @@ use ndarray::Array1;
 use ocr::recognition::crnn::{CrnnConfig, Vocabulary};
 use ocr::recognition::model_format;
 use ocr::synthetic::{DistortionConfig, SyntheticSample, TextLineGenerator};
-use ocr::training::crnn_trainer::{CrnnTrainer, FullAdamState};
+use ocr::training::crnn_trainer::{AdamState, CrnnTrainer, FullAdamState};
 use ocr::utils::Result;
 
 const INPUT_HEIGHT: usize = 32;
@@ -29,6 +29,7 @@ fn main() {
 fn run() -> Result<()> {
     let args = Args::parse();
     println!("device: ndarray (CPU)");
+    println!("mode: {}", args.mode);
     let vocab = Vocabulary::from_ascii();
     let num_classes = vocab.size();
     println!("vocab size: {} (incl. blank)", num_classes);
@@ -38,7 +39,8 @@ fn run() -> Result<()> {
     let mut trainer = CrnnTrainer::new(ocr::recognition::crnn::CrnnModel::new(cfg))
         .with_learning_rate(args.learning_rate)
         .with_batch_size(args.batch_size);
-    let mut adam_state = FullAdamState::new_like(&trainer.model);
+    let mut full_adam = FullAdamState::new_like(&trainer.model);
+    let mut fc_adam = AdamState::new_like(&trainer.model);
     println!("parameters: {}", trainer.model.parameter_count());
 
     // Synthetic data
@@ -73,7 +75,11 @@ fn run() -> Result<()> {
             if batch.is_empty() {
                 continue;
             }
-            let loss = trainer.train_batch_full(&batch, &mut adam_state);
+            let loss = if args.mode == "full" {
+                trainer.train_batch_full(&batch, &mut full_adam)
+            } else {
+                trainer.train_batch_ctc(&batch, &mut fc_adam)
+            };
             total_loss += loss;
             n_batches += 1;
             // Greedy decode for accuracy
@@ -206,6 +212,7 @@ struct Args {
     output: String,
     max_text_len: usize,
     distortion: String,
+    mode: String,
 }
 
 impl Args {
@@ -214,10 +221,11 @@ impl Args {
             epochs: 10,
             samples: 1000,
             batch_size: 16,
-            learning_rate: 0.005,
+            learning_rate: 0.001,
             output: "models/crnn-en.bin".to_string(),
             max_text_len: 4,
             distortion: "mild".to_string(),
+            mode: "fc".to_string(),
         };
         let mut iter = std::env::args().skip(1);
         while let Some(arg) = iter.next() {
@@ -231,6 +239,7 @@ impl Args {
                 "--output" | "-o" => a.output = iter.next().unwrap(),
                 "--max-len" => a.max_text_len = iter.next().unwrap().parse().unwrap(),
                 "--distortion" => a.distortion = iter.next().unwrap(),
+                "--mode" => a.mode = iter.next().unwrap(),
                 "--help" | "-h" => {
                     println!("{}", USAGE);
                     std::process::exit(0);
@@ -252,8 +261,9 @@ Options:
   --epochs <N>            training epochs                  [default: 10]
   --samples <N>           synthetic samples per epoch     [default: 1000]
   --batch-size <N>        batch size                      [default: 16]
-  --lr, --learning-rate   Adam learning rate              [default: 0.005]
+  --lr, --learning-rate   Adam learning rate              [default: 0.001]
   -o, --output <PATH>     output model path               [default: models/crnn-en.bin]
   --max-len <N>           max text length                 [default: 4]
   --distortion <LEVEL>    clean|mild|heavy                [default: mild]
+  --mode <MODE>           fc|full (fc=FC-only, full=BPTT)  [default: fc]
 ";

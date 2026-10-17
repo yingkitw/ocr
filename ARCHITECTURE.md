@@ -152,32 +152,37 @@ consumer arrives.
    b. Load language dictionaries
    c. Warm up image preprocessing pipeline
 4. Image loaded via image::open() → converted to OcrImage (Grayscale, 300 DPI)
-5. Preprocessing (if enabled):
-   a. Auto-rotate via projection-variance orientation detection
+5. PSM dispatch (Tesseract `--psm` parity, `process_image_internal`):
+   PSM 0 short-circuits to orientation+script detection; PSM 1/12 detect
+   orientation on the raw input and attach OSD metadata; PSM 5 rotates the
+   page 90° anticlockwise; PSM 9 removes an enclosing ring; PSM 2 returns
+   after layout without recognition (see TESSERACT_PARITY.md §2)
+6. Preprocessing (if enabled):
+   a. Auto-rotate via projection-variance axis detection + vertical-mass polarity (180° guard)
    b. Deskew (projection-variance angle search) + perspective dewarp
    c. Quality gate (optional auto-sharpen / contrast boost from quality metrics)
    d. Super-resolution for tiny/low-DPI text (noise-aware)
    e. Binarization (Sauvola for variable backgrounds)
    f. Noise reduction (median filter)
    g. Border removal
-6. Layout analysis:
+7. Layout analysis:
    a. TextDetector (CCL or CNN) → text regions
    b. Blob grouping → text lines (baseline clustering)
    c. Line grouping → columns (whitespace valleys)
    d. Table detection (grid line scan + span inference)
    e. Form field extraction (checkboxes, key-value pairs)
    f. Reading order resolution
-7. Recognition (per text line):
+8. Recognition (per text line):
    a. Curved-line rectification on region crops (if enabled)
    b. Normalize line height
    c. Script detection → route to appropriate CRNN vocabulary
    d. CRNN: CNN features → BiLSTM → CTC beam decode (+ dict/LM rescoring)
    e. Build WordRecognition → LineRecognition → TextResult
-8. Post-processing:
+9. Post-processing:
    a. Document structure classification (headings, lists, paragraphs)
    b. Dictionary correction (if enabled)
    c. Confidence score aggregation
-9. Output formatting:
+10. Output formatting:
    a. Plain text, JSON, hOCR, TSV, CSV, ALTO XML, PAGE XML, box, Markdown, structured JSON, RAG JSON, searchable PDF (feature `pdf`)
    b. Write to stdout or file
 ```

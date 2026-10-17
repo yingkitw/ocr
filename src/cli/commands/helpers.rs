@@ -45,33 +45,32 @@ pub fn parse_engine(s: &str) -> ocr::core::config::RecognitionEngine {
 pub fn build_config(
     lang: &str,
     preprocess: bool,
-    psm: u8,
+    psm: &str,
     confidence: f32,
     engine: &str,
     dict_correct: bool,
     device: &str,
     osd: bool,
     dpi: u32,
-) -> ocr::core::config::OcrConfig {
+    whitelist: Option<&str>,
+) -> anyhow::Result<ocr::core::config::OcrConfig> {
     use ocr::core::config::{OcrConfig, PageSegMode};
 
-    let psm_mode = match psm {
-        4 => PageSegMode::SingleColumn,
-        6 => PageSegMode::SingleBlock,
-        7 => PageSegMode::SingleLineRaw,
-        8 => PageSegMode::SingleWord,
-        10 => PageSegMode::SingleChar,
-        11 => PageSegMode::SparseText,
-        12 => PageSegMode::SparseTextWithOsd,
-        13 => PageSegMode::SingleLine,
-        _ => PageSegMode::Auto,
-    };
+    // Tesseract-compatible PSM parsing: numeric (0-13) or symbolic names
+    // (`auto`, `sparse_text`, …). Errors carry the valid spellings.
+    let psm_mode = PageSegMode::parse_psm(psm).map_err(|e| anyhow::anyhow!(e))?;
 
     let mut config = OcrConfig::default();
     config.recognition.language = lang.to_string();
     config.recognition.confidence_threshold = confidence;
     config.recognition.engine = parse_engine(engine);
     config.recognition.enable_dictionary_correction = dict_correct;
+    if let Some(chars) = whitelist {
+        let parsed: Vec<char> = chars.chars().collect();
+        if !parsed.is_empty() {
+            config.recognition.character_whitelist = Some(parsed);
+        }
+    }
     config.recognition.parameters.insert("dpi".to_string(), dpi.to_string());
     config.image_processing.enable_preprocessing = preprocess;
     config.image_processing.enable_binarization = preprocess;
@@ -80,9 +79,16 @@ pub fn build_config(
     config.image_processing.enable_deskewing = preprocess;
     config.image_processing.target_dpi = dpi;
     config.layout_analysis.page_seg_mode = psm_mode;
-    config.layout_analysis.enable_orientation_detection = osd || preprocess;
+    // OSD modes always need orientation detection, matching Tesseract where
+    // `--psm 0/1/12` forces OSD regardless of other flags.
+    config.layout_analysis.enable_orientation_detection = osd
+        || preprocess
+        || matches!(
+            psm_mode,
+            PageSegMode::OsdOnly | PageSegMode::AutoOsd | PageSegMode::SparseTextWithOsd
+        );
     config.performance.device = device.to_string();
-    config
+    Ok(config)
 }
 
 pub fn format_result(result: &TextResult, format: &str) -> Result<String> {

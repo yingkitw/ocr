@@ -22,6 +22,7 @@ async fn main() -> Result<()> {
             preprocess,
             format,
             psm,
+            whitelist,
             confidence,
             engine,
             dict_correct,
@@ -35,13 +36,14 @@ async fn main() -> Result<()> {
                 &lang,
                 preprocess,
                 &format,
-                psm,
+                &psm,
                 confidence,
                 &engine,
                 dict_correct,
                 &device,
                 osd,
                 dpi,
+                whitelist,
             )
             .await?;
         }

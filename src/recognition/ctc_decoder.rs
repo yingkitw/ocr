@@ -4,11 +4,21 @@
 //! and optional beam search with dictionary / LM rescoring.
 //! Compatible with Tesseract's CTC approach.
 
-use crate::lang::dictionary::Dictionary;
+use crate::lang::dictionary::{Dictionary, WordPrefixSet};
 use crate::lang::NGramModel;
 use ndarray::Array2;
 
 const BLANK_LABEL: usize = 0;
+
+/// Penalty multiplier applied to non-dictionary emissions during
+/// dictionary-steered beam decode — Tesseract's `kDictRatio`
+/// (`lstmrecognizer.cpp:46`). Certainties are negative log-probs, so
+/// multiplying by this makes non-dict paths worse.
+pub const DICT_RATIO: f32 = 2.25;
+
+/// Per-character certainty offset subtracted before the ratio — Tesseract's
+/// `kCertOffset` (`lstmrecognizer.cpp:48`).
+pub const CERT_OFFSET: f32 = 0.085;
 
 /// A single CTC beam hypothesis after decoding.
 #[derive(Debug, Clone)]
@@ -233,7 +243,7 @@ impl CtcDecoder {
             beam = Self::merge_beams(new_beam, num_classes, self.beam_width);
         }
 
-        let mut hypotheses: Vec<DecodeHypothesis> = beam
+        let hypotheses: Vec<DecodeHypothesis> = beam
             .into_iter()
             .map(|b| {
                 let text: String = b
@@ -263,7 +273,7 @@ impl CtcDecoder {
                 .and_modify(|p| *p = (*p).max(h.acoustic_log_prob))
                 .or_insert(h.acoustic_log_prob);
         }
-        hypotheses = best_by_text
+        let mut hypotheses: Vec<DecodeHypothesis> = best_by_text
             .into_iter()
             .map(|(text, acoustic_log_prob)| DecodeHypothesis {
                 text,
@@ -276,6 +286,187 @@ impl CtcDecoder {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         hypotheses.truncate(self.beam_width);
+        hypotheses
+    }
+
+    /// Beam search with **in-beam dictionary steering** (Tesseract
+    /// `recodebeam.cpp` style — see TESSERACT_PARITY.md).
+    ///
+    /// Unlike [`Self::beam_search_nbest`] — which merges whole-path
+    /// probabilities into prefix aggregates — this decoder scores **single
+    /// paths** (like Tesseract's `RecodeNode` cumulative scores): each frame's
+    /// emission is priced `(certainty − CERT_OFFSET) × factor`, where factor
+    /// is 1.0 for emissions extending the current word along a dictionary
+    /// prefix or completing a word, and [`DICT_RATIO`] for everything else
+    /// (blanks, word boundaries, unseparated repeats, non-dictionary
+    /// characters). Certainties are log-softmax values (all ≤ 0), so the
+    /// ratio always penalizes. Uniform pricing means a dictionary that does
+    /// not match the text (e.g. English dict, CJK page) penalizes every path
+    /// by the same per-frame amount and ranking degrades gracefully to the
+    /// plain decode.
+    pub fn beam_search_nbest_with_dictionary(
+        &self,
+        logits: &Array2<f32>,
+        vocab: &[char],
+        dictionary: &Dictionary,
+    ) -> Vec<DecodeHypothesis> {
+        let (seq_len, num_classes) = logits.dim();
+        if seq_len == 0 {
+            return Vec::new();
+        }
+
+        // Log-softmax certainties per frame (all ≤ 0).
+        let row_lse: Vec<f32> = (0..seq_len)
+            .map(|t| {
+                let max = (0..num_classes)
+                    .map(|c| logits[[t, c]])
+                    .fold(f32::NEG_INFINITY, f32::max);
+                if max.is_finite() {
+                    max + (0..num_classes)
+                        .map(|c| (logits[[t, c]] - max).exp())
+                        .sum::<f32>()
+                        .ln()
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+
+        let prefixes = dictionary.word_prefix_set();
+
+        /// A single scored path through the frame lattice.
+        #[derive(Clone, Debug)]
+        struct DictBeam {
+            labels: Vec<usize>,
+            /// Current in-word character run (since the last boundary).
+            word: Vec<char>,
+            last_label: Option<usize>,
+            /// True when the previous frame was blank (a repeated label after
+            /// a blank emits a new character; without a blank it collapses).
+            last_blank: bool,
+            score: f32,
+        }
+
+        let mut beam = vec![DictBeam {
+            labels: Vec::new(),
+            word: Vec::new(),
+            last_label: None,
+            last_blank: true,
+            score: 0.0,
+        }];
+
+        for t in 0..seq_len {
+            let max_logit = (0..num_classes)
+                .map(|c| logits[[t, c]])
+                .fold(f32::NEG_INFINITY, f32::max);
+            let mut candidates: Vec<(usize, f32)> = Vec::new();
+            for c in 0..num_classes {
+                let lp = logits[[t, c]];
+                if max_logit - lp <= self.prune_threshold {
+                    candidates.push((c, lp));
+                }
+            }
+            if candidates.is_empty() {
+                candidates = (0..num_classes).map(|c| (c, logits[[t, c]])).collect();
+            }
+
+            let mut new_beam: Vec<DictBeam> = Vec::new();
+            for b in &beam {
+                for &(label, raw) in &candidates {
+                    let certainty = raw - row_lse[t];
+                    let is_blank = label == BLANK_LABEL;
+                    let repeat = !is_blank && !b.last_blank && b.last_label == Some(label);
+
+                    let (priced, labels, word, last_label, last_blank) = if is_blank {
+                        (
+                            (certainty - CERT_OFFSET) * DICT_RATIO,
+                            b.labels.clone(),
+                            b.word.clone(),
+                            b.last_label,
+                            true,
+                        )
+                    } else if repeat {
+                        // Unseparated repeat: same character, extra frame.
+                        (
+                            (certainty - CERT_OFFSET) * DICT_RATIO,
+                            b.labels.clone(),
+                            b.word.clone(),
+                            b.last_label,
+                            false,
+                        )
+                    } else {
+                        let ch = vocab.get(label - 1).copied().unwrap_or('\u{FFFD}');
+                        let (on_dict, word) = if ch.is_alphanumeric() {
+                            let mut cand = b.word.clone();
+                            cand.push(ch);
+                            let s: String = cand.iter().collect();
+                            let on = prefixes.is_prefix(&s) || dictionary.contains(&s);
+                            (on, cand)
+                        } else {
+                            (false, Vec::new()) // word boundary
+                        };
+                        let mut labels = b.labels.clone();
+                        labels.push(label);
+                        (
+                            (certainty - CERT_OFFSET) * if on_dict { 1.0 } else { DICT_RATIO },
+                            labels,
+                            word,
+                            Some(label),
+                            false,
+                        )
+                    };
+
+                    new_beam.push(DictBeam {
+                        labels,
+                        word,
+                        last_label,
+                        last_blank,
+                        score: b.score + priced,
+                    });
+                }
+            }
+
+            // Merge identical label paths (keep the best score) and prune.
+            let mut by_labels: std::collections::HashMap<Vec<usize>, DictBeam> =
+                std::collections::HashMap::new();
+            for b in new_beam {
+                match by_labels.entry(b.labels.clone()) {
+                    std::collections::hash_map::Entry::Occupied(mut e) => {
+                        if b.score > e.get().score {
+                            e.insert(b);
+                        }
+                    }
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        e.insert(b);
+                    }
+                }
+            }
+            let mut merged: Vec<DictBeam> = by_labels.into_values().collect();
+            merged.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+            merged.truncate(self.beam_width);
+            beam = merged;
+        }
+
+        let hypotheses: Vec<DecodeHypothesis> = beam
+            .into_iter()
+            .map(|b| {
+                let text: String = b
+                    .labels
+                    .iter()
+                    .filter_map(|&label| {
+                        if label > 0 && label - 1 < vocab.len() {
+                            Some(vocab[label - 1])
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                DecodeHypothesis {
+                    text,
+                    acoustic_log_prob: b.score,
+                }
+            })
+            .collect();
         hypotheses
     }
 
@@ -521,6 +712,121 @@ mod tests {
             rescored, "the",
             "dictionary rescoring should prefer 'the' (acoustic was '{acoustic}')"
         );
+    }
+
+    #[test]
+    fn test_beam_search_with_dictionary_steers_in_beam() {
+        // The in-beam advantage: the dictionary path survives beam pruning.
+        //
+        // Vocab [t, h, e]; acoustic logits favor "teh" at every ambiguous step
+        // (gap 0.4 then 0.3), so with beam_width = 2 the plain beam drops the
+        // "th…" prefix at t=2 and post-hoc rescoring never sees "the".
+        // In-beam steering (Tesseract kDictRatio = 2.25, kCertOffset = 0.085
+        // over log-softmax certainties) keeps the dictionary path alive and
+        // it wins outright.
+        let vocab = vec!['t', 'h', 'e'];
+        let decoder = CtcDecoder::with_beam_width(2);
+        let logits = Array2::from_shape_vec(
+            (4, 4),
+            vec![
+                //      blank   t      h      e
+                -10.0, 8.0, -10.0, -10.0, // t=0: strong 't'
+                -10.0, -10.0, 3.2, 3.6, // t=1: 'e' ahead → "te…" favored
+                -10.0, -10.0, 3.5, 3.2, // t=2: 'h' ahead → "teh" favored
+                8.0, -10.0, -10.0, -10.0, // t=3: blank
+            ],
+        )
+        .unwrap();
+
+        // Plain decode: "teh" wins acoustically.
+        let plain = decoder.beam_search_decode(&logits, &vocab);
+        assert_eq!(plain, "teh", "acoustic-only decode should favor 'teh'");
+
+        // Post-hoc rescoring cannot recover: "the" never survives the
+        // width-2 beam, so the rescorer never sees it.
+        let mut dict = Dictionary::new();
+        dict.load_words(&["the"]);
+        let rescorer = DictLmRescorer::new(Some(&dict), None, 5.0, 0.0);
+        let posthoc = decoder.beam_search_decode_rescored(&logits, &vocab, &rescorer);
+        assert_ne!(
+            posthoc, "the",
+            "precondition: post-hoc rescoring must be unable to recover 'the'"
+        );
+
+        // In-beam steering recovers it.
+        let steered = decoder.beam_search_nbest_with_dictionary(&logits, &vocab, &dict);
+        assert_eq!(
+            steered[0].text, "the",
+            "in-beam dictionary steering should recover 'the'"
+        );
+    }
+
+    #[test]
+    fn test_beam_search_with_dictionary_recovers_word_when_acoustic_ties() {
+        // With near-tied acoustics and a generous beam, steering flips the
+        // ranking toward the dictionary word.
+        let vocab = vec!['t', 'h', 'e'];
+        let decoder = CtcDecoder::with_beam_width(8);
+        let logits = Array2::from_shape_vec(
+            (4, 4),
+            vec![
+                -10.0, 8.0, -10.0, -10.0, -10.0, -10.0, 3.5, 3.4, -10.0, -10.0, 3.4, 3.5, 8.0,
+                -10.0, -10.0, -10.0,
+            ],
+        )
+        .unwrap();
+
+        let mut dict = Dictionary::new();
+        dict.load_words(&["the"]);
+        let steered = decoder.beam_search_nbest_with_dictionary(&logits, &vocab, &dict);
+        assert_eq!(steered[0].text, "the");
+    }
+
+    #[test]
+    fn test_beam_search_with_mismatched_dictionary_preserves_ranking() {
+        // A dictionary that shares no vocabulary with the text must degrade
+        // uniformly (all emissions get the same adjustment), so the top
+        // hypothesis stays the acoustic winner.
+        let vocab = vec!['a', 'b'];
+        let decoder = CtcDecoder::with_beam_width(5);
+        let logits = Array2::from_shape_vec(
+            (3, 3),
+            vec![
+                -10.0, 10.0, -10.0, -10.0, -10.0, 10.0, 10.0, -10.0, -10.0,
+            ],
+        )
+        .unwrap();
+
+        let plain = decoder.beam_search_decode(&logits, &vocab);
+        let mut dict = Dictionary::new();
+        dict.load_words(&["chinese", "日本語"]);
+        let steered = decoder.beam_search_nbest_with_dictionary(&logits, &vocab, &dict);
+        assert_eq!(steered[0].text, plain, "mismatched dict must not change the winner");
+    }
+
+    #[test]
+    fn test_beam_search_with_dictionary_allows_word_boundaries() {
+        // Two dictionary words separated by a space: steering must not
+        // penalize the boundary so heavily that a run-together variant wins.
+        let vocab = vec!['a', 't', ' ']; // classes 1='a', 2='t', 3=' '
+        let decoder = CtcDecoder::with_beam_width(8);
+        let logits = Array2::from_shape_vec(
+            (6, 4),
+            vec![
+                -10.0, -10.0, 8.0, -10.0, // t=0: 't'
+                -10.0, 8.0, -10.0, -10.0, // t=1: 'a'   → "ta"
+                -10.0, -10.0, -10.0, 8.0, // t=2: ' '
+                -10.0, 8.0, -10.0, -10.0, // t=3: 'a'   → "a"
+                -10.0, -10.0, 8.0, -10.0, // t=4: 't'   → "at"
+                8.0, -10.0, -10.0, -10.0, // t=5: blank
+            ],
+        )
+        .unwrap();
+
+        let mut dict = Dictionary::new();
+        dict.load_words(&["at", "ta"]);
+        let steered = decoder.beam_search_nbest_with_dictionary(&logits, &vocab, &dict);
+        assert_eq!(steered[0].text, "ta at");
     }
 
     #[test]

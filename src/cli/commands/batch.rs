@@ -32,14 +32,15 @@ pub async fn handle_batch(
     let config = build_config(
         lang,
         true,
-        3,
+        "3",
         confidence,
         engine,
         dict_correct,
         device,
         false,
         300,
-    );
+        None,
+    )?;
     let ocr = Ocr::with_config(config)?;
     ocr.initialize()
         .await

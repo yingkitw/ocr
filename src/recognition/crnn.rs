@@ -805,6 +805,8 @@ impl CrnnModel {
         for i in 0..logits.nrows() {
             for j in 0..logits.ncols() {
                 logits[[i, j]] += self.fc_bias[j];
+                // Clamp logits to prevent numerical instability in CTC loss
+                logits[[i, j]] = logits[[i, j]].clamp(-10.0, 10.0);
             }
         }
         logits
@@ -927,16 +929,36 @@ impl CrnnModel {
             return Ok(decoder.greedy_decode(logits, &self.vocab.chars));
         }
 
-        if dictionary.is_some() || ngram.is_some() {
-            let rescorer = DictLmRescorer::new(
-                dictionary,
-                ngram,
-                self.config.dict_weight,
-                self.config.lm_weight,
-            );
-            Ok(decoder.beam_search_decode_rescored(logits, &self.vocab.chars, &rescorer))
-        } else {
-            Ok(decoder.beam_search_decode(logits, &self.vocab.chars))
+        match (dictionary, ngram) {
+            (Some(dict), ngram) => {
+                // In-beam dictionary steering (Tesseract recodebeam-style);
+                // the n-gram LM, when present, still applies as an additive
+                // bonus over the steered n-best list.
+                let mut nbest =
+                    decoder.beam_search_nbest_with_dictionary(logits, &self.vocab.chars, dict);
+                if let Some(ng) = ngram {
+                    nbest.sort_by(|a, b| {
+                        let score_a =
+                            a.acoustic_log_prob + self.config.lm_weight * ng.score_text(&a.text) as f32;
+                        let score_b =
+                            b.acoustic_log_prob + self.config.lm_weight * ng.score_text(&b.text) as f32;
+                        score_b
+                            .partial_cmp(&score_a)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                }
+                Ok(nbest.into_iter().next().map(|h| h.text).unwrap_or_default())
+            }
+            (None, Some(_)) => {
+                let rescorer = DictLmRescorer::new(
+                    None,
+                    ngram,
+                    self.config.dict_weight,
+                    self.config.lm_weight,
+                );
+                Ok(decoder.beam_search_decode_rescored(logits, &self.vocab.chars, &rescorer))
+            }
+            (None, None) => Ok(decoder.beam_search_decode(logits, &self.vocab.chars)),
         }
     }
 
