@@ -526,6 +526,33 @@ fn test_layout_text_reassembly_integration() {
     assert!(text.contains("\n\n"), "expected paragraph break: {text:?}");
 }
 
+/// WebOCR-style mergeRatio geometry hint (Latin vs CJK before recognition)
+#[test]
+fn test_script_geometry_merge_ratio_integration() {
+    use ::image::{DynamicImage, Rgb, RgbImage};
+    use ocr::core::image::{ImageFormat, OcrImage};
+    use ocr::lang::{geometry_script_guess, Script};
+
+    let mut img = RgbImage::from_pixel(160, 60, Rgb([255, 255, 255]));
+    for i in 0..3 {
+        for y in 12..48 {
+            for x in (16 + i * 46)..(16 + i * 46 + 36) {
+                img.put_pixel(x, y, Rgb([0, 0, 0]));
+            }
+        }
+    }
+    let page = OcrImage {
+        data: DynamicImage::ImageRgb8(img),
+        format: ImageFormat::Rgb,
+        width: 160,
+        height: 60,
+        dpi: 300,
+        metadata: Default::default(),
+    };
+    let guess = geometry_script_guess(&page);
+    assert_eq!(guess.script, Script::CJK);
+}
+
 /// WebOCR-style Latin confusion correction
 #[test]
 fn test_confusion_correction_integration() {

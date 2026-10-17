@@ -672,6 +672,16 @@ impl OcrEngine {
         Ok(crate::image::upscale_short_crop(&img, 32)?)
     }
 
+    /// Language code used during CRNN beam/dictionary when `--lang auto`.
+    fn recognition_language_hint(&self, image: &OcrImage) -> String {
+        let lang = &self.config.recognition.language;
+        if lang.eq_ignore_ascii_case("auto") {
+            crate::lang::geometry_script_guess(image).language
+        } else {
+            lang.clone()
+        }
+    }
+
     /// Detect background brightness by sampling corner pixels
     fn detect_background_brightness(&self, image: &OcrImage) -> Result<f32> {
 
@@ -752,7 +762,10 @@ impl OcrEngine {
         let recognition = self.recognize_text(&preprocessed, &layout).await?;
         let recognized = self.post_process_result(recognition, &preprocessed).await?;
 
-        let guess = crate::lang::detector::LanguageDetector::detect(&recognized.text);
+        let guess = crate::lang::script_geometry::detect_auto(
+            &preprocessed,
+            &recognized.text,
+        );
         let script_name = format!("{:?}", guess.script);
         let sconf = guess.confidence * 100.0;
 
@@ -878,10 +891,9 @@ impl OcrEngine {
                 })
         });
 
+        let recognition_lang = self.recognition_language_hint(image);
         let dict_handler = if self.config.recognition.enable_dictionary_correction {
-            Some(DictionaryHandler::new_for_language(
-                &self.config.recognition.language,
-            ))
+            Some(DictionaryHandler::new_for_language(&recognition_lang))
         } else {
             None
         };
@@ -993,7 +1005,6 @@ impl OcrEngine {
         image: &OcrImage,
     ) -> Result<TextResult> {
         use crate::lang::dictionary::DictionaryHandler;
-        use crate::lang::LanguageDetector;
 
         let whitelist = &self.config.recognition.character_whitelist;
         let blacklist = &self.config.recognition.character_blacklist;
@@ -1003,13 +1014,15 @@ impl OcrEngine {
         let preserve_layout_text = self.config.recognition.preserve_layout_text;
         let enable_confusion_correction = self.config.recognition.enable_confusion_correction;
 
-        // Resolve `--lang auto` from recognized text (script + dictionary hit-rates).
+        // Resolve `--lang auto`: geometry (mergeRatio) before recognition, text after.
         let mut resolved_lang = self.config.recognition.language.clone();
         if resolved_lang.eq_ignore_ascii_case("auto") {
-            let guess = LanguageDetector::detect(&recognition.text);
+            let guess =
+                crate::lang::script_geometry::detect_auto(image, &recognition.text);
             tracing::debug!(
                 language = %guess.language,
                 confidence = guess.confidence,
+                script = ?guess.script,
                 "auto language detection"
             );
             resolved_lang = guess.language;
