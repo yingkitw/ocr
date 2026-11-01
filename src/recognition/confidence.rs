@@ -68,6 +68,11 @@ pub struct DecodeConfidence {
     pub chars: Vec<CharConfidence>,
     /// Mean of calibrated character confidences (0 if empty)
     pub overall: f32,
+    /// Per-character x-centers in the *logits* column-space
+    /// (0..=seq_len). Empty when the source doesn't expose positions
+    /// (e.g. beam search). Downstream callers scale to image space:
+    /// `x_image = x_logit * image_width / seq_len`.
+    pub xs: Vec<f32>,
 }
 
 impl DecodeConfidence {
@@ -75,6 +80,7 @@ impl DecodeConfidence {
         Self {
             chars: Vec::new(),
             overall: 0.0,
+            xs: Vec::new(),
         }
     }
 
@@ -107,10 +113,14 @@ fn aggregate_word(chars: &[&CharConfidence]) -> (String, f32) {
     (text, mean)
 }
 
-/// Extract per-character confidences along the CTC greedy best-path.
+/// Extract per-character confidences along the CTC greedy best-path,
+/// plus per-character x-centers in the *logits* column-space
+/// (0..=seq_len, which downstream callers scale to the original image
+/// width by `x_image = x_logit * image_width / seq_len`).
 ///
 /// For each timestep the argmax label is taken; when a non-blank label is
-/// emitted (and differs from the previous), its softmax probability is recorded.
+/// emitted (and differs from the previous), its softmax probability is
+/// recorded and the timestep's center is pushed to `xs`.
 pub fn greedy_path_confidence(
     logits: &Array2<f32>,
     vocab: &[char],
@@ -122,6 +132,7 @@ pub fn greedy_path_confidence(
     }
 
     let mut chars = Vec::new();
+    let mut xs = Vec::new();
     let mut prev_label = 0usize;
 
     for t in 0..seq_len {
@@ -145,6 +156,7 @@ pub fn greedy_path_confidence(
                 confidence: calibrator.calibrate_prob(raw),
                 raw_prob: raw,
             });
+            xs.push(t as f32 + 0.5);
         }
         prev_label = best_label;
     }
@@ -155,7 +167,7 @@ pub fn greedy_path_confidence(
         chars.iter().map(|c| c.confidence).sum::<f32>() / chars.len() as f32
     };
 
-    DecodeConfidence { chars, overall }
+    DecodeConfidence { chars, overall, xs }
 }
 
 /// Estimate confidence for an already-decoded hypothesis by averaging the
@@ -227,7 +239,11 @@ pub fn hypothesis_confidence(
     };
 
     let overall = chars.iter().map(|c| c.confidence).sum::<f32>() / chars.len() as f32;
-    DecodeConfidence { chars, overall }
+    DecodeConfidence {
+        chars,
+        overall,
+        xs: Vec::new(),
+    }
 }
 
 #[cfg(test)]
@@ -312,6 +328,7 @@ mod tests {
                 },
             ],
             overall: 0.75,
+            xs: Vec::new(),
         };
         let words = conf.word_confidences();
         assert_eq!(words.len(), 2);

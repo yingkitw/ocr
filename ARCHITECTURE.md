@@ -57,6 +57,24 @@ Shared data structures and the central engine:
 | `recognition.rs` | `RecognitionResult`, `CharacterRecognition`, `WordRecognition`, `LineRecognition` |
 | `text.rs` | `TextResult` — final unified output with confidence, bounding boxes, lines, words |
 
+### WebOCR Template Engine (`src/webocr/`)
+A self-contained Rust port of the sibling `../webocr` template-matching engine. Mirrors WebOCR's module layout 1:1 so the two codebases stay cross-referenceable. Picked via `--engine template` (alongside the CRNN path). No ML model — templates are built at first recognition from platform fonts via rusttype.
+
+| Module | Purpose |
+|--------|---------|
+| `types.rs` | `GrayImage`, `BinaryImage`, `Comp`, `LineData`, `CharBox`, `WordSpan`, `LineResult`, `TemplateOcrResult`, `Timing` |
+| `binarize.rs` | ITU-R 601 luma, Otsu threshold, polarity detection (≥55 % dark → invert), halo bias for light-on-dark |
+| `components.rs` | 8-connected components via iterative flood fill, `median`, `union_box` |
+| `segment.rs` | `filter_noise`, `split_touching` (valley + arch guard), `merge_stacked` (pass 1 + 2), `group_into_lines`, `cluster_components` (CJK width cap 1.25·medH), `split_row_segments`, `detect_blocks` (union-find), `extract_lines`, `detect_space_threshold` (gap-cluster word spacing) |
+| `normalize.rs` | `SCALE_REF=20`, `MAX_UPSCALE=2.2`, `FRAME=30`, `baseline_row_for`, `place_glyph` (area-averaged resample), `blur3` (separable 1-2-1) |
+| `classify.rs` | `PreparedTemplate`, `l2`, `pool_coarse`, `shortlist` (with shift recall), `match_glyph` + `match_one_shift` (cosine + ASPECT_WEIGHT=0.1) |
+| `templates.rs` | `TemplateRenderer` trait, `build_templates` (Latin per-char fan-out over faces × sizes), `make_template` (equal-footing normalization) |
+| `font_renderer.rs` | `RustTypeRenderer` — loads platform font files (sans/serif/monospace/wide-sans, regular+bold) for the template library |
+| `engine.rs` | `run_ocr` — orchestrates binarize → segment → recognize (rescue split, gap-cluster word spacing) → layout assembly |
+| `mod.rs` | `TemplateOcr` facade (`new`/`with_renderer`/`recognize`/`template_count`) |
+
+The WebOCR engine is **pure** (no I/O, no DOM, no ML) — same purity boundary as WebOCR's `src/ocr/`. The `TemplateRenderer` trait is the extension point for any font source (system fonts, custom training fonts, synthetic pixel fonts in tests).
+
 ### Image Pipeline (`src/image/`)
 
 All preprocessing is deterministic and differentiable-friendly:
@@ -86,11 +104,12 @@ Inspired by Tesseract's layout analyzer but written in pure Rust:
 
 ### Recognition (`src/recognition/`)
 
-Since v0.2 the rule-based recognizers (`PatternModel`, `BasicOcrEngine`, `LstmModel` as a standalone engine) have been deleted; the CRNN is the only recognition engine:
+The crate ships **two recognition engines** selectable via `--engine {pattern,lstm,template}`. The CRNN is the ML default; the WebOCR template engine is a no-ML alternative for headless / Latin-only use cases.
 
 | Engine | Status | Architecture | Notes |
 |--------|--------|-------------|-------|
 | `CrnnModel` | **Working** | 5-layer CNN + 2-layer BiLSTM + CTC beam decode | Pure Rust ndarray. Model size < 5MB. Beam search + dict/LM rescoring + calibrated confidence. Selectable via `--engine lstm`; the legacy `--engine pattern` value is accepted and silently mapped to LSTM (`src/cli/commands/helpers.rs`). |
+| `webocr::TemplateOcr` | **Working** | Otsu + polarity + halo bias → 8-CC → valley split + stacked merge + CJK cluster + gap-cluster word spacing → own-height normalization → cosine + aspect + relH penalties + shift search | Self-contained Rust port of the sibling `../webocr` engine (see `src/webocr/`). No model file — templates built at first recognition from platform fonts via rusttype. Latin charset. Selectable via `--engine template`. WebOCR-measured accuracy: sans 100 %, monospace 100 %, serif ≈97.8 %, dark/inverted 100 %. |
 | `ScriptModelRegistry` | **Working** | HashMap of per-script CRNN models | Routes to Latin/CJK/Arabic/Cyrillic/etc. vocabularies. |
 | `ModelManager` | **Working** | Runtime model switching (`engine.rs`) | Loads/swaps CRNN models by config. |
 
@@ -104,9 +123,10 @@ Supporting modules:
 - `font_attributes.rs` — `FontAttributeDetector`: bold (stroke thickness), italic (slant angle), monospace (width CV)
 
 **Current state:**
-1. CRNN (CNN feature extractor + BiLSTM + CTC decoder) implemented, wired, and the sole engine
+1. **Two engines** selectable via `--engine {pattern,lstm,template}`. CRNN is the ML default; WebOCR template engine is the no-ML alternative.
 2. Training: pure-Rust CTC loss + full BPTT in `CrnnTrainer`; bundled weights are not yet fully trained (see `TODO.md`)
 3. ONNX weight *import* is implemented behind the `onnx` feature (`OnnxLoader`); an ONNX *inference* backend remains in the backlog
+4. WebOCR template engine: 31 unit tests + 2 round-trip integration tests; CJK union charset is future work
 
 ### Language Support (`src/lang/`)
 
@@ -194,7 +214,7 @@ consumer arrives.
 | Pure Rust, no Tesseract dep | Learn from scratch, full control, easier deployment |
 | ndarray instead of burn/candle | Burn/candle are immature; ndarray gives full control for educational purposes |
 | Manual LSTM/CNN implementations | Pure Rust control; slower than BLAS but no C dependencies |
-| Pattern matching as default (configurable) | Obsolete in v0.2: the CRNN is the only engine; the legacy `--engine pattern` flag is accepted and mapped to LSTM |
+| Pattern matching as default (configurable) | Obsolete in v0.2: the CRNN is the only engine; the legacy `--engine pattern` flag is accepted and mapped to LSTM. The WebOCR template engine (`src/webocr/`) was added in 2026-10-18 as a no-ML alternative; select with `--engine template`. |
 | Synthetic data first | Removes dependency on collecting labeled real-world data before training |
 | Two-stage pipeline (detect + recognize) | Proven architecture (Tesseract, EasyOCR, PaddleOCR), easier to debug and optimize per-stage |
 | Per-script CRNN models | Vocab size varies wildly (95 ASCII vs 3000+ CJK); separate models keep each lightweight |

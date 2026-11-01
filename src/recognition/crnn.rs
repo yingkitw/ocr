@@ -819,6 +819,14 @@ pub struct CrnnRecognition {
     pub text: String,
     pub confidence: f32,
     pub char_confidences: Vec<crate::recognition::confidence::CharConfidence>,
+    /// Per-character x-center in the input image's coordinate space
+    /// (0..=image_width). Populated by `recognize_detailed` for the
+    /// greedy path so the post-processor can apply spatial word-gap
+    /// clustering (WebOCR `detectSpaceThreshold`). Empty for beam
+    /// search (no fixed per-timestep alignment). Image x in
+    /// `(0..input_width)`; absolute image x can be reconstructed by
+    /// adding the region-crop left offset.
+    pub char_x_centers: Vec<f32>,
 }
 
 impl CrnnRecognition {
@@ -827,6 +835,7 @@ impl CrnnRecognition {
         crate::recognition::confidence::DecodeConfidence {
             chars: self.char_confidences.clone(),
             overall: self.confidence,
+            xs: self.char_x_centers.clone(),
         }
         .word_confidences()
     }
@@ -867,6 +876,7 @@ impl CrnnModel {
                 text: String::new(),
                 confidence: 0.0,
                 char_confidences: Vec::new(),
+                char_x_centers: Vec::new(),
             });
         }
 
@@ -908,10 +918,24 @@ impl CrnnModel {
             crate::recognition::confidence::hypothesis_confidence(&logits, &text, &calibrator)
         };
 
+        // Map greedy-path xs from logit-column space to original image
+        // pixel space. seq_len = logits.nrows(); w = the input width (the
+        // resize only affects height, not width).
+        let (seq_len, _num_classes) = logits.dim();
+        let char_x_centers: Vec<f32> = if seq_len > 0 && w > 0 {
+            conf.xs
+                .iter()
+                .map(|&x_logit| x_logit * (w as f32 / seq_len as f32))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         Ok(CrnnRecognition {
             text,
             confidence: conf.overall,
             char_confidences: conf.chars,
+            char_x_centers,
         })
     }
 

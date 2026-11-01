@@ -28,6 +28,13 @@ pub struct OcrEngine {
     compute_backend: Option<Box<dyn crate::compute::ComputeBackend>>,
     /// Lazily-loaded bundled CRNN model (loaded once on first recognition)
     model: std::sync::OnceLock<crate::recognition::crnn::CrnnModel>,
+    /// Lazily-built WebOCR Latin template library (`None` = build attempted
+    /// and failed — logged once, then every template request errors).
+    template: std::sync::OnceLock<Option<crate::webocr::TemplateOcr>>,
+    /// Lazily-built WebOCR CJK union library. Selected when the configured
+    /// language is a CJK script (zh/ja/ko/cjk) or `auto` with CJK
+    /// geometry hint; the same Latin library stays available.
+    template_cjk: std::sync::OnceLock<Option<crate::webocr::TemplateOcr>>,
 }
 
 /// Engine state
@@ -193,6 +200,8 @@ impl OcrEngine {
             },
             compute_backend,
             model: std::sync::OnceLock::new(),
+            template: std::sync::OnceLock::new(),
+            template_cjk: std::sync::OnceLock::new(),
         };
 
         Ok(engine)
@@ -862,13 +871,192 @@ impl OcrEngine {
         }
     }
 
-    /// Recognize text using the bundled CRNN model.
+    /// Recognize text using the configured engine (CRNN or template match).
     async fn recognize_text(
         &self,
         image: &OcrImage,
         layout: &LayoutResult,
     ) -> Result<RecognitionResult> {
-        self.recognize_with_crnn(image, layout).await
+        match self.config.recognition.engine {
+            crate::core::config::RecognitionEngine::Template => {
+                self.recognize_with_template(image).await
+            }
+            crate::core::config::RecognitionEngine::LSTM => {
+                self.recognize_with_crnn(image, layout).await
+            }
+        }
+    }
+
+    /// Recognize text with the WebOCR template-matching engine.
+    ///
+    /// Unlike the CRNN path, this runs on the whole (preprocessed) page:
+    /// the template engine performs its own segmentation and block
+    /// detection, so per-region cropping would only destroy its reading
+    /// order. Timing is recorded in the recognition metadata.
+    async fn recognize_with_template(&self, image: &OcrImage) -> Result<RecognitionResult> {
+        let started = std::time::Instant::now();
+        let gray = image.data.to_luma8();
+        let (w, h) = (gray.width() as usize, gray.height() as usize);
+        let gray_data = gray.into_raw();
+        // Pick the library that matches the configured language. CJK
+        // codes (`zh`, `ja`, `ko`, `cjk`) use the union library; `auto`
+        // uses image geometry to decide (webocr `resolveScript`); every
+        // other value uses Latin. The two libraries are independent
+        // `OnceLock`s so each builds lazily on first use.
+        let lang = self.config.recognition.language.to_ascii_lowercase();
+        let use_cjk = match lang.as_str() {
+            "zh" | "ja" | "ko" | "cjk" => true,
+            "auto" => {
+                let script = crate::webocr::resolve_script(&crate::webocr::GrayImage {
+                    width: w,
+                    height: h,
+                    data: gray_data.clone(),
+                });
+                tracing::debug!(
+                    ?script,
+                    "auto-detected script from image geometry"
+                );
+                script == crate::webocr::ScriptId::Cjk
+            }
+            _ => false,
+        };
+        let ocr_cell = if use_cjk {
+            &self.template_cjk
+        } else {
+            &self.template
+        };
+        let library_label = if use_cjk { "CJK" } else { "Latin" };
+        let ocr = ocr_cell
+            .get_or_init(|| {
+                let result = if use_cjk {
+                    crate::webocr::TemplateOcr::with_system_cjk()
+                } else {
+                    crate::webocr::TemplateOcr::new()
+                };
+                match result {
+                    Ok(t) => {
+                        tracing::info!(
+                            library = library_label,
+                            templates = t.template_count(),
+                            "WebOCR template library built"
+                        );
+                        Some(t)
+                    }
+                    Err(e) => {
+                        tracing::warn!("{e}");
+                        None
+                    }
+                }
+            })
+            .as_ref()
+            .ok_or_else(|| {
+                crate::utils::OcrError::ModelLoad(format!(
+                    "template engine unavailable: {library_label} library build failed"
+                ))
+            })?;
+
+        let result = ocr.recognize(&crate::webocr::GrayImage {
+            width: w,
+            height: h,
+            data: gray_data,
+        });
+
+        let mut full_text = result.text.clone();
+        if !full_text.is_empty() {
+            // Mirror the CRNN path's trimming of the per-region join; a
+            // single page is one block here, so this only strips edges.
+            full_text = full_text.trim_end().to_string();
+        }
+
+        // Map the engine's lines/words/chars into the crate's structures.
+        let mut all_characters = Vec::new();
+        let mut all_words = Vec::new();
+        let mut all_lines = Vec::new();
+        for line in &result.lines {
+            let mut line_words = Vec::new();
+            for word in &line.words {
+                let mut wr = crate::core::recognition::WordRecognition::with_bounding_box(
+                    word.text.clone(),
+                    word.score,
+                    crate::core::text::BoundingBox::new(
+                        word.chars.first().map(|c| c.x0).unwrap_or(0) as u32,
+                        word.chars.iter().map(|c| c.y0).min().unwrap_or(0) as u32,
+                        word.chars.iter().map(|c| c.x1).max().unwrap_or(0) as u32,
+                        word.chars.iter().map(|c| c.y1).max().unwrap_or(0) as u32,
+                    ),
+                );
+                for ch in &word.chars {
+                    let mut cr = crate::core::recognition::CharacterRecognition::with_bounding_box(
+                        ch.char,
+                        ch.score,
+                        crate::core::text::BoundingBox::new(ch.x0 as u32, ch.y0 as u32, ch.x1 as u32, ch.y1 as u32),
+                    );
+                    // Template scores below the low-confidence bar are
+                    // emitted as '?' — mark them so post-processing can
+                    // filter by confidence consistently.
+                    if ch.score < 0.5 {
+                        cr.confidence = ch.score;
+                    }
+                    wr.characters.push(cr.clone());
+                    all_characters.push(cr);
+                }
+                all_words.push(wr.clone());
+                line_words.push(wr);
+            }
+            let mut lr = crate::core::recognition::LineRecognition::with_bounding_box(
+                line.text.clone(),
+                if line.chars.is_empty() {
+                    0.0
+                } else {
+                    line.chars.iter().map(|c| c.score).sum::<f32>() / line.chars.len() as f32
+                },
+                crate::core::text::BoundingBox::new(
+                    line.x0 as u32,
+                    line.y0 as u32,
+                    line.x1 as u32,
+                    line.y1 as u32,
+                ),
+            );
+            lr.words = line_words;
+            all_lines.push(lr);
+        }
+
+        let elapsed = started.elapsed().as_millis() as u64;
+        let mut metadata = crate::core::recognition::RecognitionMetadata::default();
+        metadata.engine = crate::core::recognition::RecognitionEngine::Template;
+        metadata.processing_time_ms = elapsed;
+        metadata.additional.insert(
+            "timing_binarize_ms".to_string(),
+            format!("{:.1}", result.timing.binarize_ms),
+        );
+        metadata.additional.insert(
+            "timing_segment_ms".to_string(),
+            format!("{:.1}", result.timing.segment_ms),
+        );
+        metadata.additional.insert(
+            "timing_recognize_ms".to_string(),
+            format!("{:.1}", result.timing.recognize_ms),
+        );
+        metadata
+            .additional
+            .insert("templates".to_string(), ocr.template_count().to_string());
+
+        Ok(RecognitionResult {
+            text: full_text,
+            confidence: result.avg_score,
+            characters: all_characters.clone(),
+            words: all_words.clone(),
+            lines: all_lines.clone(),
+            metadata,
+            model_type: Some(crate::core::recognition::ModelType::Custom(
+                "template".to_string(),
+            )),
+            processing_time_ms: Some(elapsed),
+            language: Some(self.config.recognition.language.clone()),
+            character_results: all_characters,
+            word_results: all_words,
+            line_results: all_lines,
+        })
     }
 
     async fn recognize_with_crnn(
@@ -955,6 +1143,7 @@ impl OcrEngine {
                     text: String::new(),
                     confidence: 0.0,
                     char_confidences: Vec::new(),
+                    char_x_centers: Vec::new(),
                 });
             if !detailed.text.trim().is_empty() {
                 if !full_text.is_empty() {
@@ -968,7 +1157,27 @@ impl OcrEngine {
                     crate::core::recognition::CharacterRecognition::new(ch.character, ch.confidence),
                 );
             }
-            for (word, wconf) in detailed.word_confidences() {
+            // Word segmentation: prefer spatial gap-clustering (WebOCR
+            // `detectSpaceThreshold`) when the CRNN emitted per-char x
+            // positions; fall back to the alphanumeric split otherwise.
+            // The CRNN's flat list of words keeps `all_words` as a
+            // single flat stream — per-region grouping happens in
+            // `post_process_result`.
+            let words: Vec<(String, f32)> = if !detailed.char_x_centers.is_empty()
+                && detailed.char_x_centers.len() == detailed.char_confidences.len()
+            {
+                crate::webocr::split_words_by_gap_cluster(
+                    &detailed
+                        .char_confidences
+                        .iter()
+                        .map(|c| (c.character, c.confidence))
+                        .collect::<Vec<_>>(),
+                    &detailed.char_x_centers,
+                )
+            } else {
+                detailed.word_confidences()
+            };
+            for (word, wconf) in words {
                 all_words.push(crate::core::recognition::WordRecognition::new(word, wconf));
             }
 

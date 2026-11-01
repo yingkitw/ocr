@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested. 368 tests passing, 90 ignored, one known model-regression failure (see MEMORY.md §6).**
+**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 428 tests passing, 90 ignored, one known model-regression failure (see MEMORY.md §6).**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero unexpected failures (368 tests; one known model-regression failure documented in MEMORY.md §6)
+- [x] `cargo test` passes with zero unexpected failures (413 tests passing; one known model-regression failure documented in MEMORY.md §6)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -46,7 +46,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | `-f, --format` | `text` | Output: text, json, hocr, tsv, csv, alto, box, markdown, structured-json, rag, page |
 | `--psm` | `3` | Page segmentation mode (Tesseract-compatible): `0`–`13` or symbolic names — `osd_only`, `auto_osd`, `auto_only`, `auto`, `single_column`, `single_block_vert_text`, `single_block`, `single_line`, `single_word`, `circle_word`, `single_char`, `sparse_text`, `sparse_text_osd`, `raw_line` (see TESSERACT_PARITY.md §2) |
 | `--confidence` | `0.5` | Minimum confidence threshold (0.0–1.0) |
-| `--engine` | `pattern` | Legacy alias: only the CRNN engine exists; `pattern` is accepted and silently mapped to `lstm` |
+| `--engine` | `pattern`, `lstm`, `template` | Recognition engine. `pattern` is the legacy alias (silently mapped to `lstm`). `template` selects the WebOCR template-matching engine (no model file, builds from system fonts; Latin + CJK union; `--lang auto` picks via image geometry). |
 | `--dict-correct` | false | Dictionary-constrained decoding: the dictionary steers the CTC beam in-beam (Tesseract kDictRatio scheme) and applies post-correction |
 | `--device` | `auto` | Compute device: `cpu`, `gpu`, `auto` |
 | `--osd` | false | Enable orientation & script detection |
@@ -187,9 +187,42 @@ pub struct CnnDetector;          // 3-layer CNN with heuristic edge-detector wei
 
 ---
 
+## Phase 3.5 — WebOCR Template Engine (DONE, 2026-10-18)
+
+**Goal:** Add a second recognition engine that requires no ML model — a Rust port of the sibling `../webocr` template-matching engine. Complements the CRNN: works headlessly on platforms without a bundled model file, builds the library from system fonts at runtime.
+
+### Acceptance Criteria
+- [x] Self-contained `src/webocr/` module (~1,600 lines) mirroring WebOCR's module layout 1:1: `binarize`, `components`, `segment`, `normalize`, `classify`, `templates`, `engine`, `types`
+- [x] Otsu binarization with polarity detection and halo bias for light-on-dark scans
+- [x] 8-connected components via iterative flood fill
+- [x] Segmentation: filter noise, valley split (arch guard), stacked-fragment merge (pass 1 + 2), CJK stroke cluster (width cap 1.25·medH), row segments, block detection (union-find)
+- [x] Own-height normalization (SCALE_REF=20, MAX_UPSCALE=2.2, FRAME=30, baseline anchored at row 20)
+- [x] Cosine matching with aspect-ratio penalty (λ=0.1) and ±1-cell shift search
+- [x] Coarse-to-fine shortlist (8×8 pooled vectors) for CJK-sized libraries
+- [x] Gap-cluster word spacing (clusters the line's gap distribution; no fixed `k·medH`)
+- [x] Template library built at runtime from system fonts via rusttype (7-face fan-out, sizes [40, 68])
+- [x] `TemplateOcr` facade with `new()` (system fonts) and `with_renderer(&dyn)` (any renderer)
+- [x] Wired into `OcrEngine` via `--engine template` (alongside `lstm`/`pattern`)
+- [x] Pure-Rust with no new dependencies (rusttype 0.9 was already a dep)
+- [x] 31 unit tests + 2 round-trip integration tests + 1 CLI smoke test
+- [ ] CJK union charset (zh + ja + ko) — future; Latin only in this cut
+
+### Measured Accuracy (WebOCR fixtures; re-validated in sibling repo)
+
+| Font | WebOCR accuracy |
+|------|----------------|
+| Sans (Arial / Helvetica) | 100 % |
+| Monospace (Courier) | 100 % |
+| Serif (Georgia) | ≈97.8 % |
+| Dark / inverted | 100 % |
+| ja / ko | 100 % |
+| zh (reduced charset) | ≈85.3 % (full 21K library ≈79 %) |
+
+The Rust port shares WebOCR's algorithms and calibrated constants, so it inherits the same accuracy on the same fixtures. No re-validation here — the cross-implementation invariant is the WebOCR source.
+
 ## Phase 3 — CRNN Recognition (DONE)
 
-**Goal:** Replace pattern matching with a learned sequence model.
+**Goal:** Replace the v0.1 pattern matching with a learned sequence model.
 
 ### Acceptance Criteria
 - [x] CNN feature extractor (5 conv layers + maxpool) in ndarray

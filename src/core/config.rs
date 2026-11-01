@@ -69,8 +69,12 @@ impl Default for RecognitionConfig {
 /// Recognition engine enumeration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecognitionEngine {
-    /// LSTM-based recognition (the only engine; rule-based fallback has been removed)
+    /// LSTM-based recognition (CRNN + CTC; the default engine)
     LSTM,
+    /// Template matching against system-font-rendered glyphs (WebOCR
+    /// port). No model file: the library builds from platform fonts at
+    /// engine start; Latin charset.
+    Template,
 }
 
 /// Image processing configuration

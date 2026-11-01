@@ -35,11 +35,15 @@ pub fn apply_dictionary_correction(result: &mut TextResult, lang: &str) {
     }
 }
 
-pub fn parse_engine(s: &str) -> ocr::core::config::RecognitionEngine {
-    // Only the CRNN engine exists; the legacy `--engine pattern` flag is
-    // accepted and silently mapped to LSTM for back-compat.
-    let _ = s;
-    ocr::core::config::RecognitionEngine::LSTM
+pub fn parse_engine(s: &str) -> anyhow::Result<ocr::core::config::RecognitionEngine> {
+    // `pattern` is the legacy flag, silently mapped to LSTM for back-compat.
+    match s.to_ascii_lowercase().as_str() {
+        "pattern" | "lstm" => Ok(ocr::core::config::RecognitionEngine::LSTM),
+        "template" => Ok(ocr::core::config::RecognitionEngine::Template),
+        other => Err(anyhow::anyhow!(
+            "unknown engine '{other}' (valid: pattern, lstm, template)"
+        )),
+    }
 }
 
 pub fn build_config(
@@ -63,7 +67,7 @@ pub fn build_config(
     let mut config = OcrConfig::default();
     config.recognition.language = lang.to_string();
     config.recognition.confidence_threshold = confidence;
-    config.recognition.engine = parse_engine(engine);
+    config.recognition.engine = parse_engine(engine)?;
     config.recognition.enable_dictionary_correction = dict_correct;
     if let Some(chars) = whitelist {
         let parsed: Vec<char> = chars.chars().collect();

@@ -50,6 +50,8 @@ pub enum RecognitionEngine {
     PatternMatching,
     /// Hybrid approach
     Hybrid,
+    /// Template matching against font-rendered glyphs (WebOCR port)
+    Template,
 }
 
 /// Recognition configuration

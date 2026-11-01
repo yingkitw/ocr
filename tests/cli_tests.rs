@@ -96,6 +96,52 @@ fn test_cli_extract_with_lstm_engine() {
 }
 
 #[test]
+fn test_cli_extract_with_template_engine() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args([
+        "extract",
+        file.path().to_str().unwrap(),
+        "--engine",
+        "template",
+    ]);
+    let output = cmd.output().unwrap();
+    // Template engine requires system fonts; success is environment-
+    // dependent. On bare containers it may error with a clear "no system
+    // fonts" message. We only check that the CLI dispatched through to
+    // the template path (no parse error from the engine flag).
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("unknown engine"),
+        "engine flag should be accepted, got stderr: {stderr}"
+    );
+}
+
+#[test]
+fn test_cli_extract_with_template_engine_and_auto_lang() {
+    // --engine template + --lang auto exercises the geometry-driven
+    // script detection added in 2026-10-18 (webocr parity pass). We
+    // just need the CLI to accept the flags and dispatch; success is
+    // font-dependent.
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args([
+        "extract",
+        file.path().to_str().unwrap(),
+        "--engine",
+        "template",
+        "--lang",
+        "auto",
+    ]);
+    let output = cmd.output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("unknown engine") && !stderr.contains("invalid language"),
+        "engine + auto-lang flags should be accepted, got stderr: {stderr}"
+    );
+}
+
+#[test]
 fn test_cli_extract_with_dict_correct() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();

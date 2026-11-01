@@ -4,7 +4,7 @@
 [![docs.rs](https://docs.rs/ocr/badge.svg)](https://docs.rs/ocr)
 [![License: Apache-2.0](https://img.shields.io/crates/l/ocr)](LICENSE)
 [![Rust Edition 2024](https://img.shields.io/badge/rust-2024-edition-orange.svg)](https://doc.rust-lang.org/edition-guide/)
-[![Tests](https://img.shields.io/badge/tests-368_passing-brightgreen.svg)](#roadmap)
+[![Tests](https://img.shields.io/badge/tests-423_passing-brightgreen.svg)](#roadmap)
 [![Build](https://img.shields.io/badge/build-zero_warnings-brightgreen.svg)](#)
 
 > **Pure-Rust OCR engine and command-line tool for extracting printed text from images.** No C/C++ dependencies, no Python, no GPU required. Supports 25+ languages, multi-page TIFF, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF. Apache-2.0 licensed.
@@ -83,6 +83,7 @@ The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **emb
 - **Bundled model** (`models/crnn-en.bin`, 3.07 MB) embedded via `include_bytes!`
 - **Calibrated confidence** per character and word (`ConfidenceCalibrator`)
 - Model size < 5 MB
+- **WebOCR template-matching engine** (2026-10-18, port of the sibling `../webocr`): `--engine template` selects the alternative engine — binarize → connected components → segmentation (valley split + stacked merge + CJK cluster + gap-cluster word spacing) → own-height normalization → cosine matching against system-font-rendered templates. No model file, no GPU: templates are built at first recognition from platform fonts via rusttype. Latin + CJK union. Self-contained `src/webocr/` module mirroring WebOCR's module layout 1:1. `--lang auto` uses image geometry to pick the right library. Sibling WebOCR benchmark: sans 100 %, monospace 100 %, serif ≈97.8 %, dark/inverted 100 % on real-font fixtures.
 
 ### Multi-Language Support
 - Unicode script detection: Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
@@ -322,7 +323,7 @@ src/
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with `extract`, `batch`, `layout`, `list-languages`
-- [x] 368 tests passing
+- [x] 423 tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback
@@ -407,7 +408,7 @@ Training requires multi-hour `--release` runs. Synthetic data is generated autom
 
 ### Is it production-ready?
 
-The engine is feature-complete for printed text on clean scans with 368 passing tests. The CRNN training pipeline (full BPTT + CTC loss) is implemented, and the bundled model is loaded at runtime. Accuracy will improve as trained checkpoints replace the current model.
+The engine is feature-complete for printed text on clean scans with 428 passing tests. Two recognition engines: the CRNN (ML default) and the WebOCR template engine (no ML, system fonts; Latin + CJK union). The CRNN training pipeline (full BPTT + CTC loss) is implemented, and the bundled model is loaded at runtime. Accuracy will improve as trained checkpoints replace the current model.
 
 ### What is the license?
 

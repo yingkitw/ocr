@@ -14,6 +14,7 @@ pub mod server;
 pub mod synthetic;
 pub mod training;
 pub mod utils;
+pub mod webocr;
 
 pub use api::*;
 pub use utils::{OcrError, Result};
