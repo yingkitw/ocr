@@ -124,8 +124,6 @@ const MERGE_MAX_WIDTH_RATIO: f32 = 1.8;
 struct MergeUnit {
     box_: Comp,
     match_: Match,
-    /// How many source glyphs this unit covers.
-    span: usize,
 }
 
 /// One glyph's match result, with the spaces that precede it on the line.
@@ -206,7 +204,35 @@ fn cap_ratio(templates: &[PreparedTemplate]) -> f32 {
 /// falls back to the line's own case signal — a line that shows case
 /// variation at all is mostly lowercase, because that is what running text
 /// is.
-fn resolve_case(decisions: &mut [Decision], mixed_line: bool) {
+/// How far behind the winner an opposite-case sibling may trail and still
+/// be vetoed back into its case, relative to the winning score.
+///
+/// The band has to cover the real misreads — a Helvetica "s" at x-height
+/// loses to the "S" template by up to ~7 % when the line's em estimate is
+/// honest (the own-height normalization erases the size signal, and the
+/// `top_rel` penalty only adds 0.15·|ln(0.5/0.65)| ≈ 0.04) — while staying
+/// under the margin a glyph the shape really settled carries. The other
+/// two gates (ink-top geometry and the word's case vote) carry the
+/// precision, so this bound is deliberately loose.
+const CASE_VETO_MARGIN: f32 = 0.15;
+
+/// Minimum ink-top separation (em) between the two readings of a case pair
+/// for the veto to apply.
+///
+/// The veto needs the glyph's own ink top to be *evidence* — it can only be
+/// that when the two templates actually differ in height. "t"/"T", "j"/"J"
+/// and "l"/"I" all sit at the same ink top (≈0.7 em), so a veto there would
+/// have no geometric footing and would demote legitimate capitals ("The" →
+/// "the"). The separated pairs — s/S, c/C, o/O, v/V, w/W, x/X, z/Z, u/U —
+/// differ by ~0.15 em or more.
+const CASE_VETO_TOP_SEP: f32 = 0.10;
+
+fn resolve_case(
+    decisions: &mut [Decision],
+    mixed_line: bool,
+    baseline: f32,
+    line_em: f32,
+) {
     // The glyphs whose case readings are the SAME glyph. Two conditions:
     //
     // - The two readings must be within CASE_TIE_EPS of each other in score —
@@ -248,9 +274,6 @@ fn resolve_case(decisions: &mut [Decision], mixed_line: bool) {
         ambiguous[i] = true;
         readings[i] = Some((lower, upper));
     }
-    if !ambiguous.iter().any(|a| *a) {
-        return;
-    }
 
     // The words: runs of glyphs with no space between them.
     let mut words: Vec<Vec<usize>> = Vec::new();
@@ -265,12 +288,12 @@ fn resolve_case(decisions: &mut [Decision], mixed_line: bool) {
         words.push(current);
     }
 
-    for word in words {
+    for word in &words {
         // The case the word's OTHER letters show. The ambiguous glyphs do not
         // vote — their own case is what is being decided.
         let mut lower_votes = 0usize;
         let mut upper_votes = 0usize;
-        for &i in &word {
+        for &i in word {
             if ambiguous[i] {
                 continue;
             }
@@ -288,7 +311,7 @@ fn resolve_case(decisions: &mut [Decision], mixed_line: bool) {
         } else {
             None
         };
-        for &i in &word {
+        for &i in word {
             if !ambiguous[i] {
                 continue;
             }
@@ -310,11 +333,101 @@ fn resolve_case(decisions: &mut [Decision], mixed_line: bool) {
             current.score = pick.score;
         }
     }
-}
 
-/// True when the template pool holds at least one Latin codepoint.
-fn has_latin_in(templates: &[PreparedTemplate]) -> bool {
-    templates.iter().any(|t| (t.char as u32) < 0x2E80)
+    // Pass 2 · the case VETO. The ambiguity pass above only reaches glyphs
+    // whose two readings tie — but a height-separated pair ("s"/"S") can
+    // also misread: own-height normalization erases the size signal, the
+    // `top_rel` penalty (0.15·|ln 0.77| ≈ 0.04) is smaller than the raw
+    // shape gap a similar-looking template wins by, and "dogs" comes out
+    // "dogS". Two independent signals veto the shape's answer:
+    //
+    //   1. GEOMETRY — the glyph's own ink top (baseline-relative, in line
+    //      ems) must sit closer to the vetoed reading's top than to the
+    //      winner's. A real capital keeps its cap height and cannot be
+    //      demoted; a misread lowercase letter carries x-height ink and
+    //      can. Pairs whose ink tops are indistinguishable ("t"/"T") are
+    //      skipped — height is no evidence there.
+    //   2. THE WORD — the other letters must vote for the sibling's case.
+    //      A mid-word capital in an otherwise lowercase word is the
+    //      anomaly ("quiCk"), while "IBM" or "iPad" keep their votes.
+    //
+    // The score margin bounds the reach: the sibling has to have been the
+    // runner-up reading of the SAME letter (a real case pair) and within
+    // CASE_VETO_MARGIN of the winner — at larger margins the shape really
+    // did decide and context does not overrule it.
+    if line_em > 0.0 {
+        for word in &words {
+            for (pos, &i) in word.iter().enumerate() {
+                // Word-initial is where legitimate capitals live ("Order",
+                // "Smith", sentence starts) — and where a skewed em
+                // estimate (a parenthesis or "$" inflating the line's
+                // tallest glyph) mismeasures a real capital's ink top most
+                // dangerously. The anomaly the veto hunts is a capital
+                // INSIDE a lowercase word ("quiCk"), not at its head.
+                if pos == 0 || ambiguous[i] || decisions[i].parts.len() != 1 {
+                    continue;
+                }
+                let m = decisions[i].parts[0].1;
+                let (Some(lower), Some(upper)) = (m.lower, m.upper) else {
+                    continue;
+                };
+                if m.char != lower.char && m.char != upper.char {
+                    continue;
+                }
+                // A real case pair only — the two readings must be the same
+                // letter in different cases ("s"/"S"), not two different
+                // letters that happen to be the nearest matches.
+                if lower.char.to_ascii_uppercase() != upper.char
+                    || upper.char.to_ascii_lowercase() != lower.char
+                {
+                    continue;
+                }
+                let (winner, sibling) = if m.char == upper.char {
+                    (upper, lower)
+                } else {
+                    (lower, upper)
+                };
+                // Reach bound: the sibling must have been close.
+                if winner.score - sibling.score > CASE_VETO_MARGIN * winner.score {
+                    continue;
+                }
+                // Height evidence must exist for this pair.
+                if (lower.top_rel - upper.top_rel).abs() < CASE_VETO_TOP_SEP {
+                    continue;
+                }
+                // Geometry: the glyph's ink top must lean the sibling's way.
+                let glyph_top = (baseline - decisions[i].parts[0].0.y0 as f32) / line_em;
+                let to_sibling = (glyph_top - sibling.top_rel).abs();
+                let to_winner = (glyph_top - winner.top_rel).abs();
+                if to_sibling >= to_winner {
+                    continue;
+                }
+                // The word's OTHER letters must vote the sibling's case.
+                let mut lower_votes = 0usize;
+                let mut upper_votes = 0usize;
+                for &j in word {
+                    if j == i {
+                        continue;
+                    }
+                    let ch = decisions[j].parts[0].1.char;
+                    if ch.is_ascii_lowercase() {
+                        lower_votes += 1;
+                    } else if ch.is_ascii_uppercase() {
+                        upper_votes += 1;
+                    }
+                }
+                let want_lower = sibling.char.is_ascii_lowercase();
+                let veto = (want_lower && lower_votes > upper_votes)
+                    || (!want_lower && upper_votes > lower_votes);
+                if !veto {
+                    continue;
+                }
+                let current = &mut decisions[i].parts[0].1;
+                current.char = sibling.char;
+                current.score = sibling.score;
+            }
+        }
+    }
 }
 
 /// The whole pipeline over a grayscale image.
@@ -328,7 +441,6 @@ pub fn run_ocr(
 
     // 1 · Binarize — Otsu threshold, polarity detection, halo bias.
     let raw_bin: BinaryImage = binarize(gray).image;
-    let t1 = started.elapsed().as_secs_f64() * 1000.0;
 
     // 2 · Deskew — projection-profile skew search. The search runs on a
     // 600px-wide downsampled copy and the full rotation only fires when
@@ -791,7 +903,6 @@ pub fn run_ocr(
             units.push(MergeUnit {
                 box_,
                 match_: m,
-                span,
             });
             i += span;
         }
@@ -912,7 +1023,7 @@ pub fn run_ocr(
         }
 
         // Phase 2 · the case decision.
-        resolve_case(&mut decisions, em_estimate > 0.0);
+        resolve_case(&mut decisions, em_estimate > 0.0, baseline, line_em);
 
         // Phase 3 · emit the line.
         let mut text = String::new();

@@ -19,7 +19,7 @@ Tesseract. Study date: 2026-10-14.
 | `lstm` | 18.2k | LSTM network + RecodeBeamSearch (CTC-variant beam with dict) | `src/recognition/{crnn,ctc_decoder}.rs` |
 | `classify` | 17.0k | Legacy adaptive classifier (micro-features, inttemp/normproto) | *removed in v0.2 — no equivalent, intentional* |
 | `wordrec` | 6.6k | Legacy chopper/segsearch + language model penalties | *no equivalent (legacy-only)* |
-| `dict` | 5.0k | DAWG dictionaries consulted during beam decode | `src/lang/dictionary.rs` + `DictLmRescorer` (post-hoc) |
+| `dict` | 5.0k | DAWG dictionaries consulted during beam decode | `src/lang/dictionary.rs` + `DictLmRescorer` (post-hoc) + in-beam dict steering (`CtcDecoder::beam_search_nbest_with_dictionary`) |
 | `api` | 6.5k | BaseAPI, renderers (txt/hocr/alto/page/tsv/pdf/box/unlv) | `src/api/`, `src/core/output.rs`, `src/core/pdf.rs` |
 | `arch` | 2.3k | SIMD/AVX/NEON dispatch | `src/utils/simd.rs`, `src/compute/` |
 | `viewer` | 2.0k | ScrollView debug UI | *no equivalent* |
@@ -115,23 +115,23 @@ evidence; ours needs no separate `osd.traineddata`.
 | # | Tesseract | Ours |
 |---|---|---|
 | 0 | Legacy engine | n/a — v0.2 removed pattern matching; `--engine pattern` maps to LSTM |
-| 1 | LSTM only | LSTM only (the only engine) |
+| 1 | LSTM only | LSTM (CRNN) or the WebOCR template engine (`--engine template`) |
 | 2 | Combined | n/a |
-| 3 | Default (=1 when LSTM data present) | = LSTM |
+| 3 | Default (=1 when LSTM data present) | = LSTM (CRNN) |
 
 ## 4. Capability matrix
 
 | Capability | Tesseract 5.5.3 | ocr crate (this repo) | Status |
 |---|---|---|---|
-| Recognition | LSTM + recodebeam, legacy engine | CRNN 5-layer CNN + 2×BiLSTM + CTC | ✅ comparable shape |
+| Recognition | LSTM + recodebeam, legacy engine | CRNN 5-layer CNN + 2×BiLSTM + CTC; plus a no-ML WebOCR template engine (`--engine template`) | ✅ comparable shape |
 | Beam decode | dict-integrated, 60 heaps | beam(10) + n-best; **in-beam dict steering** (`beam_search_nbest_with_dictionary`, kDictRatio/kCertOffset scheme) + post-hoc `DictLmRescorer` | ✅ (2026-10-14) |
 | Confidence | ln-prob certainties, scale 7 | `ConfidenceCalibrator` temperature softmax | ✅ |
-| Thresholding | Otsu / LeptonicaOtsu / Sauvola | Otsu + adaptive (`image/thresholder.rs`) | ✅ (Sauvola optional TODO) |
+| Thresholding | Otsu / LeptonicaOtsu / Sauvola | `--threshold-method` (`otsu` 0 / `leptonica` 1 / `sauvola` 2 / `niblack` 3) — wired into layout region detection + DPI estimation via `BinarizationMethod` (`thresholding_method` parity) | ✅ (2026-11-05) |
 | DPI handling | 70–2400 clamp, re-estimation | `--dpi` flag + super-resolution | ✅ |
 | Layout | StrokeWidth/TabFind/ColPartition stack | CCL → line → XY-cut columns → ordering | ⚠️ simpler; tables/forms exceed Tesseract |
 | PSM 0–13 | all 14 | all 14 (this change) | ✅ |
 | OSD | per-blob classifier votes | projection scores + script detect | ✅ (different evidence) |
-| Script/language | 163 trained langs | 8 scripts, 25+ dictionaries, per-script CRNN registry | ⚠️ coverage, not architecture |
+| Script/language | 163 trained langs | 8 scripts, 27 dictionaries, 30 language codes, per-script CRNN registry | ⚠️ coverage, not architecture |
 | Whitelist/blacklist | whitelist/blacklist/unblacklist | whitelist (this change: CLI flag) | ⚠️ blacklist TODO |
 | Output formats | txt hocr alto page tsv pdf box lstmbox wordstrbox unlv | text json hocr tsv csv alto box markdown structured-json rag page pdf | ✅ exceeds |
 | Searchable PDF | CIDFont + ToUnicode CMap (full Unicode) | Helvetica WinAnsi (CJK skipped) | ⚠️ CJK text layer TODO |
@@ -148,7 +148,7 @@ evidence; ours needs no separate `osd.traineddata`.
 2. **CJK searchable PDF** — replace WinAnsi Helvetica text layer with an identity-H CIDFont + ToUnicode CMap (see `api/pdfrenderer.cpp` design comment) so Chinese/Japanese text becomes selectable.
 3. **Blacklist + `user-words`/`user-patterns` files** — extend the whitelist mechanism; feed `DictLmRescorer` from user word lists.
 4. **Per-word multi-language fallback** — `classify_word_and_language`-style retry: recognize word with primary model, retry with secondary when `WordsAcceptable` fails.
-5. **Sauvola binarization option** (`thresholding_method=2` parity) — window = 0.33 × DPI, k = 0.34.
+5. ~~**Sauvola binarization option**~~ — **DONE 2026-11-05**: `--threshold-method` (`BinarizationMethod`, mirroring Tesseract's `thresholding_method` numbering 0/1/2 + Niblack=3) selects the algorithm used by the layout text/image/table region detectors and the font-size DPI estimator. The algorithms already existed in `image/thresholder.rs`; the work was the config/CLI switch (`thresholding_method=2` parity: window = 0.33 × DPI, k = 0.34). The CRNN path itself stays grayscale, matching Tesseract where thresholding feeds `textord`, not the LSTM.
 6. **Language-data scale** — per-language trained CRNN bundles + a `traineddata`-style multi-component model archive (see §DAWG/format notes).
 
 ## 6. Where the study came from

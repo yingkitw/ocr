@@ -48,6 +48,26 @@ async fn test_metadata() -> Result<()> {
 }
 
 #[tokio::test]
+async fn test_metadata_languages_match_engine_list() -> Result<()> {
+    // The API metadata used to hard-code a stale 10-language subset while
+    // the engine advertised 30. `ocr info` and `ocr list-languages` must not
+    // disagree.
+    let ocr = Ocr::new()?;
+    let from_metadata = ocr.get_metadata().supported_languages.clone();
+    let from_engine = ocr.get_supported_languages();
+    assert_eq!(
+        from_metadata, from_engine,
+        "API metadata and engine metadata disagree on supported languages"
+    );
+    assert!(
+        from_metadata.len() >= 30,
+        "expected the full language list, got {}",
+        from_metadata.len()
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_configuration() -> Result<()> {
     let ocr = Ocr::new()?;
     let config = ocr.get_config();

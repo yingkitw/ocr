@@ -20,6 +20,7 @@ pub async fn handle_batch(
     engine: &str,
     dict_correct: bool,
     device: &str,
+    threshold_method: &str,
 ) -> Result<()> {
     let max_concurrent = max_concurrent.max(1);
     info!(
@@ -40,6 +41,7 @@ pub async fn handle_batch(
         false,
         300,
         None,
+        threshold_method,
     )?;
     let ocr = Ocr::with_config(config)?;
     ocr.initialize()

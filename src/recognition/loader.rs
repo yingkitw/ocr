@@ -25,8 +25,10 @@ pub fn load_from_path(path: &std::path::Path) -> Result<CrnnModel> {
 /// The bundled English/Latin CRNN model.
 ///
 /// This is the v0.2.0 trained model, embedded at compile time from
-/// `models/crnn-en.bin`. To regenerate, run `cargo run --release -- train
-/// --output models/crnn-en.bin` and rebuild the crate.
+/// `models/crnn-en.bin`. To regenerate it, run
+/// `cargo run --release --example train_pure_rust -- --output models/crnn-en.bin`
+/// and rebuild the crate. (`ocr train` writes checkpoints to a checkpoint
+/// directory; it does not write the bundle directly.)
 pub const BUNDLED_MODEL_BYTES: &[u8] = include_bytes!("../../models/crnn-en.bin");
 
 /// Load the bundled English/Latin model.

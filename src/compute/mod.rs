@@ -596,7 +596,7 @@ impl ComputeBackend for OpenClBackend {
             None => return CpuBackend::new().add_bias(x, bias, rows, cols),
         };
 
-        let mut buf_x = ocl::Buffer::<f32>::builder()
+        let buf_x = ocl::Buffer::<f32>::builder()
             .queue(pq.queue().clone())
             .len(x.len())
             .copy_host_slice(x)

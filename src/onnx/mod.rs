@@ -36,7 +36,7 @@ impl OnnxLoader {
         Self::from_bytes(bytes)
     }
 
-    fn parse_model(bytes: &[u8]) -> Result<onnx_rs::ast::Model> {
+    fn parse_model(bytes: &[u8]) -> Result<onnx_rs::ast::Model<'_>> {
         onnx_rs::parse(bytes)
             .map_err(|e| OcrError::ModelLoad(format!("Failed to parse ONNX: {:?}", e)))
     }

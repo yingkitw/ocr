@@ -71,6 +71,12 @@ pub enum Commands {
         /// Input image resolution in DPI (default: 300; affects super-resolution and layout heuristics)
         #[arg(long, default_value = "300")]
         dpi: u32,
+
+        /// Page binarization method for layout analysis (Tesseract
+        /// thresholding_method): 0-3 or a name (otsu, leptonica, sauvola,
+        /// niblack). Sauvola/Niblack hold up better on uneven backgrounds.
+        #[arg(long, default_value = "otsu")]
+        threshold_method: String,
     },
 
     /// Batch process multiple images from a directory
@@ -106,6 +112,12 @@ pub enum Commands {
         /// Compute device: cpu, gpu, auto (default: auto)
         #[arg(long, default_value = "auto")]
         device: String,
+
+        /// Page binarization method for layout analysis (Tesseract
+        /// thresholding_method): 0-3 or a name (otsu, leptonica, sauvola,
+        /// niblack)
+        #[arg(long, default_value = "otsu")]
+        threshold_method: String,
     },
 
     /// Analyze image layout

@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 428 tests passing, 90 ignored, one known model-regression failure (see MEMORY.md §6).**
+**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 485 tests passing, 90 ignored, 1 known failure (see MEMORY.md §6).**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero unexpected failures (413 tests passing; one known model-regression failure documented in MEMORY.md §6)
+- [x] `cargo test` passes with zero unexpected failures (485 tests passing; 1 known failure documented in MEMORY.md §6)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -24,7 +24,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | Command | Description | Required Args | Optional Flags |
 |---------|-------------|---------------|--------------|
 | `extract` | Recognize text from an image (or `-` for stdin). Multi-page TIFF produces page-separated output. | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--whitelist`, `--confidence`, `--engine`, `--dict-correct`, `--device`, `--osd`, `--dpi` |
-| `batch` | Process a directory of images (prints `[n/total] % ETA` progress) | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct`, `--max-concurrent`, `--device` |
+| `batch` | Process a directory of images (prints `[n/total] % ETA` progress) | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct`, `--max-concurrent`, `--device`, `--threshold-method` |
 | `layout` | Analyze page layout | `IMAGE_PATH` | `-o, --output` |
 | `list-languages` | Print supported language codes | — | — |
 | `check` | Verify system requirements | — | — |
@@ -43,14 +43,15 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | `-o, --output` | stdout | Output file path |
 | `-l, --lang` | `en` | Language code (`en`, `fr`, `de`, `zh`, `ja`, `ko`, …) or `auto` (script + dictionary detection after recognition) |
 | `--preprocess` | false | Enable full preprocessing pipeline |
-| `-f, --format` | `text` | Output: text, json, hocr, tsv, csv, alto, box, markdown, structured-json, rag, page |
+| `-f, --format` | `text` | Output: text, json, hocr, tsv, csv, alto, box, markdown, structured-json, rag, page, pdf (pdf requires `--features pdf`) |
 | `--psm` | `3` | Page segmentation mode (Tesseract-compatible): `0`–`13` or symbolic names — `osd_only`, `auto_osd`, `auto_only`, `auto`, `single_column`, `single_block_vert_text`, `single_block`, `single_line`, `single_word`, `circle_word`, `single_char`, `sparse_text`, `sparse_text_osd`, `raw_line` (see TESSERACT_PARITY.md §2) |
 | `--confidence` | `0.5` | Minimum confidence threshold (0.0–1.0) |
-| `--engine` | `pattern`, `lstm`, `template` | Recognition engine. `pattern` is the legacy alias (silently mapped to `lstm`). `template` selects the WebOCR template-matching engine (no model file, builds from system fonts; Latin + CJK union; `--lang auto` picks via image geometry). |
+| `--engine` | `pattern` | Recognition engine: `pattern` (default, legacy alias — silently mapped to `lstm`), `lstm`, or `template`. `template` selects the WebOCR template-matching engine (no model file, builds from system fonts; Latin + CJK union; `--lang auto` picks via image geometry). |
 | `--dict-correct` | false | Dictionary-constrained decoding: the dictionary steers the CTC beam in-beam (Tesseract kDictRatio scheme) and applies post-correction |
 | `--device` | `auto` | Compute device: `cpu`, `gpu`, `auto` |
 | `--osd` | false | Enable orientation & script detection |
 | `--dpi` | `300` | Input image resolution in DPI (affects super-resolution and layout heuristics) |
+| `--threshold-method` | `otsu` | Page binarization method for layout analysis (Tesseract `thresholding_method`): `0`–`3` or symbolic names — `otsu` (0), `leptonica` (1), `sauvola` (2), `niblack` (3). Sauvola/Niblack hold up better on uneven backgrounds and degraded scans; the CRNN path itself stays grayscale. |
 | `--whitelist` | none | Restrict recognition to these characters only (Tesseract `tessedit_char_whitelist`), e.g. `--whitelist 0123456789` |
 
 ### PSM modes (Tesseract `--psm` parity)
@@ -88,9 +89,9 @@ impl Ocr {
     pub fn new() -> Result<Self>;
     pub fn with_config(config: OcrConfig) -> Result<Self>;
     pub async fn initialize(&self) -> Result<()>;
-    pub async fn recognize_text_from_file(&self, path: &str) -> Result<TextResult>;
+    pub async fn recognize_text_from_file<P: AsRef<Path>>(&self, path: P) -> Result<TextResult>;
     pub async fn recognize_text_from_bytes(&self, image_data: &[u8]) -> Result<TextResult>;
-    pub async fn recognize_text_from_file_multi_page(&self, path: &str) -> Result<Vec<TextResult>>;
+    pub async fn recognize_text_from_file_multi_page<P: AsRef<Path>>(&self, path: P) -> Result<Vec<TextResult>>;
     pub async fn recognize_text_from_bytes_multi_page(&self, image_data: &[u8]) -> Result<Vec<TextResult>>;
     pub async fn recognize_text(&self, data: &[u8], width: u32, height: u32) -> Result<TextResult>;
     pub async fn analyze_layout(&self, data: &[u8], width: u32, height: u32) -> Result<LayoutResult>;
@@ -104,6 +105,7 @@ pub struct OcrConfig {
     pub layout_analysis: LayoutAnalysisConfig,
     pub language: LanguageConfig,
     pub performance: PerformanceConfig,
+    pub debug: DebugConfig,
 }
 ```
 
@@ -141,11 +143,7 @@ pub struct OcrConfig {
 
 ```rust
 pub struct TextLineGenerator {
-    pub fonts: Vec<Font>,
-    pub image_width: u32,
-    pub image_height: u32,
-    pub background_color: Rgb<u8>,
-    pub text_color: Rgb<u8>,
+    // fields are private; use the builder-style setters below
 }
 
 impl TextLineGenerator {
@@ -192,20 +190,21 @@ pub struct CnnDetector;          // 3-layer CNN with heuristic edge-detector wei
 **Goal:** Add a second recognition engine that requires no ML model — a Rust port of the sibling `../webocr` template-matching engine. Complements the CRNN: works headlessly on platforms without a bundled model file, builds the library from system fonts at runtime.
 
 ### Acceptance Criteria
-- [x] Self-contained `src/webocr/` module (~1,600 lines) mirroring WebOCR's module layout 1:1: `binarize`, `components`, `segment`, `normalize`, `classify`, `templates`, `engine`, `types`
+- [x] Self-contained `src/webocr/` module (~5,500 lines) mirroring WebOCR's module layout 1:1: `binarize`, `components`, `segment`, `normalize`, `classify`, `templates`, `font_renderer`, `detect`, `deskew`, `engine`, `types`
 - [x] Otsu binarization with polarity detection and halo bias for light-on-dark scans
 - [x] 8-connected components via iterative flood fill
 - [x] Segmentation: filter noise, valley split (arch guard), stacked-fragment merge (pass 1 + 2), CJK stroke cluster (width cap 1.25·medH), row segments, block detection (union-find)
 - [x] Own-height normalization (SCALE_REF=20, MAX_UPSCALE=2.2, FRAME=30, baseline anchored at row 20)
 - [x] Cosine matching with aspect-ratio penalty (λ=0.1) and ±1-cell shift search
-- [x] Coarse-to-fine shortlist (8×8 pooled vectors) for CJK-sized libraries
+- [x] Coarse-to-fine shortlist (8×8 pooled vectors) for CJK-sized libraries, partitioned at U+2E80 so Latin and CJK both keep recall
 - [x] Gap-cluster word spacing (clusters the line's gap distribution; no fixed `k·medH`)
-- [x] Template library built at runtime from system fonts via rusttype (7-face fan-out, sizes [40, 68])
-- [x] `TemplateOcr` facade with `new()` (system fonts) and `with_renderer(&dyn)` (any renderer)
+- [x] Template library built at runtime from system fonts via rusttype (multi-face fan-out, sizes [16, 22, 30, 40, 54]; CJK at 72)
+- [x] `TemplateOcr` facade with `new()` (system fonts), `with_renderer(&dyn)`, `with_cjk_union()` and `with_system_cjk()`
 - [x] Wired into `OcrEngine` via `--engine template` (alongside `lstm`/`pattern`)
+- [x] Script auto-detection: `--lang auto` picks the Latin vs CJK library from image geometry (`webocr::detect::resolve_script`)
 - [x] Pure-Rust with no new dependencies (rusttype 0.9 was already a dep)
-- [x] 31 unit tests + 2 round-trip integration tests + 1 CLI smoke test
-- [ ] CJK union charset (zh + ja + ko) — future; Latin only in this cut
+- [x] 55 unit tests + 7 round-trip integration tests + CLI smoke tests
+- [x] CJK union charset (zh + ja + ko) — HAN + KANA + HANGUL + ASCII, ~33K codepoints
 
 ### Measured Accuracy (WebOCR fixtures; re-validated in sibling repo)
 
@@ -232,7 +231,7 @@ The Rust port shares WebOCR's algorithms and calibrated constants, so it inherit
 - [x] CTC loss with forward-backward algorithm
 - [x] `CrnnTrainer` with synthetic data generation + checkpoint saving/loading
 - [x] Wired into `OcrEngine` via `--engine lstm`
-- [x] Model size < 5MB (~2.4MB default config)
+- [x] Model size < 5MB (bundled `models/crnn-en.bin`, 3.07 MB)
 - [x] Inference benchmark test (target < 100ms/line in release)
 - [x] Pure-Rust CTC loss (forward-backward + gradient) in `src/training/ctc.rs`
 - [x] Full BPTT training through CNN + BiLSTM + FC (`CrnnTrainer::train_batch_full`); FC-only CTC path retained (`train_batch_ctc`)
@@ -303,11 +302,11 @@ pub struct EpochMetrics {
 
 ## Phase 4 — Multi-Language (DONE)
 
-**Goal:** Support 30+ languages with automatic script routing.
+**Goal:** Support 30 languages with automatic script routing.
 
 ### Acceptance Criteria
 - [x] Unicode script detection: Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
-- [x] Dictionaries for 25+ languages loaded on demand
+- [x] Dictionaries for 27 languages loaded on demand
 - [x] Multi-script synthetic data generation (`ScriptLineGenerator` + `ScriptCharPool`)
 - [x] Per-script CRNN vocabularies and model configs (`ScriptModelRegistry`)
 - [ ] Evaluate per-language accuracy on synthetic benchmarks (requires training execution)
@@ -350,12 +349,14 @@ impl TableDetector {
 
 pub struct FormExtractor;
 impl FormExtractor {
-    pub fn extract(img: &OcrImage) -> Result<FormExtractionResult>;
+    pub fn extract(layout: &LayoutResult, image: &OcrImage) -> Result<FormExtractionResult>;
 }
 
 pub struct RegionClassifier;
 impl RegionClassifier {
-    pub fn classify_region(region: &TextRegion) -> RegionClassification;
+    pub fn new(page_width: u32, page_height: u32) -> Self;
+    pub fn classify(&mut self, regions: &[TextRegion]) -> Vec<RegionClassification>;
+    pub fn classify_blocks(blocks: &[Block]) -> Result<Vec<Block>>;
 }
 
 pub enum RegionType {
@@ -370,8 +371,8 @@ pub enum RegionType {
 These items require running the training pipeline, not writing additional code:
 
 1. **Train CRNN to target CER**
-   - Run `cargo run --release -- train --engine lstm --epochs 100`
-   - Or `cargo run --release --example train_pure_rust -- --epochs 100` (full BPTT, writes a new `models/crnn-en.bin`)
+   - Run `cargo run --release -- train --engine lstm --epochs 100` (writes checkpoints to `--checkpoint-dir`)
+   - Or `cargo run --release --example train_pure_rust -- --epochs 100` (writes a new `models/crnn-en.bin`; **defaults to `--mode fc`**, pass `--mode full` for full BPTT)
    - Target: CER < 5% clean, CER < 15% distorted
    - Debug inference is ~4s/line; use `--release` for realistic speed
 
@@ -470,4 +471,6 @@ impl FontAttributeDetector {
 | `web-api` | no | HTTP API server (`ocr serve`) via axum |
 | `cuda` | no | CUDA compute backend (requires NVIDIA GPU + `cudarc`) |
 | `opencl` | no | OpenCL compute backend (requires `ocl`) |
-| `onnx` | no | ONNX weight import (`ocr onnx import`) |
+| `onnx` | no | ONNX weight import (`OnnxLoader` API; no CLI subcommand) |
+| `pdfrs` | no | Deprecated no-op placeholder kept for backward compatibility — use `pdf` instead |
+| `opencv` | no | Reserved no-op placeholder — no OpenCV code path is wired yet |

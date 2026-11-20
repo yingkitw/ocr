@@ -23,10 +23,11 @@ pub async fn handle_extract(
     osd: bool,
     dpi: u32,
     whitelist: Option<String>,
+    threshold_method: &str,
 ) -> Result<()> {
     info!(
-        "Starting OCR extraction for: {:?} (psm={}, format={}, engine={}, dpi={})",
-        image_path, psm, format, engine, dpi
+        "Starting OCR extraction for: {:?} (psm={}, format={}, engine={}, dpi={}, threshold={})",
+        image_path, psm, format, engine, dpi, threshold_method
     );
 
     let config = build_config(
@@ -40,6 +41,7 @@ pub async fn handle_extract(
         osd,
         dpi,
         whitelist.as_deref(),
+        threshold_method,
     )?;
     let ocr = Ocr::with_config(config)?;
     ocr.initialize().await.map_err(|e| anyhow!("{}", e))?;

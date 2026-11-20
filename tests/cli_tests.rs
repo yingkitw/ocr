@@ -1,5 +1,6 @@
 use assert_cmd::prelude::*;
 use image::{ImageBuffer, Luma};
+use predicates::prelude::PredicateBooleanExt;
 use std::io::Write;
 use std::process::Command;
 use tempfile::NamedTempFile;
@@ -34,8 +35,10 @@ fn test_cli_check_command() {
         .success()
         .stdout(predicates::str::contains("Checking system requirements"))
         .stdout(predicates::str::contains(
-            "✓ Pattern matching engine initialized",
-        ));
+            "✓ CRNN (CNN + BiLSTM + CTC) engine initialized",
+        ))
+        // Pattern matching was removed in v0.2 — it must not be advertised.
+        .stdout(predicates::str::contains("Pattern matching").not());
 }
 
 #[test]
@@ -490,6 +493,58 @@ fn test_cli_psm_circle_word_symbolic() {
         .arg("--psm")
         .arg("circle_word");
     cmd.assert().success();
+}
+
+#[test]
+fn test_cli_layout_command_emits_valid_json() {
+    // Regression: `ocr layout` used to pass the *encoded* file bytes to
+    // `Ocr::analyze_layout`, which expects raw grayscale pixels — every run
+    // died with "Expected 40000 bytes, got N".
+    let img = create_test_image_with_rectangles();
+    let out = tempfile::tempdir().unwrap();
+    let out_path = out.path().join("layout.json");
+
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("layout").arg(img.path()).arg("-o").arg(&out_path);
+    cmd.assert().success();
+
+    let json = std::fs::read_to_string(&out_path).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json)
+        .unwrap_or_else(|e| panic!("layout output is not valid JSON: {e}\n{json}"));
+    assert!(
+        parsed.get("page_size").is_some(),
+        "layout JSON should carry page_size, got: {json}"
+    );
+}
+
+#[test]
+fn test_cli_threshold_method_flag() {
+    let img = create_test_image_with_rectangles();
+
+    // Symbolic names and Tesseract's numeric thresholding_method are both
+    // accepted (0=otsu, 1=leptonica, 2=sauvola, 3=niblack).
+    for value in ["otsu", "sauvola", "niblack", "0", "2", "SAUVOLA"] {
+        let mut cmd = Command::cargo_bin("ocr").unwrap();
+        cmd.arg("extract")
+            .arg(img.path())
+            .arg("--psm")
+            .arg("6")
+            .arg("--threshold-method")
+            .arg(value);
+        cmd.assert().success();
+    }
+
+    // An unknown method is a CLI error carrying the valid spellings —
+    // not a silent fall-through to Otsu.
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--threshold-method")
+        .arg("adaptive");
+    cmd.assert()
+        .failure()
+        .stderr(predicates::str::contains("Invalid binarization method"))
+        .stderr(predicates::str::contains("sauvola"));
 }
 
 #[test]

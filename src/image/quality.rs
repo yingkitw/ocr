@@ -39,6 +39,13 @@ impl ImageQualityAssessor {
     /// 3. Font size analysis
     /// 4. Default value (300 DPI)
     pub fn estimate_dpi(img: &OcrImage) -> DpiEstimate {
+        Self::estimate_dpi_with(img, crate::image::ThresholdMethod::Otsu)
+    }
+
+    /// [`Self::estimate_dpi`], binarizing the font-size fallback with the
+    /// given threshold method (Otsu is the default; Sauvola/Niblack hold up
+    /// better on uneven backgrounds).
+    pub fn estimate_dpi_with(img: &OcrImage, method: crate::image::ThresholdMethod) -> DpiEstimate {
         // Try metadata first
         if let Some(estimate) = Self::estimate_dpi_from_metadata(img)
             && estimate.confidence > 0.7 {
@@ -54,7 +61,7 @@ impl ImageQualityAssessor {
                 }
 
         // Try font size analysis
-        if let Some(estimate) = Self::estimate_dpi_from_font_size(img)
+        if let Some(estimate) = Self::estimate_dpi_from_font_size_with(img, method)
             && estimate.confidence > 0.4 {
                 return estimate;
             }
@@ -211,7 +218,10 @@ impl ImageQualityAssessor {
     /// Typical font sizes: 10-12pt for body text
     /// At 300 DPI, 1pt = 300/72 = 4.17 pixels
     /// So 12pt font = ~50 pixels tall
-    fn estimate_dpi_from_font_size(img: &OcrImage) -> Option<DpiEstimate> {
+    fn estimate_dpi_from_font_size_with(
+        img: &OcrImage,
+        method: crate::image::ThresholdMethod,
+    ) -> Option<DpiEstimate> {
 
         // Convert to grayscale if needed
         let gray = img.data.to_luma8();
@@ -224,9 +234,7 @@ impl ImageQualityAssessor {
 
         let mut thresholder = ImageThresholder::new();
         thresholder.set_image(img.clone()).ok()?;
-        let binary = thresholder
-            .threshold(crate::image::ThresholdMethod::Otsu)
-            .ok()?;
+        let binary = thresholder.threshold(method).ok()?;
         let binary_gray = binary.data.to_luma8();
 
         let ccl_result = connected_components_4connectivity(&binary_gray);

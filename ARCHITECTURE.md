@@ -28,6 +28,20 @@ This OCR system is built from first principles in Rust, informed by studying Tes
 
 ## Module Architecture
 
+### CLI Layer (`src/cli/`)
+The `clap`-derived binary surface. `src/cli/mod.rs` declares the `Commands` enum (one variant per subcommand); `src/cli/commands/` holds the handlers; `src/cli/commands/helpers.rs` holds the shared plumbing.
+
+| Module | Purpose |
+|--------|---------|
+| `mod.rs` | `Cli` + `Commands` — the clap derive for all 11 subcommands (`extract`, `batch`, `layout`, `list-languages`, `check`, `info`, `validate`, `train`, `benchmark`, `makebox`, `serve`) |
+| `commands/extract.rs` | `handle_extract` — single-image recognition, multi-page TIFF joining (`--- Page N ---`), stdin input |
+| `commands/batch.rs` | `handle_batch` — concurrent directory processing (`tokio::spawn` + `Semaphore`), `[n/total] % ETA` progress |
+| `commands/layout.rs` | `handle_layout` — layout-only analysis to JSON (decodes to `Luma8` first: `analyze_layout` takes raw grayscale pixels) |
+| `commands/train.rs` / `benchmark.rs` | `handle_train` / `handle_benchmark` — training and per-script CER/WER evaluation |
+| `commands/check.rs` | `handle_check` — system-requirements + capability report |
+| `commands/info.rs` / `validate.rs` / `list_languages.rs` / `makebox.rs` | Metadata, config validation, language listing, `.box` export |
+| `commands/helpers.rs` | `build_config` (CLI flags → `OcrConfig`), `parse_engine`, `format_result` (single dispatch through `parse_output_format` + `format_output`), output writers |
+
 ### API Layer (`src/api/`)
 The public contract. `Ocr` is the main facade with async methods. `TextProcessor` provides filtering and cleaning.
 
@@ -55,6 +69,7 @@ Shared data structures and the central engine:
 | `output.rs` | Formatters: text, JSON, hOCR, TSV, CSV (RFC 4180 per-word rows), ALTO XML, box, Markdown, structured JSON, RAG chunks (`rag_chunks` + `format_rag_json`: one chunk per element with heading-path `section` context), PAGE XML |
 | `pdf.rs` | Searchable PDF writer (feature `pdf`): zero-dependency — embeds image as JPEG XObject + invisible text layer (rendering mode 3) at word bounding boxes; built-in Helvetica + WinAnsiEncoding; multi-page support |
 | `recognition.rs` | `RecognitionResult`, `CharacterRecognition`, `WordRecognition`, `LineRecognition` |
+| `layout_text.rs` | `reassemble_plain_text` — geometry-aware plain-text assembly (paragraph gaps, indent, wide intra-line spaces) |
 | `text.rs` | `TextResult` — final unified output with confidence, bounding boxes, lines, words |
 
 ### WebOCR Template Engine (`src/webocr/`)
@@ -67,11 +82,13 @@ A self-contained Rust port of the sibling `../webocr` template-matching engine. 
 | `components.rs` | 8-connected components via iterative flood fill, `median`, `union_box` |
 | `segment.rs` | `filter_noise`, `split_touching` (valley + arch guard), `merge_stacked` (pass 1 + 2), `group_into_lines`, `cluster_components` (CJK width cap 1.25·medH), `split_row_segments`, `detect_blocks` (union-find), `extract_lines`, `detect_space_threshold` (gap-cluster word spacing) |
 | `normalize.rs` | `SCALE_REF=20`, `MAX_UPSCALE=2.2`, `FRAME=30`, `baseline_row_for`, `place_glyph` (area-averaged resample), `blur3` (separable 1-2-1) |
-| `classify.rs` | `PreparedTemplate`, `l2`, `pool_coarse`, `shortlist` (with shift recall), `match_glyph` + `match_one_shift` (cosine + ASPECT_WEIGHT=0.1) |
+| `classify.rs` | `PreparedTemplate`, `l2`, `pool_coarse`, `shortlist` (with shift recall), `shortlist_partitioned` (Latin/CJK split at U+2E80), `match_glyph` + `match_one_shift` (cosine + ASPECT_WEIGHT=0.1) |
 | `templates.rs` | `TemplateRenderer` trait, `build_templates` (Latin per-char fan-out over faces × sizes), `make_template` (equal-footing normalization) |
-| `font_renderer.rs` | `RustTypeRenderer` — loads platform font files (sans/serif/monospace/wide-sans, regular+bold) for the template library |
-| `engine.rs` | `run_ocr` — orchestrates binarize → segment → recognize (rescue split, gap-cluster word spacing) → layout assembly |
-| `mod.rs` | `TemplateOcr` facade (`new`/`with_renderer`/`recognize`/`template_count`) |
+| `font_renderer.rs` | `RustTypeRenderer` — loads platform font files (sans/serif/monospace/wide-sans, regular+bold) for the template library; `for_cjk()` loads CJK-capable faces |
+| `detect.rs` | `ScriptId` + `resolve_script` — picks the Latin vs CJK library from the merge ratio between raw CCs and CJK-mode glyph units |
+| `deskew.rs` | `deskew` (projection-profile skew search) + `rotate_bin`, `map_point_back` / `map_box_back` |
+| `engine.rs` | `run_ocr` — orchestrates binarize → deskew → segment → recognize (rescue split, gap-cluster word spacing, constituents re-split) → layout assembly |
+| `mod.rs` | `TemplateOcr` facade (`new`/`with_renderer`/`with_cjk_union`/`with_system_cjk`/`recognize`/`template_count`) |
 
 The WebOCR engine is **pure** (no I/O, no DOM, no ML) — same purity boundary as WebOCR's `src/ocr/`. The `TemplateRenderer` trait is the extension point for any font source (system fonts, custom training fonts, synthetic pixel fonts in tests).
 
@@ -81,7 +98,7 @@ All preprocessing is deterministic and differentiable-friendly:
 
 - `Processor` — high-level interface: `preprocess_for_ocr(image) -> OcrImage`
 - `Pipeline` — composable chain of operations
-- `Thresholder` — Otsu global, Sauvola local, adaptive mean/Gaussian
+- `Thresholder` — Otsu (legacy + Leptonica variants), Sauvola and Niblack local methods; selectable via `BinarizationMethod` / `--threshold-method` (see `LayoutAnalyzer::analyze_layout_with`)
 - `Enhancement` — CLAHE, unsharp mask, gamma correction, orientation detection, border removal, affine deskew
 - `dewarp.rs` — `PerspectiveDewarp` (content-corner quad → rectangle) + `CurveRectifier` (quadratic baseline flatten)
 - `super_resolution.rs` — `TextSuperResolution` Lanczos upscale for tiny / low-DPI text (noise-aware)
@@ -104,12 +121,12 @@ Inspired by Tesseract's layout analyzer but written in pure Rust:
 
 ### Recognition (`src/recognition/`)
 
-The crate ships **two recognition engines** selectable via `--engine {pattern,lstm,template}`. The CRNN is the ML default; the WebOCR template engine is a no-ML alternative for headless / Latin-only use cases.
+The crate ships **two recognition engines** selectable via `--engine {pattern,lstm,template}`. The CRNN is the ML default; the WebOCR template engine is a no-ML alternative for headless use cases (Latin and CJK charsets, no bundled model file).
 
 | Engine | Status | Architecture | Notes |
 |--------|--------|-------------|-------|
 | `CrnnModel` | **Working** | 5-layer CNN + 2-layer BiLSTM + CTC beam decode | Pure Rust ndarray. Model size < 5MB. Beam search + dict/LM rescoring + calibrated confidence. Selectable via `--engine lstm`; the legacy `--engine pattern` value is accepted and silently mapped to LSTM (`src/cli/commands/helpers.rs`). |
-| `webocr::TemplateOcr` | **Working** | Otsu + polarity + halo bias → 8-CC → valley split + stacked merge + CJK cluster + gap-cluster word spacing → own-height normalization → cosine + aspect + relH penalties + shift search | Self-contained Rust port of the sibling `../webocr` engine (see `src/webocr/`). No model file — templates built at first recognition from platform fonts via rusttype. Latin charset. Selectable via `--engine template`. WebOCR-measured accuracy: sans 100 %, monospace 100 %, serif ≈97.8 %, dark/inverted 100 %. |
+| `webocr::TemplateOcr` | **Working** | Otsu + polarity + halo bias → 8-CC → valley split + stacked merge + CJK cluster + gap-cluster word spacing → own-height normalization → cosine + aspect + relH penalties + shift search | Self-contained Rust port of the sibling `../webocr` engine (see `src/webocr/`). No model file — templates built at first recognition from platform fonts via rusttype. Latin **and** CJK union charsets (HAN + KANA + HANGUL + ASCII, ~33K codepoints); `--lang zh/ja/ko/cjk` selects the CJK library, `--lang auto` picks Latin vs CJK from image geometry. Selectable via `--engine template`. WebOCR-measured accuracy: sans 100 %, monospace 100 %, serif ≈97.8 %, dark/inverted 100 %. |
 | `ScriptModelRegistry` | **Working** | HashMap of per-script CRNN models | Routes to Latin/CJK/Arabic/Cyrillic/etc. vocabularies. |
 | `ModelManager` | **Working** | Runtime model switching (`engine.rs`) | Loads/swaps CRNN models by config. |
 
@@ -123,18 +140,20 @@ Supporting modules:
 - `font_attributes.rs` — `FontAttributeDetector`: bold (stroke thickness), italic (slant angle), monospace (width CV)
 
 **Current state:**
-1. **Two engines** selectable via `--engine {pattern,lstm,template}`. CRNN is the ML default; WebOCR template engine is the no-ML alternative.
+1. **Two engines** selectable via `--engine {pattern,lstm,template}`. CRNN is the ML default; WebOCR template engine is the no-ML alternative (Latin + CJK union charsets).
 2. Training: pure-Rust CTC loss + full BPTT in `CrnnTrainer`; bundled weights are not yet fully trained (see `TODO.md`)
 3. ONNX weight *import* is implemented behind the `onnx` feature (`OnnxLoader`); an ONNX *inference* backend remains in the backlog
-4. WebOCR template engine: 31 unit tests + 2 round-trip integration tests; CJK union charset is future work
+4. WebOCR template engine: 55 unit tests + 7 round-trip integration tests; CJK union charset and script auto-detection are implemented
 
 ### Language Support (`src/lang/`)
 
-- `dictionary.rs` — Edit-distance spell correction with per-language dictionaries for 25+ languages; also used for CTC beam rescoring
+- `dictionary.rs` — Edit-distance spell correction with per-language dictionaries for 27 languages; also used for CTC beam rescoring
 - `ngram.rs` — Character/word n-gram LM for beam hypothesis rescoring
 - `detector.rs` — Script + dictionary-hit language identification (`LanguageDetector`, `--lang auto`)
 - `cjk.rs` — CJK character segmentation and vertical text handling
 - `unicode.rs` — Unicode block classification for script routing (Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari)
+- `confusion_correct.rs` — Latin O/0, l/1/I confusion swaps, gated on dictionary hits (WebOCR-style)
+- `script_geometry.rs` — merge-ratio / aspect geometry probe; `detect_auto` blends image geometry with recognized text to resolve `--lang auto`
 
 ### Synthetic Data (`src/synthetic/`)
 
@@ -160,7 +179,18 @@ consumer arrives.
 
 ### ONNX Import (`src/onnx/`)
 
-- `mod.rs` — `OnnxLoader`: parse ONNX files via `onnx-rs`, extract weight tensors as ndarrays, inspect node types (Conv, Gemm, LSTM); enabled via `onnx` feature flag
+- `mod.rs` — `OnnxLoader`: parse ONNX files via `onnx-rs`, extract weight tensors as ndarrays, inspect node types (Conv, Gemm, LSTM); `load_crnn_weights` maps a graph onto `CrnnModel`; enabled via `onnx` feature flag
+
+### Compute Backends (`src/compute/`)
+
+- `ComputeBackend` trait — `matmul`, `conv2d`, `add_bias`, `softmax`, `relu`; `CpuBackend` is the reference implementation
+- `CudaBackend` / `OpenClBackend` — GPU paths behind the `cuda` / `opencl` feature flags. Both currently fall back to CPU kernels for the heavy ops, so `--device gpu` is wired but not yet faster (see `TODO.md`)
+
+### Utilities (`src/utils/`)
+
+- `error.rs` (`OcrError`, `Result`), `math.rs`, `hash.rs`, `time.rs` (`Timer`), `async_utils.rs`
+- `simd.rs` — SIMD-accelerated kernels with scalar fallbacks (`simd` feature, default on)
+- `quantization.rs` — INT8 per-tensor symmetric quantization for the FC layer (4× memory reduction)
 
 ## Data Flow (Detailed)
 
@@ -168,9 +198,13 @@ consumer arrives.
 1. CLI parses args → builds OcrConfig
 2. Ocr::with_config(config) → creates OcrEngine
 3. OcrEngine::initialize():
-   a. Prepare the bundled CRNN model (`models/crnn-en.bin` via `include_bytes!`, loaded lazily on first recognition via `OnceLock`)
-   b. Load language dictionaries
-   c. Warm up image preprocessing pipeline
+   a. Log the compute backend (CPU / CUDA / OpenCL)
+   b. Warm up the image preprocessing pipeline
+   c. Load language dictionaries
+   d. Prepare the layout analyzer
+   (The bundled CRNN model is *not* loaded here — `models/crnn-en.bin` is
+   embedded via `include_bytes!` and loaded lazily on first recognition,
+   cached in `OcrEngine` via `OnceLock<CrnnModel>`)
 4. Image loaded via image::open() → converted to OcrImage (Grayscale, 300 DPI)
 5. PSM dispatch (Tesseract `--psm` parity, `process_image_internal`):
    PSM 0 short-circuits to orientation+script detection; PSM 1/12 detect
@@ -214,7 +248,7 @@ consumer arrives.
 | Pure Rust, no Tesseract dep | Learn from scratch, full control, easier deployment |
 | ndarray instead of burn/candle | Burn/candle are immature; ndarray gives full control for educational purposes |
 | Manual LSTM/CNN implementations | Pure Rust control; slower than BLAS but no C dependencies |
-| Pattern matching as default (configurable) | Obsolete in v0.2: the CRNN is the only engine; the legacy `--engine pattern` flag is accepted and mapped to LSTM. The WebOCR template engine (`src/webocr/`) was added in 2026-10-18 as a no-ML alternative; select with `--engine template`. |
+| CRNN as the default engine | Obsolete in v0.2: rule-based pattern matching was deleted and the CRNN became the default engine. The legacy `--engine pattern` flag is accepted and mapped to LSTM. The WebOCR template engine (`src/webocr/`) was added in 2026-10-18 as a no-ML alternative; select with `--engine template`. |
 | Synthetic data first | Removes dependency on collecting labeled real-world data before training |
 | Two-stage pipeline (detect + recognize) | Proven architecture (Tesseract, EasyOCR, PaddleOCR), easier to debug and optimize per-stage |
 | Per-script CRNN models | Vocab size varies wildly (95 ASCII vs 3000+ CJK); separate models keep each lightweight |

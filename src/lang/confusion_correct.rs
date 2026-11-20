@@ -74,7 +74,7 @@ fn try_depth1(alpha: &str, dict: &DictionaryHandler) -> Option<String> {
             if alt == chars[i] {
                 continue;
             }
-            let mut candidate: String = chars
+            let candidate: String = chars
                 .iter()
                 .enumerate()
                 .map(|(j, c)| if j == i { alt } else { *c })

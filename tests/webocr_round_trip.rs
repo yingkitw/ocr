@@ -4,7 +4,7 @@
 //! render text with rusttype, OCR it back, assert on Levenshtein accuracy.
 //! System-font dependent — skipped gracefully on bare CI images.
 
-use ocr::webocr::{GrayImage, TemplateOcr};
+use ocr::webocr::GrayImage;
 
 fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
@@ -226,11 +226,16 @@ fn scorecard_sans_pangram_reads_cleanly() {
         data: pixels,
     };
     let r = ocr.recognize(&gray);
+    // The product contract: spaces live in `line.text` — the `chars`
+    // vector carries glyphs only, and collecting it directly drops the
+    // word gaps the segmenter correctly detected (the gate used to read
+    // "Thequickbrownfox…" and fail at 0.787 against a real 0.979+).
     let actual: String = r
         .lines
         .iter()
-        .flat_map(|l| l.chars.iter().map(|c| c.char))
-        .collect();
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     let acc = accuracy(&actual, text);
     assert!(
         acc >= 0.95,
@@ -291,8 +296,9 @@ fn scorecard_skewed_page_is_deskewed() {
     let actual: String = r
         .lines
         .iter()
-        .flat_map(|l| l.chars.iter().map(|c| c.char))
-        .collect();
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
     let acc = accuracy(&actual, text);
     assert!(
         acc >= 0.85,

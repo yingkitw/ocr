@@ -41,6 +41,9 @@ impl Ocr {
     /// Create a new OCR instance with custom configuration
     pub fn with_config(config: OcrConfig) -> Result<Self> {
         let engine = OcrEngine::with_config(config.clone())?;
+        // Mirror the engine's language list so there is a single source of
+        // truth (`OcrEngine::metadata.supported_languages`).
+        let supported_languages = engine.get_metadata().supported_languages.clone();
 
         Ok(Self {
             engine: RwLock::new(engine),
@@ -49,18 +52,7 @@ impl Ocr {
                 name: "OCR API".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 description: "A modern OCR API written in Rust".to_string(),
-                supported_languages: vec![
-                    "en".to_string(),
-                    "es".to_string(),
-                    "fr".to_string(),
-                    "de".to_string(),
-                    "it".to_string(),
-                    "pt".to_string(),
-                    "ru".to_string(),
-                    "zh".to_string(),
-                    "ja".to_string(),
-                    "ko".to_string(),
-                ],
+                supported_languages,
                 supported_image_formats: vec![
                     "png".to_string(),
                     "jpg".to_string(),
@@ -68,6 +60,7 @@ impl Ocr {
                     "tiff".to_string(),
                     "bmp".to_string(),
                     "gif".to_string(),
+                    "webp".to_string(),
                 ],
             },
         })

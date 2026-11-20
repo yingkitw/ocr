@@ -4,10 +4,10 @@
 [![docs.rs](https://docs.rs/ocr/badge.svg)](https://docs.rs/ocr)
 [![License: Apache-2.0](https://img.shields.io/crates/l/ocr)](LICENSE)
 [![Rust Edition 2024](https://img.shields.io/badge/rust-2024-edition-orange.svg)](https://doc.rust-lang.org/edition-guide/)
-[![Tests](https://img.shields.io/badge/tests-423_passing-brightgreen.svg)](#roadmap)
+[![Tests](https://img.shields.io/badge/tests-485_passing-brightgreen.svg)](#roadmap)
 [![Build](https://img.shields.io/badge/build-zero_warnings-brightgreen.svg)](#)
 
-> **Pure-Rust OCR engine and command-line tool for extracting printed text from images.** No C/C++ dependencies, no Python, no GPU required. Supports 25+ languages, multi-page TIFF, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF. Apache-2.0 licensed.
+> **Pure-Rust OCR engine and command-line tool for extracting printed text from images.** No C/C++ dependencies, no Python, no GPU required. Supports 30 languages, multi-page TIFF, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF. Apache-2.0 licensed.
 
 ```bash
 cargo install ocr
@@ -23,9 +23,9 @@ The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **emb
 ### Key Highlights
 
 - **Pure Rust** — no C/C++ compiler, no Python runtime, no system libraries required
-- **25+ languages** — Latin, CJK (Chinese/Japanese/Korean), Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
+- **30 languages** — Latin, CJK (Chinese/Japanese/Korean), Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
 - **Multi-page TIFF** — recognizes every page, not just the first frame
-- **11 output formats** — text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, structured JSON, RAG JSON, searchable PDF
+- **12 output formats** — text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, structured JSON, RAG JSON, searchable PDF, box
 - **CPU-first** — runs on any machine; optional CUDA/OpenCL/ONNX features for GPU acceleration
 - **Apache-2.0** — commercial use permitted, no copyleft restrictions
 - **< 5 MB model** — bundled CRNN model embedded at compile time via `include_bytes!`
@@ -52,7 +52,7 @@ The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **emb
 
 | Engine | Language | Detection | Recognition | Languages | Best For |
 |---|---|---|---|---|---|
-| **OCR (this crate)** | Pure Rust | CCL + CNN | CRNN + CTC | 25+ | Embedded Rust, no C deps, async API |
+| **OCR (this crate)** | Pure Rust | CCL + CNN | CRNN + CTC | 30 | Embedded Rust, no C deps, async API |
 | Tesseract | C++ | CCL + LSTM | Conv + BiLSTM + CTC | 100+ | Scanned documents, mature ecosystem |
 | EasyOCR | Python | CRAFT (CNN) | CRNN (ResNet + BiLSTM) | 80+ | Simple PyTorch API, scene text |
 | PaddleOCR | Python/C++ | DB | SVTR / CRNN | 80+ | Best speed/accuracy, ultra-light models |
@@ -65,7 +65,7 @@ The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **emb
 - Deskew, perspective dewarp, curved-line rectification
 - Super-resolution upscaling for tiny / low-DPI text
 - Auto-sharpen and contrast quality gate
-- Binarization (Otsu, Sauvola)
+- Binarization (Otsu, Leptonica Otsu, Sauvola, Niblack — `--threshold-method`)
 - Noise reduction and contrast enhancement
 - Auto-rotate (0° / 90° / 180° / 270°)
 
@@ -87,7 +87,7 @@ The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **emb
 
 ### Multi-Language Support
 - Unicode script detection: Latin, CJK, Arabic, Cyrillic, Greek, Hebrew, Thai, Devanagari
-- Dictionaries for 25+ languages
+- Dictionaries for 27 languages
 - `--lang auto` for mixed-script documents
 - Per-script CRNN vocabularies (`ScriptModelRegistry`)
 - `ScriptLineGenerator` for multi-script synthetic training
@@ -110,7 +110,7 @@ The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **emb
 | Box file | `-f box` | Tesseract-compatible `.box` for training (`ocr makebox`) |
 
 ### Post-Processing
-- Dictionary-based spell correction (25+ languages)
+- Dictionary-based spell correction (27 languages)
 - N-gram language model rescoring
 - Document structure classification
 
@@ -133,8 +133,8 @@ The engine ships as both a **CLI binary** (`ocr extract image.png`) and an **emb
 Run `ocr list-languages` for the full list. Highlights:
 
 - **Latin script**: English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Swedish, Norwegian, Danish, Finnish, Czech, Hungarian, Romanian, Turkish, Vietnamese, Indonesian
-- **CJK**: Chinese (Simplified + Traditional), Japanese, Korean
-- **Other scripts**: Arabic, Russian, Ukrainian, Bulgarian, Greek, Hebrew, Thai, Hindi, Marathi
+- **CJK**: Chinese, Japanese, Korean
+- **Other scripts**: Arabic, Russian, Ukrainian, Bulgarian, Greek, Hebrew, Thai, Hindi, Malay
 
 Use `--lang auto` to auto-detect scripts on mixed-language documents.
 
@@ -203,6 +203,11 @@ ocr extract document.png --preprocess
 
 # Specify input DPI (affects super-resolution and layout)
 ocr extract document.png --dpi 150
+
+# Binarization method for layout analysis (Tesseract thresholding_method):
+# useful on uneven backgrounds / degraded scans
+ocr extract degraded_scan.png --threshold-method sauvola
+ocr extract degraded_scan.png --threshold-method 2        # same, numeric
 
 # Auto-detect language on mixed-script documents
 ocr extract document.png --lang auto
@@ -282,8 +287,10 @@ cargo build --release --features web-api
 ./target/release/ocr serve --port 8080
 
 # Upload an image for OCR
-curl -F "image=@document.png" http://localhost:8080/ocr
+curl -F "image=@document.png" http://localhost:8080/recognize
 ```
+
+Endpoints: `POST /recognize` (multipart, field name `image`), `GET /health`, `GET /languages`.
 
 ## Use Cases
 
@@ -303,13 +310,14 @@ curl -F "image=@document.png" http://localhost:8080/ocr
 src/
 ├── api/          High-level OCR API (Ocr, TextProcessor)
 ├── cli/          CLI argument parsing with clap
-├── core/         Core OCR engine (config, engine, geometry, layout, output, text)
+├── core/         Core OCR engine (config, engine, geometry, layout, output, text, pdf)
 ├── image/        Image preprocessing pipeline (binarization, enhancement, quality)
 ├── lang/         Language support (CJK, detection, dictionary, N-gram, unicode)
 ├── layout/       Layout analysis (column/line detection, text ordering, CCL, tables, forms)
 ├── recognition/  Recognition models (CRNN, CTC decoder, model loader, confidence)
 ├── synthetic/    Synthetic data generation (fonts, distortion, multi-script, documents)
 ├── training/     Model training pipeline (CTC loss, BPTT, Adam, checkpointing)
+├── webocr/       WebOCR template-matching engine (no ML; system-font templates)
 ├── compute/      GPU compute backends (CUDA, OpenCL)
 ├── onnx/         ONNX model loader
 ├── server/       Web API server
@@ -323,7 +331,7 @@ src/
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with `extract`, `batch`, `layout`, `list-languages`
-- [x] 423 tests passing
+- [x] 485 tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback
@@ -351,7 +359,7 @@ src/
 
 ### Phase 4 — Multi-Language Scale (DONE)
 - [x] Unicode script detection and routing (8 scripts)
-- [x] Dictionaries for 25+ languages
+- [x] Dictionaries for 27 languages
 - [x] Multi-script synthetic data generation
 - [x] Per-script CRNN models
 
@@ -376,7 +384,7 @@ src/
 
 ### How does this compare to Tesseract?
 
-This crate is a pure-Rust alternative to Tesseract for printed text on clean images. Key differences: the API is async Rust (vs. C++ bindings), it bundles no C++ runtime, the license is Apache-2.0, and language coverage is narrower (25+ vs. 100+). For most printed-document workflows on supported languages, accuracy is comparable.
+This crate is a pure-Rust alternative to Tesseract for printed text on clean images. Key differences: the API is async Rust (vs. C++ bindings), it bundles no C++ runtime, the license is Apache-2.0, and language coverage is narrower (30 vs. 100+). For most printed-document workflows on supported languages, accuracy is comparable.
 
 ### Does it run on GPU?
 
@@ -388,7 +396,7 @@ Not yet. The engine is optimized for printed text. Handwriting recognition is on
 
 ### What image formats are supported?
 
-PNG, JPEG, GIF, BMP, TIFF, and WebP (via the `image` crate). **Multi-page TIFF is supported** — each page is recognized independently and output is separated by `--- Page N ---` markers. PDF is not currently supported.
+PNG, JPEG, GIF, BMP, TIFF, and WebP (via the `image` crate). **Multi-page TIFF is supported** — each page is recognized independently and output is separated by `--- Page N ---` markers. PDF is not supported as *input*; PDF *output* is supported via `-f pdf` (searchable PDF, requires `--features pdf`).
 
 ### Can I embed OCR in my Rust application?
 
@@ -400,15 +408,15 @@ Yes. Use `ocr::api::Ocr` for the high-level async API. The crate is published on
 # Via the built-in trainer (full BPTT + CTC loss)
 cargo run --release -- train --engine lstm --epochs 100 --batch-size 8 --learning-rate 0.001
 
-# Or via the standalone example
-cargo run --release --example train_pure_rust -- --epochs 100
+# Or via the standalone example (writes models/crnn-en.bin; --mode full for full BPTT)
+cargo run --release --example train_pure_rust -- --epochs 100 --mode full
 ```
 
 Training requires multi-hour `--release` runs. Synthetic data is generated automatically.
 
 ### Is it production-ready?
 
-The engine is feature-complete for printed text on clean scans with 428 passing tests. Two recognition engines: the CRNN (ML default) and the WebOCR template engine (no ML, system fonts; Latin + CJK union). The CRNN training pipeline (full BPTT + CTC loss) is implemented, and the bundled model is loaded at runtime. Accuracy will improve as trained checkpoints replace the current model.
+The engine is feature-complete for printed text on clean scans with 485 passing tests. Two recognition engines: the CRNN (ML default) and the WebOCR template engine (no ML, system fonts; Latin + CJK union). The CRNN training pipeline (full BPTT + CTC loss) is implemented, and the bundled model is loaded at runtime. Accuracy will improve as trained checkpoints replace the current model.
 
 ### What is the license?
 

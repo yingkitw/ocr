@@ -4,7 +4,7 @@
 //! and optional beam search with dictionary / LM rescoring.
 //! Compatible with Tesseract's CTC approach.
 
-use crate::lang::dictionary::{Dictionary, WordPrefixSet};
+use crate::lang::dictionary::Dictionary;
 use crate::lang::NGramModel;
 use ndarray::Array2;
 

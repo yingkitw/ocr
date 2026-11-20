@@ -1,6 +1,7 @@
 //! Layout analysis operations
 
 use crate::core::layout::*;
+use crate::image::thresholder::ThresholdMethod;
 use crate::layout::classifier::RegionClassifier;
 use crate::layout::column_detector::ColumnDetector;
 use crate::layout::detector::{ImageRegionDetector, TableDetector, TextDetector, TextRegionDetector};
@@ -10,7 +11,7 @@ use crate::utils::Result;
 pub struct LayoutAnalyzer;
 
 impl LayoutAnalyzer {
-    /// Analyze page layout
+    /// Analyze page layout (legacy Otsu binarization)
     pub fn analyze_layout(img: &crate::core::image::OcrImage) -> Result<LayoutResult> {
         Self::analyze_layout_with_options(img, false)
     }
@@ -20,6 +21,19 @@ impl LayoutAnalyzer {
         img: &crate::core::image::OcrImage,
         arbitrary_angle: bool,
     ) -> Result<LayoutResult> {
+        Self::analyze_layout_with(img, arbitrary_angle, ThresholdMethod::Otsu)
+    }
+
+    /// Analyze page layout, binarizing with the given threshold method.
+    ///
+    /// Every region detector in this module thresholds the page before
+    /// segmentation; Sauvola/Niblack are the better choices on uneven
+    /// backgrounds, Otsu on clean pages.
+    pub fn analyze_layout_with(
+        img: &crate::core::image::OcrImage,
+        arbitrary_angle: bool,
+        threshold_method: ThresholdMethod,
+    ) -> Result<LayoutResult> {
         let page_size = PageSize::new(img.width, img.height, img.dpi);
         let mut result = LayoutResult::new(page_size);
 
@@ -27,15 +41,15 @@ impl LayoutAnalyzer {
         let mut text_regions = if arbitrary_angle {
             crate::layout::detector::OrientedCclDetector::default().detect(img)?
         } else {
-            TextRegionDetector::detect_text_regions(img)?
+            TextRegionDetector::detect_text_regions_with(img, threshold_method)?
         };
 
         // Detect images
-        let image_regions = ImageRegionDetector::detect_image_regions(img)?;
+        let image_regions = ImageRegionDetector::detect_image_regions_with(img, threshold_method)?;
         result.images = image_regions;
 
         // Detect tables
-        let tables = TableDetector::detect_tables(img)?;
+        let tables = TableDetector::detect_tables_with(img, threshold_method)?;
         result.tables = tables;
 
         // Resolve conflicts: remove text regions inside tables

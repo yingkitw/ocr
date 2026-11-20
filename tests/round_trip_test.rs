@@ -938,11 +938,12 @@ async fn test_roundtrip_binarization_otsu() {
 
 #[tokio::test]
 #[ignore]
-async fn test_roundtrip_binarization_fixed() {
+async fn test_roundtrip_binarization_leptonica_otsu() {
     let mut config = OcrConfig::default();
     config.image_processing.enable_preprocessing = true;
     config.image_processing.enable_binarization = true;
-    config.image_processing.binarization_method = ocr::core::config::BinarizationMethod::Fixed;
+    config.image_processing.binarization_method =
+        ocr::core::config::BinarizationMethod::LeptonicaOtsu;
     config.layout_analysis.enable_layout_analysis = false;
     let engine = OcrEngine::with_config(config).unwrap();
     engine.initialize().await.unwrap();
@@ -953,11 +954,11 @@ async fn test_roundtrip_binarization_fixed() {
 
 #[tokio::test]
 #[ignore]
-async fn test_roundtrip_binarization_adaptive() {
+async fn test_roundtrip_binarization_niblack() {
     let mut config = OcrConfig::default();
     config.image_processing.enable_preprocessing = true;
     config.image_processing.enable_binarization = true;
-    config.image_processing.binarization_method = ocr::core::config::BinarizationMethod::Adaptive;
+    config.image_processing.binarization_method = ocr::core::config::BinarizationMethod::Niblack;
     config.layout_analysis.enable_layout_analysis = false;
     let engine = OcrEngine::with_config(config).unwrap();
     engine.initialize().await.unwrap();

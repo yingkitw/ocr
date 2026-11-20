@@ -274,12 +274,23 @@ fn bbox_iou(a: &BoundingBox, b: &BoundingBox) -> f32 {
 pub struct TextRegionDetector;
 
 impl TextRegionDetector {
-    /// Detect text regions
+    /// Detect text regions (legacy Otsu binarization)
     pub fn detect_text_regions(img: &crate::core::image::OcrImage) -> Result<Vec<TextRegion>> {
+        Self::detect_text_regions_with(img, ThresholdMethod::Otsu)
+    }
+
+    /// Detect text regions, binarizing with the given threshold method.
+    ///
+    /// Sauvola/Niblack are the better choices on uneven backgrounds and
+    /// degraded scans; Otsu remains the default for clean pages.
+    pub fn detect_text_regions_with(
+        img: &crate::core::image::OcrImage,
+        method: ThresholdMethod,
+    ) -> Result<Vec<TextRegion>> {
         // 1. Binarize image
         let mut thresholder = ImageThresholder::new();
         thresholder.set_image(img.clone())?;
-        let binary = thresholder.threshold(ThresholdMethod::Otsu)?;
+        let binary = thresholder.threshold(method)?;
 
         // 2. Invert if needed (we want white text on black background for morphological ops usually,
         // or just consider foreground as non-zero).
@@ -469,12 +480,20 @@ impl TextRegionDetector {
 pub struct ImageRegionDetector;
 
 impl ImageRegionDetector {
-    /// Detect image regions
+    /// Detect image regions (legacy Otsu binarization)
     pub fn detect_image_regions(img: &crate::core::image::OcrImage) -> Result<Vec<ImageRegion>> {
+        Self::detect_image_regions_with(img, ThresholdMethod::Otsu)
+    }
+
+    /// Detect image regions, binarizing with the given threshold method.
+    pub fn detect_image_regions_with(
+        img: &crate::core::image::OcrImage,
+        method: ThresholdMethod,
+    ) -> Result<Vec<ImageRegion>> {
         // 1. Binarize
         let mut thresholder = ImageThresholder::new();
         thresholder.set_image(img.clone())?;
-        let binary = thresholder.threshold(ThresholdMethod::Otsu)?;
+        let binary = thresholder.threshold(method)?;
 
         let mut gray = binary.data.to_luma8();
         image::imageops::invert(&mut gray);
@@ -526,12 +545,20 @@ let bbox = BoundingBox::new(min_x, min_y, max_x + 1, max_y + 1);
 pub struct TableDetector;
 
 impl TableDetector {
-    /// Detect tables
+    /// Detect tables (legacy Otsu binarization)
     pub fn detect_tables(img: &crate::core::image::OcrImage) -> Result<Vec<Table>> {
+        Self::detect_tables_with(img, ThresholdMethod::Otsu)
+    }
+
+    /// Detect tables, binarizing with the given threshold method.
+    pub fn detect_tables_with(
+        img: &crate::core::image::OcrImage,
+        method: ThresholdMethod,
+    ) -> Result<Vec<Table>> {
         // 1. Binarize
         let mut thresholder = ImageThresholder::new();
         thresholder.set_image(img.clone())?;
-        let binary = thresholder.threshold(ThresholdMethod::Otsu)?;
+        let binary = thresholder.threshold(method)?;
 
         let gray = binary.data.to_luma8();
         let width = gray.width();

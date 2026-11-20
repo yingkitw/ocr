@@ -29,6 +29,7 @@ async fn main() -> Result<()> {
             device,
             osd,
             dpi,
+            threshold_method,
         } => {
             handle_extract(
                 image_path,
@@ -44,6 +45,7 @@ async fn main() -> Result<()> {
                 osd,
                 dpi,
                 whitelist,
+                &threshold_method,
             )
             .await?;
         }
@@ -56,6 +58,7 @@ async fn main() -> Result<()> {
             engine,
             dict_correct,
             device,
+            threshold_method,
         } => {
             handle_batch(
                 input_dir,
@@ -66,6 +69,7 @@ async fn main() -> Result<()> {
                 &engine,
                 dict_correct,
                 device.as_str(),
+                &threshold_method,
             )
             .await?;
         }

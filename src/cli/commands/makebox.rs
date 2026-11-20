@@ -30,6 +30,7 @@ pub async fn handle_makebox(
         false,
         300,
         None,
+        "otsu",
     )?;
 
     let ocr = Ocr::with_config(config)?;

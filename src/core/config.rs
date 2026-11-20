@@ -56,7 +56,12 @@ impl Default for RecognitionConfig {
             confidence_threshold: 0.5,
             character_whitelist: None,
             character_blacklist: None,
-            enable_dictionary_correction: true,
+            // Opt-in, matching the CLI's `--dict-correct` default: the
+            // bundled dictionaries are small common-word lists, and a
+            // distance-≤2 substitution applied to every non-dictionary
+            // word provably mangles correct output ("quick" → "quite",
+            // "42" → "we"). Library users who want it set the flag.
+            enable_dictionary_correction: false,
             enable_language_model: true,
             enable_font_attribute_detection: true,
             preserve_layout_text: true,
@@ -135,16 +140,57 @@ impl Default for ImageProcessingConfig {
 }
 
 /// Binarization method enumeration
+///
+/// Mirrors Tesseract's `thresholding_method` (`thresholding_method=0/1/2`;
+/// Niblack is an extra this crate's thresholder already implements). The
+/// method is used wherever the pipeline binarizes the page: layout text/
+/// image/table region detection and the quality gate's character-height
+/// estimation. The CRNN path never binarizes (it consumes grayscale).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinarizationMethod {
-    /// Otsu's method
+    /// Tesseract's legacy Otsu thresholding (`thresholding_method=0`, default)
     Otsu,
-    /// Adaptive thresholding
-    Adaptive,
-    /// Fixed threshold
-    Fixed,
-    /// Sauvola's method
+    /// Standard Otsu thresholding (`thresholding_method=1`)
+    LeptonicaOtsu,
+    /// Sauvola adaptive thresholding (`thresholding_method=2`) — best for
+    /// uneven backgrounds / degraded scans
     Sauvola,
+    /// Niblack adaptive thresholding
+    Niblack,
+}
+
+impl Default for BinarizationMethod {
+    fn default() -> Self {
+        Self::Otsu
+    }
+}
+
+impl BinarizationMethod {
+    /// Tesseract-compatible parsing: accepts the numeric form (`"0"`–`"3"`)
+    /// and the symbolic names, case-insensitively.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        let lowered = s.trim().to_lowercase();
+        let method = match lowered.as_str() {
+            "0" | "otsu" | "auto" => BinarizationMethod::Otsu,
+            "1" | "leptonica" | "leptonica_otsu" | "leptonica-otsu" => {
+                BinarizationMethod::LeptonicaOtsu
+            }
+            "2" | "sauvola" => BinarizationMethod::Sauvola,
+            "3" | "niblack" => BinarizationMethod::Niblack,
+            other => {
+                return Err(format!(
+                    "Invalid binarization method '{other}': use 0-3 or a name like \
+                     otsu, leptonica, sauvola, niblack"
+                ))
+            }
+        };
+        Ok(method)
+    }
+
+    /// Canonical CLI spelling (for error messages).
+    pub fn valid_values() -> &'static str {
+        "otsu, leptonica, sauvola, niblack (or 0-3)"
+    }
 }
 
 /// Layout analysis configuration
@@ -650,5 +696,67 @@ mod tests {
             let mode = PageSegMode::parse_psm(&n.to_string()).expect("valid psm");
             assert_eq!(mode.psm_number(), n);
         }
+    }
+
+    // ---- BinarizationMethod (Tesseract thresholding_method parity) ----
+
+    #[test]
+    fn test_parse_binarization_numeric() {
+        // Mirrors Tesseract's thresholding_method numbering.
+        assert_eq!(BinarizationMethod::parse("0"), Ok(BinarizationMethod::Otsu));
+        assert_eq!(
+            BinarizationMethod::parse("1"),
+            Ok(BinarizationMethod::LeptonicaOtsu)
+        );
+        assert_eq!(
+            BinarizationMethod::parse("2"),
+            Ok(BinarizationMethod::Sauvola)
+        );
+        assert_eq!(
+            BinarizationMethod::parse("3"),
+            Ok(BinarizationMethod::Niblack)
+        );
+    }
+
+    #[test]
+    fn test_parse_binarization_symbolic() {
+        assert_eq!(
+            BinarizationMethod::parse("otsu"),
+            Ok(BinarizationMethod::Otsu)
+        );
+        assert_eq!(
+            BinarizationMethod::parse("SAUVOLA"),
+            Ok(BinarizationMethod::Sauvola)
+        );
+        assert_eq!(
+            BinarizationMethod::parse("leptonica-otsu"),
+            Ok(BinarizationMethod::LeptonicaOtsu)
+        );
+        assert_eq!(
+            BinarizationMethod::parse(" niblack "),
+            Ok(BinarizationMethod::Niblack)
+        );
+        // `auto` is accepted as an alias for the default (Otsu), matching the
+        // `--psm auto` style.
+        assert_eq!(BinarizationMethod::parse("auto"), Ok(BinarizationMethod::Otsu));
+    }
+
+    #[test]
+    fn test_parse_binarization_invalid() {
+        assert!(BinarizationMethod::parse("4").is_err());
+        assert!(BinarizationMethod::parse("adaptive").is_err());
+        assert!(BinarizationMethod::parse("").is_err());
+        assert!(BinarizationMethod::parse("-1").is_err());
+    }
+
+    #[test]
+    fn test_binarization_default_is_otsu() {
+        // Tesseract's default thresholding_method is 0 (legacy Otsu); the
+        // CLI default must agree so existing invocations don't change output.
+        assert_eq!(
+            OcrConfig::default().image_processing.binarization_method,
+            BinarizationMethod::Otsu
+        );
+        assert_eq!(BinarizationMethod::default(), BinarizationMethod::Otsu);
     }
 }

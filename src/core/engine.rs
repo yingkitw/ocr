@@ -863,9 +863,12 @@ impl OcrEngine {
             | PageSegMode::SparseText
             | PageSegMode::SparseTextWithOsd
             | PageSegMode::Auto => {
-                Ok(crate::layout::LayoutAnalyzer::analyze_layout_with_options(
+                Ok(crate::layout::LayoutAnalyzer::analyze_layout_with(
                     image,
                     self.config.layout_analysis.enable_arbitrary_angle_detection,
+                    crate::image::threshold_method_for(
+                        self.config.image_processing.binarization_method,
+                    ),
                 )?)
             }
         }

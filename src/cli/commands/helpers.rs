@@ -57,12 +57,19 @@ pub fn build_config(
     osd: bool,
     dpi: u32,
     whitelist: Option<&str>,
+    threshold_method: &str,
 ) -> anyhow::Result<ocr::core::config::OcrConfig> {
-    use ocr::core::config::{OcrConfig, PageSegMode};
+    use ocr::core::config::{BinarizationMethod, OcrConfig, PageSegMode};
 
     // Tesseract-compatible PSM parsing: numeric (0-13) or symbolic names
     // (`auto`, `sparse_text`, …). Errors carry the valid spellings.
     let psm_mode = PageSegMode::parse_psm(psm).map_err(|e| anyhow::anyhow!(e))?;
+
+    // Tesseract-compatible thresholding_method parsing: numeric (0-3) or
+    // symbolic names (`otsu`, `sauvola`, …). Used by the layout region
+    // detectors and the DPI estimator; the CRNN path stays grayscale.
+    let binarization_method =
+        BinarizationMethod::parse(threshold_method).map_err(|e| anyhow::anyhow!(e))?;
 
     let mut config = OcrConfig::default();
     config.recognition.language = lang.to_string();
@@ -78,6 +85,7 @@ pub fn build_config(
     config.recognition.parameters.insert("dpi".to_string(), dpi.to_string());
     config.image_processing.enable_preprocessing = preprocess;
     config.image_processing.enable_binarization = preprocess;
+    config.image_processing.binarization_method = binarization_method;
     config.image_processing.enable_noise_reduction = preprocess;
     config.image_processing.enable_contrast_enhancement = preprocess;
     config.image_processing.enable_deskewing = preprocess;
