@@ -2518,49 +2518,65 @@ fn elem_matches(e: PatElem, c: char) -> bool {
 
 pub struct DictionaryHandler {
     dictionary: Dictionary,
+    /// Fallback dictionaries for `a+b` multi-language specs (Tesseract
+    /// `-l a+b`: words the primary dictionary rejects still count as
+    /// acceptable when a secondary language knows them). Corrections
+    /// always draw from the primary dictionary.
+    secondaries: Vec<Dictionary>,
     patterns: UserPatterns,
+}
+
+fn dictionary_for_language(lang: &str) -> Dictionary {
+    match lang.to_lowercase().as_str() {
+        "fr" => load_french_dictionary(),
+        "es" => load_spanish_dictionary(),
+        "de" => load_german_dictionary(),
+        "it" => load_italian_dictionary(),
+        "pt" => load_portuguese_dictionary(),
+        "ru" => load_russian_dictionary(),
+        "nl" => load_dutch_dictionary(),
+        "pl" => load_polish_dictionary(),
+        "sv" => load_swedish_dictionary(),
+        "da" => load_danish_dictionary(),
+        "fi" => load_finnish_dictionary(),
+        "no" => load_norwegian_dictionary(),
+        "tr" => load_turkish_dictionary(),
+        "el" => load_greek_dictionary(),
+        "hi" => load_hindi_dictionary(),
+        "th" => load_thai_dictionary(),
+        "vi" => load_vietnamese_dictionary(),
+        "ar" => load_arabic_dictionary(),
+        "he" => load_hebrew_dictionary(),
+        "id" => load_indonesian_dictionary(),
+        "ms" => load_malay_dictionary(),
+        "uk" => load_ukrainian_dictionary(),
+        "cs" => load_czech_dictionary(),
+        "hu" => load_hungarian_dictionary(),
+        "ro" => load_romanian_dictionary(),
+        "bg" => load_bulgarian_dictionary(),
+        _ => load_english_dictionary(),
+    }
 }
 
 impl DictionaryHandler {
     pub fn new() -> Self {
         Self {
             dictionary: load_english_dictionary(),
+            secondaries: Vec::new(),
             patterns: UserPatterns::default(),
         }
     }
 
+    /// `lang` is a single code (`"fr"`) or a `+`-joined spec (`"en+fr"`,
+    /// Tesseract `-l a+b`): the first code picks the primary dictionary,
+    /// the rest become fallback dictionaries consulted by
+    /// [`Self::is_word_valid`].
     pub fn new_for_language(lang: &str) -> Self {
-        let dictionary = match lang.to_lowercase().as_str() {
-            "fr" => load_french_dictionary(),
-            "es" => load_spanish_dictionary(),
-            "de" => load_german_dictionary(),
-            "it" => load_italian_dictionary(),
-            "pt" => load_portuguese_dictionary(),
-            "ru" => load_russian_dictionary(),
-            "nl" => load_dutch_dictionary(),
-            "pl" => load_polish_dictionary(),
-            "sv" => load_swedish_dictionary(),
-            "da" => load_danish_dictionary(),
-            "fi" => load_finnish_dictionary(),
-            "no" => load_norwegian_dictionary(),
-            "tr" => load_turkish_dictionary(),
-            "el" => load_greek_dictionary(),
-            "hi" => load_hindi_dictionary(),
-            "th" => load_thai_dictionary(),
-            "vi" => load_vietnamese_dictionary(),
-            "ar" => load_arabic_dictionary(),
-            "he" => load_hebrew_dictionary(),
-            "id" => load_indonesian_dictionary(),
-            "ms" => load_malay_dictionary(),
-            "uk" => load_ukrainian_dictionary(),
-            "cs" => load_czech_dictionary(),
-            "hu" => load_hungarian_dictionary(),
-            "ro" => load_romanian_dictionary(),
-            "bg" => load_bulgarian_dictionary(),
-            _ => load_english_dictionary(),
-        };
+        let mut codes = lang.split('+').filter(|c| !c.is_empty());
+        let primary = codes.next().unwrap_or("en");
         Self {
-            dictionary,
+            dictionary: dictionary_for_language(primary),
+            secondaries: codes.map(dictionary_for_language).collect(),
             patterns: UserPatterns::default(),
         }
     }
@@ -2568,6 +2584,7 @@ impl DictionaryHandler {
     pub fn with_dictionary(dictionary: Dictionary) -> Self {
         Self {
             dictionary,
+            secondaries: Vec::new(),
             patterns: UserPatterns::default(),
         }
     }
@@ -2600,18 +2617,27 @@ impl DictionaryHandler {
         Ok(())
     }
 
-    /// A word is valid when the dictionary contains it or a user
-    /// pattern matches it (Tesseract: DAWG hit OR user-pattern hit).
+    /// A word is valid when the primary dictionary contains it, a
+    /// fallback (`a+b`) dictionary contains it, or a user pattern matches
+    /// it (Tesseract: DAWG hit OR user-pattern hit OR secondary-model hit).
     pub fn is_word_valid(&self, word: &str) -> bool {
-        self.dictionary.contains(word) || self.patterns.is_match(word)
+        self.dictionary.contains(word)
+            || self
+                .secondaries
+                .iter()
+                .any(|d| d.contains(word))
+            || self.patterns.is_match(word)
     }
 
     pub fn suggest(&self, word: &str, max: usize) -> Vec<(String, usize)> {
         self.dictionary.suggest_corrections(word, max)
     }
 
-    /// Correct an invalid word; a word accepted by dictionary or user
-    /// patterns is returned untouched (patterns make words acceptable —
+    /// Correct an invalid word; a word accepted by the primary or a
+    /// fallback dictionary, or user patterns, is returned untouched.
+    /// Corrections always target the primary dictionary — a failed
+    /// English word is never canonicalized into French (patterns and
+    /// fallbacks make words *acceptable*, not correction targets —
     /// `correct_word` on the bare `Dictionary` only knows the word set).
     pub fn correct(&self, word: &str) -> String {
         if self.is_word_valid(word) {
@@ -2653,6 +2679,31 @@ mod tests {
         assert!(!prefixes.is_prefix("x"));
         assert!(!prefixes.is_prefix("eh"));
         assert_eq!(prefixes.len(), 5); // t, th, the, ther, there
+    }
+
+    #[test]
+    fn test_multi_language_fallback_accepts_secondary_words() {
+        let en = DictionaryHandler::new_for_language("en");
+        let multi = DictionaryHandler::new_for_language("en+fr");
+        // "être" is French-only in the bundled dictionaries.
+        assert!(!en.is_word_valid("être"));
+        assert!(multi.is_word_valid("être"));
+        // A fallback hit makes the word acceptable — correct() leaves it.
+        assert_eq!(multi.correct("être"), "être");
+        // Primary words stay valid.
+        assert!(multi.is_word_valid("the"));
+        // Empty codes in the spec are ignored.
+        assert!(DictionaryHandler::new_for_language("en++fr")
+            .is_word_valid("être"));
+    }
+
+    #[test]
+    fn test_multi_language_correction_still_targets_primary() {
+        // A word invalid in both languages corrects toward the primary
+        // dictionary, never the fallback.
+        let multi = DictionaryHandler::new_for_language("en+fr");
+        let en = DictionaryHandler::new_for_language("en");
+        assert_eq!(multi.correct("teh"), en.correct("teh"));
     }
 
     #[test]

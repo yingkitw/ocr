@@ -169,6 +169,14 @@ fn test_cli_extract_with_french_lang() {
 }
 
 #[test]
+fn test_cli_extract_with_multi_lang_fallback() {
+    let file = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.args(["extract", file.path().to_str().unwrap(), "--lang", "en+fr"]);
+    cmd.assert().success();
+}
+
+#[test]
 fn test_cli_extract_with_german_lang() {
     let file = create_test_image_with_rectangles();
     let mut cmd = Command::cargo_bin("ocr").unwrap();

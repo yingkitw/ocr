@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 509 tests passing, 90 ignored, zero known failures.**
+**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 512 tests passing, 90 ignored, zero known failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero unexpected failures (509 tests passing)
+- [x] `cargo test` passes with zero unexpected failures (512 tests passing)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -41,7 +41,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 |------|---------|-------------|
 | `IMAGE_PATH` | required | Path to the image file, or `-` to read from stdin |
 | `-o, --output` | stdout | Output file path |
-| `-l, --lang` | `en` | Language code (`en`, `fr`, `de`, `zh`, `ja`, `ko`, …) or `auto` (script + dictionary detection after recognition) |
+| `-l, --lang` | `en` | Language code (`en`, `fr`, `de`, `zh`, `ja`, `ko`, …), `a+b` multi-language fallback (secondary dictionaries accept words the primary rejects), or `auto` (script + dictionary detection after recognition) |
 | `--preprocess` | false | Enable full preprocessing pipeline |
 | `-f, --format` | `text` | Output: text, json, hocr, tsv, csv, alto, box, markdown, structured-json, rag, page, pdf (pdf requires `--features pdf`) |
 | `--psm` | `3` | Page segmentation mode (Tesseract-compatible): `0`–`13` or symbolic names — `osd_only`, `auto_osd`, `auto_only`, `auto`, `single_column`, `single_block_vert_text`, `single_block`, `single_line`, `single_word`, `circle_word`, `single_char`, `sparse_text`, `sparse_text_osd`, `raw_line` (see TESSERACT_PARITY.md §2) |

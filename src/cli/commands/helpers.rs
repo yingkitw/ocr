@@ -93,6 +93,11 @@ pub fn build_config(
 
     let mut config = OcrConfig::default();
     config.recognition.language = lang.to_string();
+    // `a+b` multi-language spec (Tesseract `-l a+b`): first code is
+    // primary, the rest are fallback dictionaries.
+    let mut lang_codes = lang.split('+').filter(|c| !c.is_empty());
+    config.language.primary_language = lang_codes.next().unwrap_or("en").to_string();
+    config.language.secondary_languages = lang_codes.map(str::to_string).collect();
     config.recognition.confidence_threshold = confidence;
     config.recognition.engine = parse_engine(engine)?;
     config.recognition.enable_dictionary_correction = dict_correct;

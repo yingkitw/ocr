@@ -133,10 +133,10 @@ fn median(values: &[f32]) -> Option<f32> {
 }
 
 fn is_cjk_language(lang: &str) -> bool {
-    matches!(
-        lang.to_lowercase().as_str(),
-        "zh" | "ja" | "ko" | "cjk" | "zh-cn" | "zh-tw"
-    )
+    // `a+b` multi-language specs are CJK when any member is.
+    lang.to_lowercase().split('+').any(|l| {
+        matches!(l, "zh" | "ja" | "ko" | "cjk" | "zh-cn" | "zh-tw")
+    })
 }
 
 /// Whether layout reassembly should use CJK spacing rules for this result.

@@ -908,7 +908,6 @@ impl OcrEngine {
         // `OnceLock`s so each builds lazily on first use.
         let lang = self.config.recognition.language.to_ascii_lowercase();
         let use_cjk = match lang.as_str() {
-            "zh" | "ja" | "ko" | "cjk" => true,
             "auto" => {
                 let script = crate::webocr::resolve_script(&crate::webocr::GrayImage {
                     width: w,
@@ -921,7 +920,11 @@ impl OcrEngine {
                 );
                 script == crate::webocr::ScriptId::Cjk
             }
-            _ => false,
+            // `a+b` multi-language specs use the CJK union library when
+            // any listed language is a CJK code (`zh+en`, `ja+en`).
+            _ => lang
+                .split('+')
+                .any(|l| matches!(l, "zh" | "ja" | "ko" | "cjk")),
         };
         let ocr_cell = if use_cjk {
             &self.template_cjk
