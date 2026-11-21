@@ -9,7 +9,7 @@ repository = "https://github.com/yingkitw/ocr"
 homepage = "https://github.com/yingkitw/ocr"
 documentation = "https://docs.rs/ocr"
 readme = "README.md"
-keywords = ["ocr", "tesseract", "image-to-text", "text-recognition", "pure-rust", "crnn", "ctc", "document-ai", "image-processing"]
+keywords = ["ocr", "tesseract", "image-to-text", "text-recognition", "pure-rust"]
 categories = ["command-line-utilities", "multimedia::images", "text-processing", "science", "computer-vision"]
 exclude = [
     "examples/images/*",
