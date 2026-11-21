@@ -10,6 +10,8 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use rayon::prelude::*;
+
 use super::binarize::binarize;
 use super::classify::{match_glyph, shortlist, CaseReading, Match, MatchOptions, PreparedTemplate};
 use super::components::{connected_components, median, union_box};
@@ -517,13 +519,14 @@ pub fn run_ocr(
     // The font's cap-height ratio, measured from the templates.
     let cap_ratio = cap_ratio(templates);
 
-    let mut results: Vec<LineResult> = Vec::new();
-    let mut score_sum = 0.0f32;
-    let mut char_count = 0usize;
-
-    for line in &lines {
+    // Lines are fully independent — every shared input (bin, template
+    // pools, match options) is read-only inside the loop, so the whole
+    // per-line pipeline parallelizes, not just the classify phase.
+    let mut results: Vec<LineResult> = lines
+        .par_iter()
+        .filter_map(|line| {
         if line.glyphs.is_empty() {
-            continue;
+            return None;
         }
         // Baseline estimate: the median glyph bottom — most glyphs sit on it.
         let baseline = line_baseline(&line.glyphs);
@@ -838,9 +841,11 @@ pub fn run_ocr(
             )
         };
 
-        // Phase 1a · every glyph on its own.
+        // Phase 1a · every glyph on its own. Each match is independent
+        // (shared template pools, owned result) — this is the hot loop,
+        // so it parallelizes across glyphs. `collect` preserves order.
         let reads: Vec<(Match, Vec<&PreparedTemplate>)> =
-            line.glyphs.iter().map(|g| match_one(g)).collect();
+            line.glyphs.par_iter().map(match_one).collect();
 
         // Phase 1b · the fragment merge: a glyph whose ink broke apart is
         // put back together when the two halves read better as one
@@ -1066,8 +1071,6 @@ pub fn run_ocr(
                 }
                 text.push(chosen);
                 chars.push(cb);
-                score_sum += m.score;
-                char_count += 1;
             }
         }
         for w in &mut words {
@@ -1088,19 +1091,24 @@ pub fn run_ocr(
                 })
                 .collect::<Vec<_>>(),
         );
-        if let Some(b) = box_ {
-            results.push(LineResult {
-                x0: b.x0,
-                y0: b.y0,
-                x1: b.x1,
-                y1: b.y1,
-                text,
-                chars,
-                words,
-                block: line.block,
-            });
-        }
-    }
+        box_.map(|b| LineResult {
+            x0: b.x0,
+            y0: b.y0,
+            x1: b.x1,
+            y1: b.y1,
+            text,
+            chars,
+            words,
+            block: line.block,
+        })
+    })
+    .collect();
+    let char_count: usize = results.iter().map(|l| l.chars.len()).sum();
+    let score_sum: f32 = results
+        .iter()
+        .flat_map(|l| l.chars.iter())
+        .map(|c| c.score)
+        .sum();
     let t3 = started.elapsed().as_secs_f64() * 1000.0;
 
     // 5 · Layout — reassemble line geometry into the text: a blank line
