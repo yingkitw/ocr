@@ -37,9 +37,11 @@ Simple OCR test with a sample image.
 - Word and character level results
 - Bounding boxes
 
-> **Note:** `test_simple_text` currently fails — the bundled CRNN model is not
-> trained to target accuracy, so its output does not match the fixture's
-> expected text. See `TODO.md` → "Known test failures".
+> **Note:** `test_simple_text` runs on the template engine
+> (`RecognitionEngine::Template`) rather than the default CRNN — the bundled
+> model is not trained to target accuracy, so it produces empty output on the
+> fixture. The test skips gracefully when no system fonts are installed
+> (bare containers).
 
 ### `docs_sync_test.rs`
 Guards against documentation drift — asserts the root `*.md` files describe the code as it is:
