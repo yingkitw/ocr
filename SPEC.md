@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 512 tests passing, 90 ignored, zero known failures.**
+**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 515 tests passing, 90 ignored, zero known failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero unexpected failures (512 tests passing)
+- [x] `cargo test` passes with zero unexpected failures (515 tests passing)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -208,6 +208,7 @@ pub struct CnnDetector;          // 3-layer CNN with heuristic edge-detector wei
 - [x] Pure-Rust with no new dependencies (rusttype 0.9 was already a dep)
 - [x] 55 unit tests + 7 round-trip integration tests + CLI smoke tests
 - [x] CJK union charset (zh + ja + ko) — HAN + KANA + HANGUL + ASCII, ~33K codepoints
+- [x] Extended Latin charset — `LATIN_CHARSET` covers Latin-1 Supplement letters (À–ÿ incl. ß), Œœ Šš Žž, and common European punctuation/currency («» € £ ¥ © ® § ¶ ° – — ‘’ “” …). Accented glyphs now emit their true codepoints instead of degrading to base letters; `café`, `über`, `niño`, `Português` round-trip end-to-end.
 
 ### Measured Accuracy (WebOCR fixtures; re-validated in sibling repo)
 

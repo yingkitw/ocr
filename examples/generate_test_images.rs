@@ -693,11 +693,11 @@ fn generate_eurotext(fonts: &[LoadedFont], path: &str) -> Result<(), Box<dyn std
     let mut img = white_rgb(700, 300);
     let lines = [
         ("English: The quick brown fox", FontCategory::SansSerif),
-        ("Francais: cafe creme naive eleve", FontCategory::Serif),
-        ("Deutsch: uber gross schon Munchen", FontCategory::Serif),
-        ("Espanol: nino pina agudo senor", FontCategory::SansSerif),
-        ("Italiano: perche citta uovo", FontCategory::Serif),
-        ("Portugues: avenida coracao nacao", FontCategory::SansSerif),
+        ("Francais: café crème naïve élève", FontCategory::Serif),
+        ("Deutsch: über groß schön München", FontCategory::Serif),
+        ("Espanol: niño piña agudo señor", FontCategory::SansSerif),
+        ("Italiano: perché città uovo", FontCategory::Serif),
+        ("Português: avenida coração nação", FontCategory::SansSerif),
     ];
     let mut y = 20;
     for (line, cat) in lines.iter() {

@@ -507,11 +507,12 @@ pub fn run_ocr(
         main_refs.iter().copied().filter(|t| (t.char as u32) < 0x2E80).collect();
     // Letters and digits are never shorter than ~x-height; only punctuation
     // is. A sub-half-median glyph (。, ·) must not lose to a look-alike
-    // letter ("o") — the Latin punct subset covers it instead.
+    // letter ("o") — the Latin punct subset covers it instead. Unicode
+    // `is_alphanumeric` so accented letters (é, ü, ß) stay with letters.
     let latin_punct_refs: Vec<&PreparedTemplate> = latin_refs
         .iter()
         .copied()
-        .filter(|t| !t.char.is_ascii_alphanumeric())
+        .filter(|t| !t.char.is_alphanumeric())
         .collect();
     let cjk_refs: Vec<&PreparedTemplate> =
         main_refs.iter().copied().filter(|t| (t.char as u32) >= 0x2E80).collect();

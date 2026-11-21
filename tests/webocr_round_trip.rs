@@ -315,6 +315,63 @@ fn scorecard_skewed_page_is_deskewed() {
     }
 }
 
+/// Extended-Latin round-trip: `LATIN_CHARSET` was ASCII-only until the
+/// European-accent pass, so `café` could only ever emit `cafc`/`cafe` —
+/// a glyph missing from the template library is structurally
+/// unreachable. Now that accented templates exist, the output must
+/// actually contain them (not just the base letters).
+///
+/// The gate asserts two things: the accented characters survive
+/// end-to-end (é, ü, ñ all appear), and overall accuracy stays high.
+/// `naïve`/`ß` are deliberately excluded — detached diaeresis dots and
+/// Times-style eszett segmentation are known residuals gated elsewhere.
+#[test]
+fn round_trip_accented_latin_recognises_accents() {
+    let data = match system_font_data() {
+        Some(d) => d,
+        None => {
+            eprintln!("skipping: no system sans font found");
+            return;
+        }
+    };
+    let ocr = match build_ocr() {
+        Some(o) => o,
+        None => {
+            eprintln!("skipping: template engine unavailable (no fonts)");
+            return;
+        }
+    };
+    let text = "café crème über niño señor";
+    let Some((pixels, w, h, _baseline)) = render_text(text, &data, 48) else {
+        eprintln!("skipping: render failed");
+        return;
+    };
+    let gray = GrayImage {
+        width: w as usize,
+        height: h as usize,
+        data: pixels,
+    };
+    let r = ocr.recognize(&gray);
+    let actual: String = r
+        .lines
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    for accented in ['é', 'ü', 'ñ'] {
+        assert!(
+            actual.contains(accented),
+            "expected {accented:?} in output, got {actual:?} \
+             (accented glyphs unreachable?)"
+        );
+    }
+    let acc = accuracy(&actual, text);
+    assert!(
+        acc >= 0.85,
+        "accented text expected ≥0.85, got {acc:.3} (expected {text:?}, got {actual:?})"
+    );
+}
+
 fn build_ocr() -> Option<ocr::webocr::TemplateOcr> {
     ocr::webocr::TemplateOcr::new().ok()
 }

@@ -122,8 +122,21 @@ pub trait TemplateRenderer {
     }
 }
 
-/// The default Latin charset: printable ASCII sans space.
-pub const LATIN_CHARSET: &str = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+/// The default Latin charset: printable ASCII sans space, plus the
+/// Latin-1 Supplement letters and Latin Extended-A / typographic
+/// punctuation needed for Western-European text (accents, guillemets,
+/// dashes, curly quotes, currency). Without these, a `é` or `ü` glyph
+/// has no template at all — it can only degrade to its base letter.
+pub const LATIN_CHARSET: &str = concat!(
+    "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+    // Latin-1 Supplement letters (À–Ö, Ø–ö, ø–ÿ; × ÷ are math, skipped)
+    "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß",
+    "àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ",
+    // Latin Extended-A: Œœ (French), Šš Žž (Central European)
+    "ŒœŠšŽž",
+    // General punctuation + currency common in printed text
+    "«»‹›¡¿‘’‚“”„–—…€£¥¢©®§¶†‡•°",
+);
 
 /// Default CJK raster sizes (WebOCR: 72 px preserves kana AA detail;
 /// single size keeps the 21K-glyph library build manageable).
@@ -637,6 +650,27 @@ mod tests {
         assert!(s.chars().any(|c| c == '\u{AC00}')); // 가
         // ≥ ASCII + Hiragana + Katakana + CJK Unified + Hangul Syllables
         assert!(s.chars().count() > 30_000);
+    }
+
+    #[test]
+    fn latin_charset_covers_european_accents() {
+        // The accented letters that used to be unrepresentable: a glyph
+        // absent from the charset can never be emitted, so `café` could
+        // only degrade to `cafe`. All are < SCRIPT_PARTITION_CP (0x2E80),
+        // so they land in the Latin shortlist, not CJK.
+        for c in "éèêëàáâãäåçìíîïñòóôõöùúûüýÿßæœÆŒÇÉÜÖÀÑšžŠŽ".chars() {
+            assert!(LATIN_CHARSET.contains(c), "LATIN_CHARSET missing {c}");
+            assert!((c as u32) < SCRIPT_PARTITION_CP);
+        }
+        // Common European punctuation/currency too.
+        for c in "«»€£¥©®§¶°–—‘’“”…".chars() {
+            assert!(LATIN_CHARSET.contains(c), "LATIN_CHARSET missing {c}");
+        }
+        // Deduplication sanity: no char appears twice.
+        let mut seen = std::collections::HashSet::new();
+        for c in LATIN_CHARSET.chars() {
+            assert!(seen.insert(c), "duplicate {c} in LATIN_CHARSET");
+        }
     }
 
     #[test]
