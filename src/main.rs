@@ -23,6 +23,9 @@ async fn main() -> Result<()> {
             format,
             psm,
             whitelist,
+            blacklist,
+            user_words,
+            user_patterns,
             confidence,
             engine,
             dict_correct,
@@ -45,6 +48,9 @@ async fn main() -> Result<()> {
                 osd,
                 dpi,
                 whitelist,
+                blacklist,
+                user_words,
+                user_patterns,
                 &threshold_method,
             )
             .await?;

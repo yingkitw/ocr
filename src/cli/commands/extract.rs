@@ -6,7 +6,7 @@ use tracing::info;
 use ocr::api::Ocr;
 
 use super::helpers::{
-    apply_dictionary_correction, build_config, format_result,
+    apply_dictionary_correction, build_config, format_result, DictOpts,
 };
 
 pub async fn handle_extract(
@@ -23,6 +23,9 @@ pub async fn handle_extract(
     osd: bool,
     dpi: u32,
     whitelist: Option<String>,
+    blacklist: Option<String>,
+    user_words: Option<String>,
+    user_patterns: Option<String>,
     threshold_method: &str,
 ) -> Result<()> {
     info!(
@@ -30,6 +33,11 @@ pub async fn handle_extract(
         image_path, psm, format, engine, dpi, threshold_method
     );
 
+    let dict_opts = DictOpts {
+        blacklist,
+        user_words,
+        user_patterns,
+    };
     let config = build_config(
         lang,
         preprocess,
@@ -41,6 +49,7 @@ pub async fn handle_extract(
         osd,
         dpi,
         whitelist.as_deref(),
+        &dict_opts,
         threshold_method,
     )?;
     let ocr = Ocr::with_config(config)?;
@@ -67,7 +76,7 @@ pub async fn handle_extract(
     // Apply dictionary correction to all pages
     if dict_correct {
         for r in &mut results {
-            apply_dictionary_correction(r, lang);
+            apply_dictionary_correction(r, lang, &dict_opts);
         }
     }
 

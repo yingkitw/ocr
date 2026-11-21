@@ -23,7 +23,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 
 | Command | Description | Required Args | Optional Flags |
 |---------|-------------|---------------|--------------|
-| `extract` | Recognize text from an image (or `-` for stdin). Multi-page TIFF produces page-separated output. | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--whitelist`, `--confidence`, `--engine`, `--dict-correct`, `--device`, `--osd`, `--dpi` |
+| `extract` | Recognize text from an image (or `-` for stdin). Multi-page TIFF produces page-separated output. | `IMAGE_PATH` | `-o, --output`, `-l, --lang`, `--preprocess`, `-f, --format`, `--psm`, `--whitelist`, `--blacklist`, `--user-words`, `--user-patterns`, `--confidence`, `--engine`, `--dict-correct`, `--device`, `--osd`, `--dpi` |
 | `batch` | Process a directory of images (prints `[n/total] % ETA` progress) | `-i, --input-dir`, `-o, --output-dir` | `-l, --lang`, `--confidence`, `--engine`, `--dict-correct`, `--max-concurrent`, `--device`, `--threshold-method` |
 | `layout` | Analyze page layout | `IMAGE_PATH` | `-o, --output` |
 | `list-languages` | Print supported language codes | — | — |
@@ -53,6 +53,9 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 | `--dpi` | `300` | Input image resolution in DPI (affects super-resolution and layout heuristics) |
 | `--threshold-method` | `otsu` | Page binarization method for layout analysis (Tesseract `thresholding_method`): `0`–`3` or symbolic names — `otsu` (0), `leptonica` (1), `sauvola` (2), `niblack` (3). Sauvola/Niblack hold up better on uneven backgrounds and degraded scans; the CRNN path itself stays grayscale. |
 | `--whitelist` | none | Restrict recognition to these characters only (Tesseract `tessedit_char_whitelist`), e.g. `--whitelist 0123456789` |
+| `--blacklist` | none | Reject these characters from the output (Tesseract `tessedit_char_blacklist`), e.g. `--blacklist "|~"` |
+| `--user-words` | none | Word-list file merged into the language dictionary (Tesseract `user_words_file`): one word per line; reaches dictionary correction, rescorer bonus and word-acceptance gates |
+| `--user-patterns` | none | Pattern file of acceptable word shapes (Tesseract `user_patterns_file`): one pattern per line; classes `\c` lower, `\C` upper, `\d` digit, `\p` punct, `\a` alpha, `\*` any run; matched words count as dictionary-valid |
 
 ### PSM modes (Tesseract `--psm` parity)
 

@@ -1,6 +1,6 @@
 [package]
 name = "ocr"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 authors = ["Ying Kit WONG"]
 description = "Pure Rust OCR engine and CLI for extracting printed text from images. Supports 25+ languages, CRNN/CTC recognition, multi-page TIFF, table and form extraction, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF."

@@ -41,6 +41,7 @@ pub async fn handle_batch(
         false,
         300,
         None,
+        &super::helpers::DictOpts::default(),
         threshold_method,
     )?;
     let ocr = Ocr::with_config(config)?;
@@ -155,7 +156,11 @@ async fn process_one(
     match ocr.recognize_text_from_file(image_path).await {
         Ok(mut result) => {
             if dict_correct {
-                super::helpers::apply_dictionary_correction(&mut result, lang);
+                super::helpers::apply_dictionary_correction(
+                    &mut result,
+                    lang,
+                    &super::helpers::DictOpts::default(),
+                );
             }
             let text = if confidence > 0.0 {
                 TextProcessor::filter_by_confidence(&result, confidence)

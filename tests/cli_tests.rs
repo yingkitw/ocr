@@ -559,3 +559,59 @@ fn test_cli_whitelist_flag_accepted() {
         .arg("single_block");
     cmd.assert().success();
 }
+
+#[test]
+fn test_cli_blacklist_flag_accepted() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--blacklist")
+        .arg("|~")
+        .arg("--psm")
+        .arg("single_block");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_user_words_file_accepted() {
+    let words = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(words.path(), "quixoticity\nxylophone\n").unwrap();
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--user-words")
+        .arg(words.path())
+        .arg("--psm")
+        .arg("single_block");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_user_patterns_file_accepted() {
+    let pats = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(pats.path(), "\\d\\d\\d\\d\nSN-\\*\n").unwrap();
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--user-patterns")
+        .arg(pats.path())
+        .arg("--psm")
+        .arg("single_block");
+    cmd.assert().success();
+}
+
+#[test]
+fn test_cli_user_words_missing_file_errors() {
+    let img = create_test_image_with_rectangles();
+    let mut cmd = Command::cargo_bin("ocr").unwrap();
+    cmd.arg("extract")
+        .arg(img.path())
+        .arg("--user-words")
+        .arg("/nonexistent/user_words.txt");
+    cmd.assert()
+        .failure()
+        .stderr(predicates::str::contains("user words file not found"));
+}

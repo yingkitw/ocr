@@ -6,8 +6,17 @@ use tracing::info;
 use ocr::core::text::TextResult;
 use ocr::lang::dictionary::DictionaryHandler;
 
-pub fn apply_dictionary_correction(result: &mut TextResult, lang: &str) {
-    let handler = DictionaryHandler::new_for_language(lang);
+pub fn apply_dictionary_correction(result: &mut TextResult, lang: &str, dict_opts: &DictOpts) {
+    let mut handler = DictionaryHandler::new_for_language(lang);
+    // Apply the user's supplementary files — existence was already
+    // validated in `build_config`; a race between then and now is not
+    // worth failing the command over.
+    if let Some(ref path) = dict_opts.user_words {
+        let _ = handler.load_from_file(path);
+    }
+    if let Some(ref path) = dict_opts.user_patterns {
+        let _ = handler.load_patterns_from_file(path);
+    }
 
     let words: Vec<String> = result
         .text
@@ -46,6 +55,16 @@ pub fn parse_engine(s: &str) -> anyhow::Result<ocr::core::config::RecognitionEng
     }
 }
 
+/// User-supplied dictionary/filter inputs for `build_config`
+/// (Tesseract `tessedit_char_blacklist` + `user_words_file` /
+/// `user_patterns_file` parity).
+#[derive(Default)]
+pub struct DictOpts {
+    pub blacklist: Option<String>,
+    pub user_words: Option<String>,
+    pub user_patterns: Option<String>,
+}
+
 pub fn build_config(
     lang: &str,
     preprocess: bool,
@@ -57,6 +76,7 @@ pub fn build_config(
     osd: bool,
     dpi: u32,
     whitelist: Option<&str>,
+    dict_opts: &DictOpts,
     threshold_method: &str,
 ) -> anyhow::Result<ocr::core::config::OcrConfig> {
     use ocr::core::config::{BinarizationMethod, OcrConfig, PageSegMode};
@@ -81,6 +101,24 @@ pub fn build_config(
         if !parsed.is_empty() {
             config.recognition.character_whitelist = Some(parsed);
         }
+    }
+    if let Some(chars) = dict_opts.blacklist.as_deref() {
+        let parsed: Vec<char> = chars.chars().collect();
+        if !parsed.is_empty() {
+            config.recognition.character_blacklist = Some(parsed);
+        }
+    }
+    if let Some(path) = &dict_opts.user_words {
+        if !std::path::Path::new(path).exists() {
+            anyhow::bail!("user words file not found: {path}");
+        }
+        config.recognition.user_words_file = Some(path.clone());
+    }
+    if let Some(path) = &dict_opts.user_patterns {
+        if !std::path::Path::new(path).exists() {
+            anyhow::bail!("user patterns file not found: {path}");
+        }
+        config.recognition.user_patterns_file = Some(path.clone());
     }
     config.recognition.parameters.insert("dpi".to_string(), dpi.to_string());
     config.image_processing.enable_preprocessing = preprocess;

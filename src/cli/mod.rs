@@ -48,6 +48,23 @@ pub enum Commands {
         #[arg(long)]
         whitelist: Option<String>,
 
+        /// Reject these characters from the output (Tesseract
+        /// tessedit_char_blacklist), e.g. --blacklist "|~"
+        #[arg(long)]
+        blacklist: Option<String>,
+
+        /// Word-list file merged into the language dictionary (Tesseract
+        /// user_words_file): one word per line. Reaches dictionary
+        /// correction, rescorer bonus and word-acceptance gates.
+        #[arg(long, value_name = "FILE")]
+        user_words: Option<String>,
+
+        /// Pattern file of acceptable word shapes (Tesseract
+        /// user_patterns_file): one pattern per line. Classes: \c lower,
+        /// \C upper, \d digit, \p punct, \a alpha, \* any run.
+        #[arg(long, value_name = "FILE")]
+        user_patterns: Option<String>,
+
         /// Confidence threshold (0.0 to 1.0)
         #[arg(long, default_value = "0.5")]
         confidence: f32,

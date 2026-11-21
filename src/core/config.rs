@@ -34,6 +34,16 @@ pub struct RecognitionConfig {
     pub character_whitelist: Option<Vec<char>>,
     /// Character blacklist
     pub character_blacklist: Option<Vec<char>>,
+    /// User dictionary file (Tesseract `user_words_file`): one word per
+    /// line (whitespace-separated also accepted), merged into the
+    /// language dictionary before rescoring/correction.
+    pub user_words_file: Option<String>,
+    /// User patterns file (Tesseract `user_patterns_file`): one pattern
+    /// per line; a word matching any pattern counts as dictionary-valid
+    /// for the `is_word_valid` gates (confusion correction, word
+    /// acceptance). Pattern syntax: `\c` lowercase, `\C` uppercase,
+    /// `\d` digit, `\p` punctuation, `\a` alphabetic, `\*` any run.
+    pub user_patterns_file: Option<String>,
     /// Enable dictionary correction
     pub enable_dictionary_correction: bool,
     /// Enable language model
@@ -56,6 +66,8 @@ impl Default for RecognitionConfig {
             confidence_threshold: 0.5,
             character_whitelist: None,
             character_blacklist: None,
+            user_words_file: None,
+            user_patterns_file: None,
             // Opt-in, matching the CLI's `--dict-correct` default: the
             // bundled dictionaries are small common-word lists, and a
             // distance-≤2 substitution applied to every non-dictionary

@@ -30,6 +30,7 @@ pub async fn handle_makebox(
         false,
         300,
         None,
+        &super::helpers::DictOpts::default(),
         "otsu",
     )?;
 

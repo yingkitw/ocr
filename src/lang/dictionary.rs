@@ -2413,14 +2413,119 @@ fn load_bulgarian_dictionary() -> Dictionary {
     load_english_dictionary()
 }
 
+/// Compiled user pattern (Tesseract `user_patterns_file` grammar).
+///
+/// One pattern per line. Escape classes match exactly one character:
+/// `\c` lowercase letter, `\C` uppercase letter, `\d` ASCII digit,
+/// `\p` punctuation, `\a` alphabetic. `\*` matches a run of zero or
+/// more characters (the Kleene wildcard — write `\d` per fixed digit or
+/// `\*` for a variable tail, e.g. `INV-\d\d\d-\*`). Every other
+/// character is a literal. The whole word must match end-to-end.
+#[derive(Debug, Clone, Default)]
+pub struct UserPatterns {
+    patterns: Vec<Vec<PatElem>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PatElem {
+    Literal(char),
+    Lower,
+    Upper,
+    Digit,
+    Punct,
+    Alpha,
+    AnyRun,
+}
+
+impl UserPatterns {
+    /// Parse pattern lines. Blank lines and `#` comments are skipped.
+    pub fn from_text(text: &str) -> Self {
+        let mut patterns = Vec::new();
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let mut elems = Vec::new();
+            let mut chars = line.chars();
+            while let Some(c) = chars.next() {
+                if c == '\\' {
+                    match chars.next() {
+                        Some('c') => elems.push(PatElem::Lower),
+                        Some('C') => elems.push(PatElem::Upper),
+                        Some('d') => elems.push(PatElem::Digit),
+                        Some('p') => elems.push(PatElem::Punct),
+                        Some('a') => elems.push(PatElem::Alpha),
+                        Some('*') => elems.push(PatElem::AnyRun),
+                        // Unknown escape: treat the next char literally.
+                        Some(other) => elems.push(PatElem::Literal(other)),
+                        None => elems.push(PatElem::Literal('\\')),
+                    }
+                } else {
+                    elems.push(PatElem::Literal(c));
+                }
+            }
+            if !elems.is_empty() {
+                patterns.push(elems);
+            }
+        }
+        Self { patterns }
+    }
+
+    pub fn load_from_file<P: AsRef<std::path::Path>>(path: P) -> std::io::Result<Self> {
+        Ok(Self::from_text(&std::fs::read_to_string(path)?))
+    }
+
+    /// True when the whole word matches at least one pattern.
+    pub fn is_match(&self, word: &str) -> bool {
+        if self.patterns.is_empty() {
+            return false;
+        }
+        let chars: Vec<char> = word.chars().collect();
+        self.patterns.iter().any(|p| matches_pat(p, &chars))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.patterns.is_empty()
+    }
+}
+
+/// Backtracking full-string match — `AnyRun` is the only element that
+/// can consume a variable-length span, so simple recursion suffices.
+fn matches_pat(pat: &[PatElem], text: &[char]) -> bool {
+    match pat.split_first() {
+        None => text.is_empty(),
+        Some((PatElem::AnyRun, rest)) => {
+            (0..=text.len()).any(|k| matches_pat(rest, &text[k..]))
+        }
+        Some((e, rest)) => {
+            !text.is_empty() && elem_matches(*e, text[0]) && matches_pat(rest, &text[1..])
+        }
+    }
+}
+
+fn elem_matches(e: PatElem, c: char) -> bool {
+    match e {
+        PatElem::Literal(l) => l == c,
+        PatElem::Lower => c.is_lowercase(),
+        PatElem::Upper => c.is_uppercase(),
+        PatElem::Digit => c.is_ascii_digit(),
+        PatElem::Punct => c.is_ascii_punctuation(),
+        PatElem::Alpha => c.is_alphabetic(),
+        PatElem::AnyRun => true,
+    }
+}
+
 pub struct DictionaryHandler {
     dictionary: Dictionary,
+    patterns: UserPatterns,
 }
 
 impl DictionaryHandler {
     pub fn new() -> Self {
         Self {
             dictionary: load_english_dictionary(),
+            patterns: UserPatterns::default(),
         }
     }
 
@@ -2454,11 +2559,17 @@ impl DictionaryHandler {
             "bg" => load_bulgarian_dictionary(),
             _ => load_english_dictionary(),
         };
-        Self { dictionary }
+        Self {
+            dictionary,
+            patterns: UserPatterns::default(),
+        }
     }
 
     pub fn with_dictionary(dictionary: Dictionary) -> Self {
-        Self { dictionary }
+        Self {
+            dictionary,
+            patterns: UserPatterns::default(),
+        }
     }
 
     /// Load additional words from a plain text file (one word per line or whitespace-separated)
@@ -2474,15 +2585,38 @@ impl DictionaryHandler {
         self.dictionary.load_from_text(text);
     }
 
+    /// Attach compiled user patterns (`user_patterns_file` semantics):
+    /// a word matching any pattern counts as dictionary-valid.
+    pub fn set_patterns(&mut self, patterns: UserPatterns) {
+        self.patterns = patterns;
+    }
+
+    /// Load user patterns from a file (one pattern per line).
+    pub fn load_patterns_from_file<P: AsRef<std::path::Path>>(
+        &mut self,
+        path: P,
+    ) -> std::io::Result<()> {
+        self.patterns = UserPatterns::load_from_file(path)?;
+        Ok(())
+    }
+
+    /// A word is valid when the dictionary contains it or a user
+    /// pattern matches it (Tesseract: DAWG hit OR user-pattern hit).
     pub fn is_word_valid(&self, word: &str) -> bool {
-        self.dictionary.contains(word)
+        self.dictionary.contains(word) || self.patterns.is_match(word)
     }
 
     pub fn suggest(&self, word: &str, max: usize) -> Vec<(String, usize)> {
         self.dictionary.suggest_corrections(word, max)
     }
 
+    /// Correct an invalid word; a word accepted by dictionary or user
+    /// patterns is returned untouched (patterns make words acceptable —
+    /// `correct_word` on the bare `Dictionary` only knows the word set).
     pub fn correct(&self, word: &str) -> String {
+        if self.is_word_valid(word) {
+            return word.to_string();
+        }
         self.dictionary.correct_word(word)
     }
 
@@ -2519,6 +2653,51 @@ mod tests {
         assert!(!prefixes.is_prefix("x"));
         assert!(!prefixes.is_prefix("eh"));
         assert_eq!(prefixes.len(), 5); // t, th, the, ther, there
+    }
+
+    #[test]
+    fn test_user_patterns_classes() {
+        let p = UserPatterns::from_text("\\d\\d\\d\n\\C\\a\\a\n\\c\\d\n\\a\\a\\p");
+        assert!(p.is_match("123"));
+        assert!(!p.is_match("12"), "\\d\\d\\d needs exactly three digits");
+        assert!(p.is_match("ABC"), "\\C\\a\\a: upper + two alpha");
+        assert!(p.is_match("Xyz"));
+        assert!(!p.is_match("xyZ"), "\\C\\a\\a requires an uppercase first char");
+        assert!(p.is_match("a1"), "\\c\\d");
+        assert!(!p.is_match("A1"), "\\c is lowercase-only");
+        assert!(p.is_match("no!"), "\\a\\a\\p");
+    }
+
+    #[test]
+    fn test_user_patterns_literals_and_wildcard() {
+        let p = UserPatterns::from_text("INV-\\d\\d\\d\nSN-\\*");
+        assert!(p.is_match("INV-042"));
+        assert!(!p.is_match("INV-42"), "fixed digit count");
+        assert!(!p.is_match("inv-042"), "literals are case-sensitive");
+        assert!(p.is_match("SN-"), "\\* matches an empty run");
+        assert!(p.is_match("SN-x7!q"));
+        assert!(!p.is_match("SN"), "missing literal hyphen");
+    }
+
+    #[test]
+    fn test_user_patterns_comments_blanks_empty() {
+        let p = UserPatterns::from_text("# comment\n\n   \n\\d\n");
+        assert!(p.is_match("7"));
+        assert!(!p.is_match(""));
+        let empty = UserPatterns::from_text("# only comments\n");
+        assert!(empty.is_empty());
+        assert!(!empty.is_match("x"));
+    }
+
+    #[test]
+    fn test_user_patterns_extend_word_validity() {
+        let mut h = DictionaryHandler::new();
+        assert!(!h.is_word_valid("XKCD-79"));
+        h.set_patterns(UserPatterns::from_text("\\C\\C\\C\\C-\\d\\d"));
+        assert!(h.is_word_valid("XKCD-79"), "pattern-matched word is valid");
+        assert!(h.is_word_valid("the"), "dictionary words stay valid");
+        // A pattern-accepted word must not be "corrected" away.
+        assert_eq!(h.correct("XKCD-79"), "XKCD-79");
     }
 
     #[test]

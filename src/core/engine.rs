@@ -1062,12 +1062,30 @@ impl OcrEngine {
         })
     }
 
+    /// Build the language dictionary and apply the user's supplementary
+    /// files: `user_words_file` merges into the dictionary itself (so it
+    /// reaches the rescorer, in-beam steering and `correct()`), while
+    /// `user_patterns_file` feeds the `is_word_valid` acceptance gates.
+    fn build_dictionary(&self, lang: &str) -> crate::lang::dictionary::DictionaryHandler {
+        let mut handler = crate::lang::dictionary::DictionaryHandler::new_for_language(lang);
+        if let Some(ref path) = self.config.recognition.user_words_file {
+            if let Err(e) = handler.load_from_file(path) {
+                tracing::warn!(path = %path, error = %e, "failed to load user words file");
+            }
+        }
+        if let Some(ref path) = self.config.recognition.user_patterns_file {
+            if let Err(e) = handler.load_patterns_from_file(path) {
+                tracing::warn!(path = %path, error = %e, "failed to load user patterns file");
+            }
+        }
+        handler
+    }
+
     async fn recognize_with_crnn(
         &self,
         image: &OcrImage,
         layout: &LayoutResult,
     ) -> Result<RecognitionResult> {
-        use crate::lang::dictionary::DictionaryHandler;
         use crate::lang::load_english_ngram_model;
 
         // Load the bundled trained model once and cache it for subsequent calls.
@@ -1084,7 +1102,7 @@ impl OcrEngine {
 
         let recognition_lang = self.recognition_language_hint(image);
         let dict_handler = if self.config.recognition.enable_dictionary_correction {
-            Some(DictionaryHandler::new_for_language(&recognition_lang))
+            Some(self.build_dictionary(&recognition_lang))
         } else {
             None
         };
@@ -1216,8 +1234,6 @@ impl OcrEngine {
         recognition: RecognitionResult,
         image: &OcrImage,
     ) -> Result<TextResult> {
-        use crate::lang::dictionary::DictionaryHandler;
-
         let whitelist = &self.config.recognition.character_whitelist;
         let blacklist = &self.config.recognition.character_blacklist;
         let confidence_threshold = self.config.recognition.confidence_threshold;
@@ -1241,7 +1257,7 @@ impl OcrEngine {
         }
 
         let dict = if enable_dict_correction {
-            Some(DictionaryHandler::new_for_language(&resolved_lang))
+            Some(self.build_dictionary(&resolved_lang))
         } else {
             None
         };
@@ -1498,7 +1514,7 @@ impl OcrEngine {
                 "en" | "de" | "fr" | "es" | "it" | "pt" | "nl" | "auto"
             ) || Script::detect(&text_result.text) == Script::Latin;
             if latin {
-                let fallback_dict = DictionaryHandler::new_for_language("en");
+                let fallback_dict = self.build_dictionary("en");
                 let handler = dict.as_ref().unwrap_or(&fallback_dict);
                 text_result.text =
                     crate::lang::confusion_correct::correct_latin(&text_result.text, handler);
