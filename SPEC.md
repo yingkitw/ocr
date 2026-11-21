@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 515 tests passing, 90 ignored, zero known failures.**
+**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 516 tests passing, 90 ignored, zero known failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero unexpected failures (515 tests passing)
+- [x] `cargo test` passes with zero unexpected failures (516 tests passing)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -207,7 +207,7 @@ pub struct CnnDetector;          // 3-layer CNN with heuristic edge-detector wei
 - [x] Script auto-detection: `--lang auto` picks the Latin vs CJK library from image geometry (`webocr::detect::resolve_script`)
 - [x] Pure-Rust with no new dependencies (rusttype 0.9 was already a dep)
 - [x] 55 unit tests + 7 round-trip integration tests + CLI smoke tests
-- [x] CJK union charset (zh + ja + ko) — HAN + KANA + HANGUL + ASCII, ~33K codepoints
+- [x] CJK union charset (zh + ja + ko) — HAN + KANA + HANGUL + ASCII, ~33K codepoints, ~65–97K templates across CJK faces. Per-family `scale_ref` normalization (Latin samples at `SCALE_REF=20`, CJK at `CJK_SCALE_REF=24`); Hangul covered via a dedicated face group (Apple SD Gothic Neo / AppleMyungjo / Malgun). Verified reads: `中文字测试`, `こんにちは`, `한국어` at 0.88–0.96 per-char cosine.
 - [x] Extended Latin charset — `LATIN_CHARSET` covers Latin-1 Supplement letters (À–ÿ incl. ß), Œœ Šš Žž, and common European punctuation/currency («» € £ ¥ © ® § ¶ ° – — ‘’ “” …). Accented glyphs now emit their true codepoints instead of degrading to base letters; `café`, `über`, `niño`, `Português` round-trip end-to-end.
 
 ### Measured Accuracy (WebOCR fixtures; re-validated in sibling repo)

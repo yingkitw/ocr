@@ -46,6 +46,19 @@ const CJK_FACE_CANDIDATES: &[&[&str]] = &[
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "C:/Windows/Fonts/msyhbd.ttc",
     ],
+    &[
+        // Hangul coverage — Hiragino Sans GB (the usual group-1 hit on
+        // macOS) has no Hangul glyphs at all, so ko text was
+        // structurally unrecognizable. Apple SD Gothic Neo /
+        // AppleMyungjo cover the full Hangul block (Han + kana too,
+        // giving the library a second face for free). Linux Noto CJK
+        // already covers Hangul inside group 1; Malgun is the native
+        // Korean face on Windows.
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/Supplemental/AppleMyungjo.ttf",
+        "C:/Windows/Fonts/malgun.ttf",
+        "C:/Windows/Fonts/malgunbd.ttf",
+    ],
 ];
 
 /// Candidate font files per face (first existing path wins). Mirrors the
@@ -294,9 +307,17 @@ impl TemplateRenderer for RustTypeRenderer {
                 Some(g) => g.scaled(scale).positioned(rusttype::point(cx, cy)),
                 None => continue,
             };
+            // `draw` yields offsets relative to the glyph's own pixel
+            // bounding-box min — NOT absolute canvas coords. Without the
+            // bb.min offset every glyph piles up at canvas (0,0) and the
+            // whole chunk merges into one component (the union library
+            // used to come out at ~452 templates instead of ~21K).
+            let Some(bb) = glyph.pixel_bounding_box() else {
+                continue;
+            };
             glyph.draw(|x, y, v| {
-                let xi = x as usize;
-                let yi = y as usize;
+                let xi = (bb.min.x + x as i32) as usize;
+                let yi = (bb.min.y + y as i32) as usize;
                 if xi < width && yi < height {
                     let slot = &mut data[yi * width + xi];
                     let ink = (v * 255.0).round() as u8;
@@ -411,6 +432,48 @@ mod tests {
         let inked = |y: usize| (0..gray.width).any(|x| gray.data[y * gray.width + x] < 128);
         let baseline_row = g.baseline as usize;
         assert!((0..baseline_row).any(inked), "cap ink above baseline");
+    }
+
+    /// Regression: `render_grid` used to write every glyph's `draw` output
+    /// at canvas (0,0) — `draw` yields offsets relative to the glyph's own
+    /// bounding-box min, not absolute canvas coordinates. All 144 glyphs in
+    /// a chunk merged into one component and the union library came out at
+    /// ~452 templates instead of ~21K (only `chunk[0]` survived).
+    #[test]
+    fn grid_render_places_each_glyph_in_its_own_cell() {
+        let renderer = RustTypeRenderer::load();
+        if renderer.is_empty() {
+            eprintln!("skipping: no system fonts found");
+            return;
+        }
+        let cell = 72u32;
+        // Three different chars → three different cells — the bug put
+        // every glyph's ink at canvas (0,0) regardless of cell.
+        let items: Vec<GridItem> = ['A', 'B', 'x']
+            .iter()
+            .map(|&ch| GridItem {
+                ch,
+                baseline_x: 12.0,
+                baseline_y: 56.0,
+            })
+            .collect();
+        let grid = renderer
+            .render_grid(0, &items, 48, cell, 12)
+            .expect("grid renders");
+        assert_eq!(grid.items.len(), 3);
+        for (i, g) in grid.items.iter().enumerate() {
+            assert!(g.width > 0, "item {i} ('{}') rendered empty", items[i].ch);
+        }
+        // 'A' and 'B' must produce DIFFERENT crops — identical outputs mean
+        // one glyph's ink was attributed to every cell.
+        assert_ne!(
+            grid.items[0].data, grid.items[1].data,
+            "'A' and 'B' rendered identically — glyphs landed on the same cell"
+        );
+        assert_ne!(
+            grid.items[0].data, grid.items[2].data,
+            "'A' and 'x' rendered identically — glyphs landed on the same cell"
+        );
     }
 
     #[test]

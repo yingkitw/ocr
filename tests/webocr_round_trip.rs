@@ -436,15 +436,16 @@ fn round_trip_cjk_short_string() {
         data: pixels,
     };
     let result = ocr.recognize(&gray);
+    let actual: String = result
+        .lines
+        .iter()
+        .flat_map(|l| l.chars.iter().map(|c| c.char))
+        .collect();
     eprintln!(
         "CJK: templates={}, sample={:?}, result_text={:?}, scores={:?}, char_count={}",
         templates.len(),
         sample_text,
-        result
-            .lines
-            .iter()
-            .flat_map(|l| l.chars.iter().map(|c| c.char))
-            .collect::<Vec<_>>(),
+        actual,
         result
             .lines
             .iter()
@@ -452,20 +453,34 @@ fn round_trip_cjk_short_string() {
             .collect::<Vec<_>>(),
         result.char_count,
     );
-    // The test is a pipeline smoke test: confirm the CJK flow runs
-    // end-to-end on real CJK glyphs. We don't gate on per-character
-    // accuracy here because the CJK fine-stage ceiling is
-    // well-documented in webocr (MEMORY §13: 懒 fine-rank 7312,
-    // 惰 loses by 0.042) and needs structural features beyond the
-    // cosine path to break through. The asserts here only check the
-    // pipeline runs and returns the right number of slots.
+    // The union library must actually cover CJK — a broken `render_grid`
+    // (glyphs drawn at canvas origin) built ~452 templates and this test
+    // still passed on counts alone. Any real CJK font renders thousands.
+    assert!(
+        ocr.template_count() > 5_000,
+        "CJK union library too small: {} templates — grid render broken?",
+        ocr.template_count()
+    );
     assert_eq!(
         result.char_count,
         sample_text.chars().count(),
         "CJK pipeline should produce one result char per sample char"
     );
-    // Each output char should have a finite score (the cosine ran
-    // end-to-end without erroring).
+    // Correctness gate, not just slot count: the engine used to emit
+    // plausible-but-wrong hanzi at ~0.7 cosine because samples were
+    // normalized at SCALE_REF=20 while CJK templates sit at
+    // CJK_SCALE_REF=24. With per-family scale the same-font read-back is
+    // exact on macOS; ≥2/3 correct still fails loudly on weaker font
+    // stacks while catching a total-recognition regression.
+    let correct = actual
+        .chars()
+        .zip(sample_text.chars())
+        .filter(|(a, e)| a == e)
+        .count();
+    assert!(
+        correct >= 2,
+        "expected ≥2/3 chars of {sample_text:?}, got {actual:?}"
+    );
     for ch in &result.lines[0].chars {
         assert!(ch.score > 0.0, "CJK match score was 0 for {:?}", ch.char);
         assert!(ch.score <= 1.0, "CJK match score out of range: {}", ch.score);

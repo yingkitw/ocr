@@ -628,9 +628,14 @@ pub fn run_ocr(
             }
         };
 
-        // Normalize one glyph into its matching frame.
-        let normalize_glyph = |g: &Comp| -> (Vec<f32>, f32, f32, f32) {
-            let mut vec = place_glyph(&bin, g, glyph_scale(g, SCALE_REF), baseline, frame);
+        // Normalize one glyph into its matching frame. `scale_ref` must
+        // match the pool the vector will be scored against: Latin
+        // templates are built at SCALE_REF (20) and CJK ones at
+        // CJK_SCALE_REF (24) — a sample normalized at the wrong scale is
+        // systematically ~17 % off inside the frame, capping every
+        // cosine at ≈0.83 and handing the win to look-alikes.
+        let normalize_glyph = |g: &Comp, scale_ref: f32| -> (Vec<f32>, f32, f32, f32) {
+            let mut vec = place_glyph(&bin, g, glyph_scale(g, scale_ref), baseline, frame);
             for _ in 0..options.blur_passes {
                 vec = blur3(&vec, frame);
             }
@@ -644,24 +649,97 @@ pub fn run_ocr(
             (vec, aspect, rel_h, top_rel)
         };
 
-        // Match a glyph against an explicit candidate pool.
+        // Match a glyph against an explicit candidate pool. In a union
+        // library the pool can hold both script families, so the sample
+        // is normalized once per family and each sub-pool is scored at
+        // its own scale + match options (mirrors the union path in
+        // `match_one`); a single-family library takes the library scale.
         let match_in_pool =
             |g: &Comp, pool: &[&PreparedTemplate], bar: Option<f32>| -> Match {
-                let (vec, aspect, rel_h, top_rel) = normalize_glyph(g);
-                match_glyph(
-                    &vec,
-                    aspect,
-                    pool,
-                    MatchOptions {
-                        frame,
-                        rel_h,
-                        rel_h_weight: match_rel_h_weight,
-                        top_rel,
-                        top_rel_weight: match_top_rel_weight,
-                        shift: match_shift,
-                        min_score: bar,
-                    },
-                )
+                if has_cjk_lib && has_latin_lib {
+                    let (lat_sub, cj_sub): (Vec<&PreparedTemplate>, Vec<&PreparedTemplate>) =
+                        pool.iter()
+                            .copied()
+                            .partition(|t| (t.char as u32) < 0x2E80);
+                    let lat = if lat_sub.is_empty() {
+                        None
+                    } else {
+                        let (vec, aspect, rel_h, top_rel) = normalize_glyph(g, SCALE_REF);
+                        Some(match_glyph(
+                            &vec,
+                            aspect,
+                            &lat_sub,
+                            MatchOptions {
+                                frame,
+                                rel_h,
+                                rel_h_weight: 0.0,
+                                top_rel,
+                                top_rel_weight: match_top_rel_weight,
+                                shift: 0,
+                                min_score: bar,
+                            },
+                        ))
+                    };
+                    let cj = if cj_sub.is_empty() {
+                        None
+                    } else {
+                        let (vec, aspect, rel_h, top_rel) =
+                            normalize_glyph(g, super::normalize::CJK_SCALE_REF);
+                        Some(match_glyph(
+                            &vec,
+                            aspect,
+                            &cj_sub,
+                            MatchOptions {
+                                frame,
+                                rel_h,
+                                rel_h_weight: match_rel_h_weight,
+                                top_rel,
+                                top_rel_weight: 0.0,
+                                shift: match_shift,
+                                min_score: bar,
+                            },
+                        ))
+                    };
+                    match (lat, cj) {
+                        (Some(l), Some(c)) => {
+                            if l.score > c.score {
+                                l
+                            } else {
+                                c
+                            }
+                        }
+                        (Some(l), None) => l,
+                        (None, Some(c)) => c,
+                        (None, None) => Match {
+                            char: '\0',
+                            score: 0.0,
+                            margin: 0.0,
+                            lower: None,
+                            upper: None,
+                        },
+                    }
+                } else {
+                    let scale_ref = if has_cjk_lib {
+                        super::normalize::CJK_SCALE_REF
+                    } else {
+                        SCALE_REF
+                    };
+                    let (vec, aspect, rel_h, top_rel) = normalize_glyph(g, scale_ref);
+                    match_glyph(
+                        &vec,
+                        aspect,
+                        pool,
+                        MatchOptions {
+                            frame,
+                            rel_h,
+                            rel_h_weight: match_rel_h_weight,
+                            top_rel,
+                            top_rel_weight: match_top_rel_weight,
+                            shift: match_shift,
+                            min_score: bar,
+                        },
+                    )
+                }
             };
 
         // The phase-variant pool for this line: the variants drawn at the
@@ -689,7 +767,22 @@ pub fn run_ocr(
         // the match and the candidate pool it was drawn from (the merge
         // pass needs the pool).
         let match_one = |g: &Comp| -> (Match, Vec<&PreparedTemplate>) {
-            let (vec, aspect, rel_h, top_rel) = normalize_glyph(g);
+            // `vec` is normalized at the library family's scale_ref — in a
+            // union library that's Latin; `vec_cjk` is the CJK-scale twin
+            // (empty for single-family libs where it is never read).
+            let (vec, aspect, rel_h, top_rel) = normalize_glyph(
+                g,
+                if has_latin_lib {
+                    SCALE_REF
+                } else {
+                    super::normalize::CJK_SCALE_REF
+                },
+            );
+            let vec_cjk = if has_latin_lib && has_cjk_lib {
+                normalize_glyph(g, super::normalize::CJK_SCALE_REF).0
+            } else {
+                Vec::new()
+            };
             let (mut pool, mut m) = if shortlist_needed && has_cjk_lib && has_latin_lib {
                 // Per-subset scoring: a union library carries two script
                 // families whose match params differ — Latin templates
@@ -698,7 +791,8 @@ pub fn run_ocr(
                 // against the line median while the template relH is
                 // against its raster em, so the CJK-weighted penalty
                 // systematically punishes x-height letters and flips
-                // u/U). CJK candidates keep shift + relH.
+                // u/U). CJK candidates keep shift + relH. Each family is
+                // normalized at its own scale_ref (see normalize_glyph).
                 let lat_pool = shortlist(
                     &vec,
                     frame,
@@ -710,7 +804,7 @@ pub fn run_ocr(
                     32,
                     1,
                 );
-                let cj_pool = shortlist(&vec, frame, &cjk_refs, 64, 1);
+                let cj_pool = shortlist(&vec_cjk, frame, &cjk_refs, 64, 1);
                 let lat = match_glyph(
                     &vec,
                     aspect,
@@ -726,7 +820,7 @@ pub fn run_ocr(
                     },
                 );
                 let cj = match_glyph(
-                    &vec,
+                    &vec_cjk,
                     aspect,
                     &cj_pool,
                     MatchOptions {
@@ -815,7 +909,7 @@ pub fn run_ocr(
         // relH penalty is disabled — a CJK glyph never matches here, so
         // the penalty just confuses close calls between letters.
         let match_latin = |g: &Comp| -> Match {
-            let (vec, aspect, rel_h, top_rel) = normalize_glyph(g);
+            let (vec, aspect, rel_h, top_rel) = normalize_glyph(g, SCALE_REF);
             let pool = if shortlist_needed && has_latin_lib {
                 let sub = if rel_h < 0.42 {
                     &latin_punct_refs
