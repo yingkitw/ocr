@@ -364,6 +364,13 @@ impl OcrEngine {
                 None
             };
 
+        // RGB copy of the input for per-word color sampling — recognition
+        // runs on a grayscale derivative, but the ink/background colors
+        // are only in the source pixels. Captured before the PSM
+        // transforms below rebind `image`.
+        let color_src = image.data.to_rgb8();
+        let (color_w, color_h) = (image.width, image.height);
+
         // PSM 5 (vertical text): rotate the page 90° anticlockwise, mirroring
         // Tesseract's `to_block->rotate(anticlockwise90)` (`textord.cpp:201-217`).
         // PSM 9 (circle word): strip an enclosing ring first, mirroring
@@ -446,6 +453,41 @@ impl OcrEngine {
             .post_process_result(recognition_result, &preprocessed_image)
             .await?;
         profiler.stop_operation();
+
+        // Per-word text/background colors, sampled from the RGB copy of the
+        // input captured above. Word boxes live in preprocessed coordinates;
+        // a uniform scale maps them back to the input frame. Orientation
+        // correction rotates the page and flips the aspect — detected here
+        // and skipped rather than sampling mirrored boxes.
+        let aspect_kept = (color_w as f32 / color_h.max(1) as f32
+            - preprocessed_image.width as f32 / preprocessed_image.height.max(1) as f32)
+            .abs()
+            < 0.03;
+        if aspect_kept {
+            let sx = color_w as f32 / preprocessed_image.width.max(1) as f32;
+            let sy = color_h as f32 / preprocessed_image.height.max(1) as f32;
+            let attach = |w: &mut crate::core::text::WordResult| {
+                let b = &w.bounding_box;
+                if let Some(c) = crate::image::sample_region_colors(
+                    &color_src,
+                    (b.left as f32 * sx) as u32,
+                    (b.top as f32 * sy) as u32,
+                    (b.right as f32 * sx).ceil() as u32,
+                    (b.bottom as f32 * sy).ceil() as u32,
+                ) {
+                    w.text_color = Some(c.text);
+                    w.background_color = Some(c.background);
+                }
+            };
+            for w in &mut text_result.words {
+                attach(w);
+            }
+            for line in &mut text_result.lines {
+                for w in &mut line.words {
+                    attach(w);
+                }
+            }
+        }
 
         profiler.stop_operation(); // total
 

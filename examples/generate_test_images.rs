@@ -48,6 +48,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     generate_eurotext(&fonts, "test_images/eurotext.png")?;
     generate_training_digits(&fonts, "test_images/training_digits.png")?;
 
+    // Color/background analysis fixture
+    generate_colored_text(&fonts, "test_images/colored_text.png")?;
+
     // GOCR-inspired test images (ligatures, thin font, framed, snowy, 200dpi)
     generate_ligatures(&fonts, "test_images/ligatures.png")?;
     generate_thin_font(&fonts, "test_images/thin_font.png")?;
@@ -708,6 +711,35 @@ fn generate_eurotext(fonts: &[LoadedFont], path: &str) -> Result<(), Box<dyn std
     }
     let gray = DynamicImage::ImageRgb8(img).to_luma8();
     gray.save(path)?;
+    println!("  ✓ {}", path);
+    Ok(())
+}
+
+/// Colored ink on tinted paper, kept as RGB — exercises per-word
+/// text/background color analysis (`src/image/color.rs`).
+fn generate_colored_text(fonts: &[LoadedFont], path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let mut img = RgbImage::from_pixel(620, 160, Rgb([245, 240, 220])); // cream
+    if let Some(font) = font_by_category(fonts, FontCategory::SansSerif) {
+        render_line_rgb(
+            &mut img,
+            "Red ink on cream paper",
+            20,
+            20,
+            30.0,
+            font,
+            Rgb([140, 20, 30]),
+        );
+        render_line_rgb(
+            &mut img,
+            "Blue ink second line",
+            20,
+            90,
+            30.0,
+            font,
+            Rgb([20, 40, 140]),
+        );
+    }
+    DynamicImage::ImageRgb8(img).save(path)?;
     println!("  ✓ {}", path);
     Ok(())
 }

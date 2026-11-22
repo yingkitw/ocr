@@ -80,8 +80,6 @@ impl Ocr {
         width: u32,
         height: u32,
     ) -> ApiResult<TextResult> {
-        let timer = Timer::new();
-
         // Convert image data to OcrImage
         let image = OcrImage::from_raw_pixels(
             width,
@@ -96,12 +94,7 @@ impl Ocr {
                 .unwrap_or(300),
         )?;
 
-        // Process image
-        let engine = self.engine.read().await;
-        let result = engine.process_image(image).await?;
-
-        tracing::debug!("Text recognition completed in {}ms", timer.elapsed_ms());
-        Ok(result)
+        self.recognize_image(image).await
     }
 
     /// Recognize text from encoded image bytes (PNG, JPEG, etc.)
@@ -113,11 +106,34 @@ impl Ocr {
             .map_err(|e| ApiError::ImageProcessing(format!("Failed to load image: {}", e)))?;
         let (width, height) = dynamic_image.dimensions();
 
-        // Convert to grayscale and extract raw pixel data
-        let gray_image = dynamic_image.to_luma8();
-        let raw_pixels: Vec<u8> = gray_image.pixels().map(|p| p[0]).collect();
+        // Keep RGB so per-word text/background colors can be sampled from
+        // the source pixels — preprocessing grayscales internally anyway.
+        let rgb_image = dynamic_image.to_rgb8();
+        let raw_pixels: Vec<u8> = rgb_image.pixels().flat_map(|p| p.0).collect();
+        let image = OcrImage::from_raw_pixels(
+            width,
+            height,
+            raw_pixels,
+            ImageFormat::Rgb,
+            self.config
+                .recognition
+                .parameters
+                .get("dpi")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(300),
+        )?;
 
-        self.recognize_text(&raw_pixels, width, height).await
+        self.recognize_image(image).await
+    }
+
+    /// Shared tail for the `recognize_text*` entry points.
+    async fn recognize_image(&self, image: OcrImage) -> ApiResult<TextResult> {
+        let timer = Timer::new();
+        let engine = self.engine.read().await;
+        let result = engine.process_image(image).await?;
+
+        tracing::debug!("Text recognition completed in {}ms", timer.elapsed_ms());
+        Ok(result)
     }
 
     /// Recognize text from encoded image bytes, returning one `TextResult` per page.

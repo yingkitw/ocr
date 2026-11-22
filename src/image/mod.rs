@@ -1,5 +1,6 @@
 //! Image processing and preprocessing for OCR
 
+pub mod color;
 pub mod dewarp;
 pub mod enhancement;
 pub mod font_analysis;
@@ -9,6 +10,7 @@ pub mod quality;
 pub mod super_resolution;
 pub mod thresholder;
 
+pub use color::*;
 pub use dewarp::*;
 pub use enhancement::*;
 pub use font_analysis::*;

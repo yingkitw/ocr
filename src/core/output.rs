@@ -99,6 +99,12 @@ pub struct JsonWord {
     pub word_number: usize,
     /// Characters in this word
     pub characters: Vec<JsonCharacter>,
+    /// Median ink color in the source image (sRGB)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_color: Option<[u8; 3]>,
+    /// Median background color behind the word (sRGB)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<[u8; 3]>,
 }
 
 /// Character in JSON output
@@ -158,6 +164,8 @@ pub fn to_json_output(result: &TextResult) -> OcrJsonOutput {
                             bounding_box: ch.bounding_box,
                         })
                         .collect(),
+                    text_color: word.text_color,
+                    background_color: word.background_color,
                 })
                 .collect(),
         })
@@ -245,15 +253,23 @@ pub fn format_hocr(result: &TextResult) -> Result<String> {
         // Words
         for (word_idx, word) in line.words.iter().enumerate() {
             let word_bbox = &word.bounding_box;
+            let style = match (word.text_color, word.background_color) {
+                (Some(t), Some(b)) => format!(
+                    " style='color:#{:02x}{:02x}{:02x};background-color:#{:02x}{:02x}{:02x}'",
+                    t[0], t[1], t[2], b[0], b[1], b[2]
+                ),
+                _ => String::new(),
+            };
             html.push_str(&format!(
-                "          <span class='ocrx_word' id='word_1_{}_{}' title=\"bbox {} {} {} {}; x_wconf {:.0}\">",
+                "          <span class='ocrx_word' id='word_1_{}_{}' title=\"bbox {} {} {} {}; x_wconf {:.0}\"{}>",
                 line_idx + 1,
                 word_idx + 1,
                 word_bbox.left,
                 word_bbox.top,
                 word_bbox.right,
                 word_bbox.bottom,
-                word.confidence * 100.0
+                word.confidence * 100.0,
+                style
             ));
 
             html.push_str(&xml_escape(&word.text));

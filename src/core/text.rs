@@ -107,6 +107,13 @@ pub struct WordResult {
     pub characters: Vec<CharacterResult>,
     /// Word properties
     pub properties: WordProperties,
+    /// Median ink color of the word in the source image (sRGB), when the
+    /// input carried color and the box held enough ink to sample.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_color: Option<[u8; 3]>,
+    /// Median background color behind the word (sRGB).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<[u8; 3]>,
 }
 
 impl WordResult {
@@ -118,6 +125,8 @@ impl WordResult {
             bounding_box,
             characters: Vec::new(),
             properties: WordProperties::default(),
+            text_color: None,
+            background_color: None,
         }
     }
 

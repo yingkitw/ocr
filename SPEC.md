@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 516 tests passing, 90 ignored, zero known failures.**
+**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 521 tests passing, 90 ignored, zero known failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero unexpected failures (516 tests passing)
+- [x] `cargo test` passes with zero unexpected failures (521 tests passing)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic
@@ -117,8 +117,8 @@ pub struct OcrConfig {
 | Format | Schema | Notes |
 |--------|--------|-------|
 | `text` | Plain UTF-8 | Newlines preserved from line detection |
-| `json` | `{"text": "...", "confidence": 0.95, "lines": [...]}` | Bounding boxes per line/word/char |
-| `hocr` | HTML 4.01 with hOCR 4.1 classes | `ocr_page`, `ocr_line`, `ocrx_word` |
+| `json` | `{"text": "...", "confidence": 0.95, "lines": [...]}` | Bounding boxes per line/word/char; words also carry `text_color`/`background_color` (sRGB `[r,g,b]`) when the input had color |
+| `hocr` | HTML 4.01 with hOCR 4.1 classes | `ocr_page`, `ocr_line`, `ocrx_word`; words emit `style='color:#…;background-color:#…'` when colors were sampled |
 | `tsv` | TSV with Tesseract-compatible columns | level, page_num, block_num, par_num, line_num, word_num, left, top, width, height, conf, text |
 | `csv` | RFC 4180 CSV with per-word metadata | page, line, word, text, confidence, left, top, width, height — fields containing comma/quote/newline are quoted per RFC 4180 |
 | `alto` | ALTO XML v4 | `<Page>`, `<TextBlock>`, `<TextLine>`, `<String>` |

@@ -468,3 +468,98 @@ async fn test_bounding_boxes() -> Result<()> {
 
     Ok(())
 }
+
+/// Test per-word text/background color analysis
+///
+/// `colored_text.png` is a dark-red line over a dark-blue line on cream
+/// paper. Recognition must attach sampled RGB colors to each word, and
+/// hOCR must expose them as an accessible `style` attribute.
+#[tokio::test]
+async fn test_colored_text_colors() -> Result<()> {
+    let test_image = Path::new("test_images/colored_text.png");
+    if !test_image.exists() {
+        eprintln!("Test image not found: {:?}", test_image);
+        return Ok(());
+    }
+
+    // Template engine so the word boxes are real (see test_simple_text).
+    // Preprocessing is disabled to match the CLI's `--preprocess`-off
+    // default: super-resolution/dewarp distort this small fixture and the
+    // template engine reads garbage. The color feature is agnostic — it
+    // samples whatever boxes recognition produces.
+    let mut config = ocr::core::config::OcrConfig::default();
+    config.recognition.engine = ocr::core::config::RecognitionEngine::Template;
+    config.image_processing.enable_preprocessing = false;
+    config.image_processing.enable_binarization = false;
+    config.image_processing.enable_noise_reduction = false;
+    config.image_processing.enable_contrast_enhancement = false;
+    config.image_processing.enable_deskewing = false;
+    let ocr = Ocr::with_config(config)?;
+    ocr.initialize().await?;
+
+    let result = match ocr.recognize_text_from_file(test_image).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("skipping: template engine unavailable: {e}");
+            return Ok(());
+        }
+    };
+
+    // Sample line-level words — the same collection hOCR/JSON emit. The
+    // top-level `words` list can additionally hold stray artifact boxes
+    // (e.g. `°"`), which is fine — they are checked for colors but are
+    // not reliable recognition anchors.
+    let colored: Vec<_> = result
+        .lines
+        .iter()
+        .flat_map(|l| l.words.iter())
+        .filter(|w| w.text_color.is_some() && w.background_color.is_some())
+        .collect();
+    assert!(
+        !colored.is_empty(),
+        "words were recognized but none carried text/background colors"
+    );
+
+    // Cream paper behind every colored word.
+    for w in &colored {
+        let bg = w.background_color.unwrap();
+        assert!(
+            bg[0] > 200 && bg[1] > 200 && bg[2] > 160,
+            "background should be cream, got {:?} for {:?}",
+            bg,
+            w.text
+        );
+    }
+
+    // Anchor words pin each ink color: "Red" on the first line, "Blue" on
+    // the second. (Word-level checks on position bands are unsafe — a
+    // stray artifact box can span both lines.)
+    let red = colored.iter().find(|w| w.text == "Red");
+    let blue = colored.iter().find(|w| w.text == "Blue");
+    assert!(
+        red.is_some() && blue.is_some(),
+        "expected the anchor words 'Red' and 'Blue' to be recognized, got {:?}",
+        colored.iter().map(|w| &w.text).collect::<Vec<_>>()
+    );
+    let t = red.unwrap().text_color.unwrap();
+    assert!(
+        t[0] > t[2] + 40 && t[0] > t[1] + 40,
+        "'Red' ink should be red-dominant, got {:?}",
+        t
+    );
+    let t = blue.unwrap().text_color.unwrap();
+    assert!(
+        t[2] > t[0] + 40 && t[2] > t[1] + 40,
+        "'Blue' ink should be blue-dominant, got {:?}",
+        t
+    );
+
+    // hOCR exposes the colors as an accessible style attribute.
+    let hocr = ocr::core::output::format_hocr(&result)?;
+    assert!(
+        hocr.contains("color:#") && hocr.contains("background-color:#"),
+        "hOCR should carry per-word color styles"
+    );
+
+    Ok(())
+}
