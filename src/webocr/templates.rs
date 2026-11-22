@@ -156,16 +156,15 @@ pub fn cjk_han_charset() -> String {
     s
 }
 
-/// CJK union charset: ASCII + Han + Hiragana + Katakana + Hangul
+/// CJK union charset: Latin + Han + Hiragana + Katakana + Hangul
 /// Syllables. Generated lazily (it's a ~33K-char string). The
 /// partition in `classify::shortlist` separates the two script
 /// families at codepoint 0x2E80 so both have recall under one library.
+/// The Latin side is the full `LATIN_CHARSET` — accents stay reachable
+/// on mixed pages like `--lang zh+en` (e.g. `北京 café`).
 pub fn cjk_union_charset() -> String {
     let mut s = String::with_capacity(33_000 * 3);
-    // ASCII
-    for cp in 0x0020..=0x007E {
-        s.push(char::from_u32(cp).unwrap());
-    }
+    s.push_str(LATIN_CHARSET);
     // Hiragana
     for cp in 0x3040..=0x309F {
         if let Some(c) = char::from_u32(cp) {
@@ -480,6 +479,11 @@ pub fn build_templates(
 /// Like `build_templates` but with an explicit CJK switch. The CJK path
 /// uses grid batching (per-char is correct but slow) and the
 /// WebOCR-calibrated `CJK_SCALE_REF` (24) instead of Latin's 20.
+///
+/// A union charset mixes script families: templates are partitioned at
+/// `SCRIPT_PARTITION_CP` and the Latin side is built at `SCALE_REF`,
+/// matching the per-family sample normalization in `run_ocr` — a Latin
+/// template normalized at 24 would cap every Latin cosine ≈0.83.
 #[allow(clippy::too_many_arguments)]
 pub fn build_templates_for_options(
     renderer: &dyn TemplateRenderer,
@@ -490,15 +494,31 @@ pub fn build_templates_for_options(
 ) -> Vec<PreparedTemplate> {
     let scale_ref = if cjk { super::normalize::CJK_SCALE_REF } else { SCALE_REF };
     let mut templates = if cjk {
-        build_grid(
-            renderer,
-            charset,
-            sizes,
-            scale_ref,
-            true,
-            1,
-            coarse,
-        )
+        if charset.chars().any(|c| (c as u32) < SCRIPT_PARTITION_CP) {
+            // Union library: Latin side at Latin scale, CJK side at CJK
+            // scale, then concatenate — one pool, per-family vectors.
+            let latin: String = charset
+                .chars()
+                .filter(|c| (*c as u32) < SCRIPT_PARTITION_CP)
+                .collect();
+            let rest: String = charset
+                .chars()
+                .filter(|c| (*c as u32) >= SCRIPT_PARTITION_CP)
+                .collect();
+            let mut ts = build_grid(renderer, &latin, sizes, SCALE_REF, true, 1, coarse);
+            ts.extend(build_grid(renderer, &rest, sizes, scale_ref, true, 1, coarse));
+            ts
+        } else {
+            build_grid(
+                renderer,
+                charset,
+                sizes,
+                scale_ref,
+                true,
+                1,
+                coarse,
+            )
+        }
     } else {
         build_per_char(
             renderer,
@@ -640,6 +660,10 @@ mod tests {
         let s = cjk_union_charset();
         // ASCII range
         assert!(s.chars().any(|c| c == 'A'));
+        // Extended Latin — accents stay reachable under --lang zh+en
+        for c in "éüñÉÜß".chars() {
+            assert!(s.contains(c), "cjk_union_charset missing {c}");
+        }
         // Hiragana
         assert!(s.chars().any(|c| c == '\u{3042}')); // あ
         // Katakana
@@ -648,7 +672,7 @@ mod tests {
         assert!(s.chars().any(|c| c == '\u{4E2D}')); // 中
         // Hangul
         assert!(s.chars().any(|c| c == '\u{AC00}')); // 가
-        // ≥ ASCII + Hiragana + Katakana + CJK Unified + Hangul Syllables
+        // ≥ Latin + Hiragana + Katakana + CJK Unified + Hangul Syllables
         assert!(s.chars().count() > 30_000);
     }
 

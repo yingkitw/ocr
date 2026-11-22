@@ -4,7 +4,7 @@
 [![docs.rs](https://docs.rs/ocr/badge.svg)](https://docs.rs/ocr)
 [![License: Apache-2.0](https://img.shields.io/crates/l/ocr)](LICENSE)
 [![Rust Edition 2024](https://img.shields.io/badge/rust-2024-edition-orange.svg)](https://doc.rust-lang.org/edition-guide/)
-[![Tests](https://img.shields.io/badge/tests-521_passing-brightgreen.svg)](#roadmap)
+[![Tests](https://img.shields.io/badge/tests-522_passing-brightgreen.svg)](#roadmap)
 [![Build](https://img.shields.io/badge/build-zero_warnings-brightgreen.svg)](#)
 
 > **Pure-Rust OCR engine and command-line tool for extracting printed text from images.** No C/C++ dependencies, no Python, no GPU required. Supports 30 languages, multi-page TIFF, and output to text, JSON, Markdown, hOCR, TSV, CSV, ALTO XML, PAGE XML, and searchable PDF. Apache-2.0 licensed.
@@ -331,7 +331,7 @@ src/
 - [x] Layout analysis with CCL, column detection, reading order
 - [x] Dictionary-based post-correction
 - [x] CLI with `extract`, `batch`, `layout`, `list-languages`
-- [x] 521 tests passing
+- [x] 522 tests passing
 
 ### Phase 1 — Synthetic Training Infrastructure (DONE)
 - [x] Synthetic text-image generator with TTF font rendering and bitmap fallback

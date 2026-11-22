@@ -4,7 +4,7 @@
 
 This spec defines concrete, testable milestones. Each phase must compile, pass tests, and demonstrate measurable improvement over the previous phase.
 
-**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 521 tests passing, 90 ignored, zero known failures.**
+**Current status: All five phases implemented and tested; Phase 3.5 (WebOCR template engine, Latin + CJK union) added 2026-10-18. 522 tests passing, 90 ignored, zero known failures.**
 
 ---
 
@@ -13,7 +13,7 @@ This spec defines concrete, testable milestones. Each phase must compile, pass t
 **Goal:** End-to-end pipeline that compiles and passes tests.
 
 ### Acceptance Criteria
-- [x] `cargo test` passes with zero unexpected failures (521 tests passing)
+- [x] `cargo test` passes with zero unexpected failures (522 tests passing)
 - [x] `cargo build --release` produces a working binary
 - [x] `ocr extract test-image.png` produces text output
 - [x] All output formats render without panic

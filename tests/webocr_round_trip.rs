@@ -487,6 +487,78 @@ fn round_trip_cjk_short_string() {
     }
 }
 
+/// Union library: Latin-side templates must be built at `SCALE_REF`, not
+/// `CJK_SCALE_REF` — a template normalized at 24 against a sample at 20
+/// caps the cosine ≈0.83 and hands wins to look-alikes. A tiny mixed
+/// union (`中é` + confusable neighbors on both sides) must read back
+/// exactly; under the old uniform-scale build `é` loses to `e`/`è`.
+#[test]
+fn union_library_reads_latin_at_latin_scale() {
+    let Some(font_data) = cjk_font_data() else {
+        eprintln!("skipping: no CJK system font found");
+        return;
+    };
+    let renderer = ocr::webocr::RustTypeRenderer::for_cjk();
+    if renderer.face_count() == 0 {
+        eprintln!("skipping: CJK renderer loaded no faces");
+        return;
+    }
+    let charset = "中申串eéèêEaA";
+    let templates = ocr::webocr::templates::build_templates_for_options(
+        &renderer,
+        charset,
+        ocr::webocr::templates::CJK_SIZES,
+        true, // coarse vectors for shortlist recall
+        true, // cjk union: grid batching + per-family scale
+    );
+    if templates.is_empty() {
+        eprintln!("skipping: union template library built empty");
+        return;
+    }
+    let Some((pixels, w, h, _baseline)) = render_text("中é", &font_data, 72) else {
+        eprintln!("skipping: render failed");
+        return;
+    };
+    let gray = GrayImage {
+        width: w as usize,
+        height: h as usize,
+        data: pixels,
+    };
+    let options = ocr::webocr::RunOptions {
+        cjk: true,
+        ..Default::default()
+    };
+    let result = ocr::webocr::run_ocr(&gray, &templates, options);
+    let actual: String = result
+        .lines
+        .iter()
+        .flat_map(|l| l.chars.iter().map(|c| c.char))
+        .collect();
+    let scores: Vec<(char, f32)> = result
+        .lines
+        .iter()
+        .flat_map(|l| l.chars.iter().map(|c| (c.char, c.score)))
+        .collect();
+    eprintln!("mixed union: sample=\"中é\" result={actual:?} scores={scores:?}");
+    assert_eq!(
+        actual, "中é",
+        "union library must read each script family at its own scale"
+    );
+    // Score gate: a Latin template normalized at CJK_SCALE_REF caps the
+    // cosine ≈0.83 (measured: é → 0.80); built at SCALE_REF the same-font
+    // read-back clears 0.9. Char identity alone doesn't catch the bug —
+    // é still wins at 72px even mismatched.
+    let e_score = scores
+        .iter()
+        .find(|(c, _)| *c == 'é')
+        .map(|(_, s)| *s)
+        .expect("é must be recognized");
+    assert!(
+        e_score > 0.88,
+        "é score {e_score:.2} below the per-family-scale gate (mismatch ceiling ≈0.83)"
+    );
+}
+
 /// WebOCR engine: `--lang auto` dispatches to the Latin library on
 /// a Latin-shaped page (8 narrow 6×16 ink boxes) and to the CJK
 /// library on a CJK-shaped page (4 hanzi with detached strokes).
