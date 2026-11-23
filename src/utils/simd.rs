@@ -567,6 +567,7 @@ unsafe fn avx2_max_f32x8(v: [f32; 8]) -> f32 {
     use std::arch::x86_64::_mm256_loadu_ps;
     use std::arch::x86_64::_mm256_max_ps;
     use std::arch::x86_64::_mm256_permutevar8x32_ps;
+    use std::arch::x86_64::_mm256_set_epi32;
     use std::arch::x86_64::_mm_max_ps;
     use std::arch::x86_64::_mm_storeu_ps;
     let vv = _mm256_loadu_ps(v.as_ptr());
